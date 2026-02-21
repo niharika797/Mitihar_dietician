@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 from typing import Optional
 from enum import Enum
 
@@ -11,7 +11,7 @@ class ActivityLevel(str, Enum):
 
 class DietType(str, Enum):
     VEGETARIAN = "Vegetarian"
-    NON_VEGETARIAN = "Non Vegetarian"
+    NON_VEGETARIAN = "Non-Vegetarian"
 
 class HealthCondition(str, Enum):
     HEALTHY = "Healthy"
@@ -33,15 +33,17 @@ class UserBase(BaseModel):
     region: str
 
 
-    @validator("diabetes_status", always=True, pre=True)
-    def check_diabetes_status(cls, v, values):
-        if values.get("health_condition") == HealthCondition.DIABETIC:
+    @field_validator("diabetes_status", mode="before")
+    @classmethod
+    def check_diabetes_status(cls, v, info):
+        if info.data.get("health_condition") == HealthCondition.DIABETIC:
             if v not in ["controlled", "uncontrolled"]:
                 raise ValueError("If diabetic, diabetes_status must be 'controlled' or 'uncontrolled'")
         return v
-    @validator("gym_goal", always=True, pre=True)
-    def check_gym_goal(cls, v, values):
-        if values.get("health_condition") == HealthCondition.GYM:
+    @field_validator("gym_goal", mode="before")
+    @classmethod
+    def check_gym_goal(cls, v, info):
+        if info.data.get("health_condition") == HealthCondition.GYM:
             if v not in ["weight_loss", "muscle_gain", "maintenance"]:
                 raise ValueError("If gym-friendly, gym_goal must be 'weight_loss', 'muscle_gain', or 'maintenance'")
         return v
@@ -66,5 +68,4 @@ class UserResponse(UserBase):
     id: str
     meal_plan_purchased: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

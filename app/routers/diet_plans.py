@@ -1,16 +1,17 @@
 # app/routers/diet_plans.py
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Dict
 from ..services.diet_plan_service import DietPlanService
 from ..services.user_service import get_current_user
 from ..models.user import UserInDB
 from ..models.diet_plan import DietPlan
 from ..core.exceptions import DietPlanNotFoundException
-from ..services.meal_generator.meal_generator import MealGenerator  # Add this import
+from ..services.meal_generator.meal_generator import meal_generator  # Use singleton
 from datetime import datetime
 
 router = APIRouter()
+from ..core.limiter import limiter
+
 diet_plan_service = DietPlanService()
 
 @router.get("/my-plan", response_model=DietPlan)
@@ -21,15 +22,34 @@ async def get_my_diet_plan(current_user: UserInDB = Depends(get_current_user)):
         raise DietPlanNotFoundException()
     return diet_plan
 @router.get("/today", response_model=DietPlan)
-async def get_today_date():
-    """
-    Get today's date in YYYY-MM-DD format
-    """
-    start_date = datetime.today().strftime("%Y-%m-%d")
-    return {"date": start_date}
+async def get_today_meals(current_user: UserInDB = Depends(get_current_user)):
+    """Get today's meals from the user's diet plan."""
+    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
+    if not diet_plan:
+        raise DietPlanNotFoundException()
+    
+    today_str = datetime.today().strftime("%Y-%m-%d")
+    today_meals = [m for m in diet_plan.meals if m.get("Date") == today_str]
+    
+    # Generate ingredient checklist for today only
+    today_ingredients = meal_generator.generate_ingredient_checklist(today_meals)
+    
+    # Handle both DataFrame and list returns
+    ingredient_list = today_ingredients.to_dict(orient="records") if hasattr(today_ingredients, 'to_dict') else today_ingredients
+
+    return DietPlan(
+        user_id=diet_plan.user_id,
+        created_at=diet_plan.created_at,
+        meals=today_meals,
+        ingredient_checklist=ingredient_list
+    )
 
 @router.post("/generate", response_model=DietPlan)
-async def generate_diet_plan(current_user: UserInDB = Depends(get_current_user)):
+@limiter.limit("10/hour")
+async def generate_diet_plan(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user)
+):
     """Generate a new diet plan for the current user."""
     # First check if user already has a plan
     existing_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
@@ -39,7 +59,6 @@ async def generate_diet_plan(current_user: UserInDB = Depends(get_current_user))
             detail="Diet plan already exists for this user"
         )
 
-    
     diet_plan = await diet_plan_service.generate_diet_plan(current_user.model_dump())
     plan_id = await diet_plan_service.store_diet_plan(diet_plan)
     return diet_plan
@@ -58,7 +77,10 @@ async def update_diet_plan(
         raise DietPlanNotFoundException()
     return updated_plan
 
-@router.delete("/delete")
+@router.delete("/delete", responses={
+    200: {"description": "Diet plan deleted successfully", "content": {"application/json": {"example": {"message": "Diet plan deleted successfully"}}}},
+    404: {"description": "Diet plan not found"}
+})
 async def delete_diet_plan(current_user: UserInDB = Depends(get_current_user)):
     """Delete the current user's diet plan."""
     success = await diet_plan_service.delete_diet_plan(str(current_user.id))
@@ -67,36 +89,49 @@ async def delete_diet_plan(current_user: UserInDB = Depends(get_current_user)):
     return {"message": "Diet plan deleted successfully"}
 
 
-@router.get("/ingredient-checklist", response_model=List[Dict])
-async def get_ingredient_checklist(current_user: UserInDB = Depends(get_current_user)):
-    """Get the ingredient checklist for the current user's diet plan."""
+@router.get("/ingredient-checklist", response_model=List[Dict], responses={
+    200: {
+        "description": "Ingredient checklist for today's meals. Returns an empty list [] if no diet plan exists for the user.",
+        "content": {"application/json": {"example": []}}
+    }
+})
+async def get_ingredient_checklist_today(current_user: UserInDB = Depends(get_current_user)):
+    """
+    Get the ingredient checklist for today's meals only.
+    Returns an empty list [] if no diet plan is found (valid empty state).
+    """
     diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
     if not diet_plan:
-        raise DietPlanNotFoundException()
+        return []
     
-    # Flatten the meals dictionary into a list
-    all_meals = []
-    for meal_list in diet_plan.meals.values():
-        if isinstance(meal_list, list):
-            all_meals.extend(meal_list)
+    today_str = datetime.today().strftime("%Y-%m-%d")
+    today_meals = [m for m in diet_plan.meals if m.get("Date") == today_str]
     
-    meal_generator = MealGenerator(current_user.model_dump())
-    ingredient_checklist = meal_generator.generate_ingredient_checklist(all_meals)
-    
-    return ingredient_checklist.to_dict(orient="records")
+    ingredient_checklist = meal_generator.generate_ingredient_checklist(today_meals)
+    if hasattr(ingredient_checklist, 'to_dict'):
+        return ingredient_checklist.to_dict(orient="records")
+    return ingredient_checklist
 
-@router.get("/weekly-ingredients", response_model=List[Dict])
+@router.get("/weekly-ingredients", response_model=List[Dict], responses={
+    200: {
+        "description": "Weekly ingredient checklist. Returns an empty list [] if no diet plan exists for the user.",
+        "content": {"application/json": {"example": []}}
+    }
+})
 async def get_weekly_ingredients(current_user: UserInDB = Depends(get_current_user)):
-    """Get the weekly ingredient checklist for all meals."""
+    """
+    Get the weekly ingredient checklist for all meals.
+    Returns an empty list [] if no diet plan is found (valid empty state).
+    """
     diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
     if not diet_plan:
-        raise DietPlanNotFoundException()
+        return []
     
     if not diet_plan.ingredient_checklist:
-        # If ingredient checklist is empty, generate it
-        meal_generator = MealGenerator(current_user.model_dump())
-        meals_dict = diet_plan.meals if isinstance(diet_plan.meals, dict) else {"all_meals": diet_plan.meals}
-        ingredient_checklist = meal_generator.generate_ingredient_checklist(meals_dict)
-        return ingredient_checklist.to_dict(orient="records")
+        # If ingredient checklist is empty, generate it from all meals
+        ingredient_checklist = meal_generator.generate_ingredient_checklist(diet_plan.meals)
+        if hasattr(ingredient_checklist, 'to_dict'):
+            return ingredient_checklist.to_dict(orient="records")
+        return ingredient_checklist
         
     return diet_plan.ingredient_checklist

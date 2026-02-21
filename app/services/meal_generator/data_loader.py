@@ -1,8 +1,10 @@
 import pandas as pd
 from pathlib import Path
+from functools import lru_cache
 
 DATA_DIR = Path(__file__).parent / 'data'
 
+@lru_cache(maxsize=16)
 def load_normalized_dataset(dataset_name: str):
     file_map = {
         'Breakfast': 'Breakfast.xlsx',
