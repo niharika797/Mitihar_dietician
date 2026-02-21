@@ -26,5 +26,5 @@ class DietPlan(BaseModel):
     """Represents the complete diet plan for a user."""
     user_id: Optional[str] = None
     created_at: Optional[datetime] = None
-    meals: Dict[str, List] = {}
+    meals: List[Dict] = []
     ingredient_checklist: List[Dict]=[]

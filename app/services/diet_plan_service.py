@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from enum import Enum
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from .meal_generator.meal_generator import MealGenerator
+from .meal_generator.meal_generator import meal_generator
 
 class ActivityLevel(str, Enum):
     SEDENTARY = "S"
@@ -17,7 +17,7 @@ class ActivityLevel(str, Enum):
 
 class DietType(str, Enum):
     VEGETARIAN = "Vegetarian"
-    NON_VEGETARIAN = "Non Vegetarian"
+    NON_VEGETARIAN = "Non-Vegetarian"
 
 class HealthCondition(str, Enum):
     HEALTHY = "Healthy"
@@ -42,12 +42,13 @@ class DietPlanService:
     async def generate_diet_plan(self, user_data: Dict) -> DietPlan:
         """Generate personalized diet plan using nutritional science principles."""
         # Validate inputs
-        generator = MealGenerator(user_data)
-        meal_plan = generator.generate_meal_plan()
+        # Use the singleton meal_generator instance
+        meal_plan = meal_generator.generate_meal_plan(user_data)
         return DietPlan(
             user_id=user_data["id"],
             created_at=datetime.now(),
-            meals=meal_plan
+            meals=meal_plan.get("meals", []),
+            ingredient_checklist=meal_plan.get("ingredient_checklist", [])
         )
 
 

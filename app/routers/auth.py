@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
+from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordRequestForm
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from ..services.user_service import UserService
@@ -7,14 +8,15 @@ from ..models.user import User
 from datetime import timedelta
 from ..core.config import settings
 from ..core.database import get_database
-from ..schemas.user import UserCreate, UserResponse  # Add these imports
+from ..core.limiter import limiter
+from ..schemas.user import UserCreate, UserResponse
 
 router = APIRouter()
 user_service = UserService()
 
 @router.post("/register", response_model=dict)
 async def register(
-    user_data: UserCreate,  # Changed from User to UserCreate
+    user_data: UserCreate,
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Register a new user"""
@@ -45,11 +47,13 @@ async def register(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/token")
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Login user and return JWT token"""
+    """Login user and return JWT token with rate limiting"""
     user = await user_service.authenticate_user(
         email=form_data.username,
         password=form_data.password,
@@ -67,6 +71,40 @@ async def login(
         data={"sub": user.email},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
+    refresh_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+    )
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
+
+@router.post("/refresh")
+async def refresh_token(
+    request: Request,
+    refresh_token: str,
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """Refresh JWT token"""
+    try:
+        payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=["HS256"])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    
+    user = await user_service.get_user_by_email(email, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    
     return {
         "access_token": access_token,
         "token_type": "bearer"

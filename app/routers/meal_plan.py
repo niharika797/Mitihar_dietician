@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from ..services.user_service import get_current_user
 from ..models.user import User
@@ -8,14 +8,25 @@ from typing import List, Dict
 
 router = APIRouter()
 
+from ..core.limiter import limiter
+
 class CalorieReductionInput(BaseModel):
     reduction_amount: int
 
 @router.post("/adjust")
+@limiter.limit("10/hour")
 async def adjust_meal_plan(
+    request: Request,
     reduction: CalorieReductionInput,
     current_user: User = Depends(get_current_user)
 ):
+    """Adjust meal plan with rate limiting"""
+    if not getattr(current_user, 'meal_plan_purchased', False):
+        raise HTTPException(
+            status_code=403,
+            detail="Meal plan adjustment is only available for premium members. Please purchase a plan."
+        )
+    
     try:
         diet_service = DietPlanService()
         
@@ -32,30 +43,18 @@ async def adjust_meal_plan(
         target_calories = total_calories - reduction.reduction_amount
         
         # Prepare user data dictionary with all required fields
-        user_data = {
-            "id": str(current_user.id),
-            "height": float(current_user.height),
-            "weight": float(current_user.weight),
-            "age": int(current_user.age),
-            "gender": current_user.gender,
-            "target_calories": round(target_calories),
-            "diet_type": current_user.diet,
-            "allergies": current_user.allergies if hasattr(current_user, 'allergies') else [],
-            "health_conditions": current_user.health_conditions if hasattr(current_user, 'health_conditions') else [],
-            "activity_level": current_user.activity_level,
-            "region": current_user.region if hasattr(current_user, 'region') else "none",
-            "meal_plan_purchased": getattr(current_user, 'meal_plan_purchased', True)  # Default to True if not specified
-        }
+        user_data = current_user.model_dump()
+        user_data["id"] = str(current_user.id)
+        user_data["target_calories"] = target_calories
         
-        # Generate diet plan using existing service
-        diet_plan = await diet_service.generate_diet_plan(user_data)
-
+        # Generate new plan with adjusted calories
+        new_plan = await diet_service.generate_diet_plan(user_data)
+        await diet_service.update_diet_plan(str(current_user.id), new_plan)
+        
         return {
-            "original_tdee": round(total_calories),
-            "reduced_calories": reduction.reduction_amount,
-            "target_calories": round(target_calories),
-            "diet_plan": diet_plan
+            "message": "Meal plan adjusted successfully",
+            "new_target_calories": target_calories,
+            "plan": new_plan
         }
     except Exception as e:
-        print(f"Error: {str(e)}")
-        raise
+        raise HTTPException(status_code=500, detail=str(e))

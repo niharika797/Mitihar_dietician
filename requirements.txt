@@ -4,6 +4,15 @@ motor
 pydantic
 python-jose[cryptography]
 passlib[bcrypt]
+bcrypt==4.0.1
 python-multipart
 pydantic[email]
 pydantic-settings
+pandas
+numpy
+scikit-learn
+openpyxl
+pytest
+httpx
+python-dotenv
+slowapi

@@ -29,7 +29,7 @@ class UserService:
         if await collection.find_one({"email": user.email}):
             raise EmailAlreadyExistsException()
 
-        user_dict = user.dict()
+        user_dict = user.model_dump()
         user_dict["hashed_password"] = get_password_hash(user_dict.pop("password"))
         user_dict["created_at"] = datetime.utcnow()
         user_dict["updated_at"] = datetime.utcnow()
@@ -84,6 +84,9 @@ class UserService:
         except:
             return False
 
+# Singleton instance
+user_service = UserService()
+
 # Update the get_current_user function
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -91,14 +94,18 @@ async def get_current_user(
 ) -> UserInDB:
     """Get current user from JWT token."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            token, 
+            settings.SECRET_KEY, 
+            algorithms=["HS256"],
+            options={"verify_iat": True, "verify_nbf": True}
+        )
         email: str = payload.get("sub")
         if email is None:
             raise InvalidCredentialsException()
     except JWTError:
         raise InvalidCredentialsException()
 
-    user_service = UserService()
     user = await user_service.get_user_by_email(email, db)
     if user is None:
         raise UserNotFoundException()
