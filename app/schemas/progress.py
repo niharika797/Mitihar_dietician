@@ -17,3 +17,8 @@ class StepsLogCreate(BaseModel):
 
 class WeightLogCreate(BaseModel):
     weight: float
+
+class ActivityLogCreate(BaseModel):
+    steps: int
+    calories_burned: Optional[float] = 0
+    activity_type: Optional[str] = "Walking"

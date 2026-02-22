@@ -13,6 +13,14 @@ async def get_user_profile(current_user: UserInDB = Depends(get_current_user)):
     """Get current user profile"""
     return current_user
 
+@router.get("/bmi")
+async def get_user_bmi(current_user: UserInDB = Depends(get_current_user)):
+    """Get current user's BMI"""
+    if not current_user.height or not current_user.weight:
+        raise HTTPException(status_code=400, detail="User height or weight is not set")
+    bmi = current_user.weight / ((current_user.height / 100) ** 2)
+    return {"bmi": round(bmi, 2)}
+
 @router.put("/me", response_model=UserResponse)
 async def update_user_profile(
     update_data: UserUpdate,

@@ -43,6 +43,17 @@ class ProgressService:
         await collection.insert_one(log_entry)
         return True
 
+    async def log_activity(self, user_id: str, activity_data: dict, db: AsyncIOMotorDatabase):
+        collection = self.get_collection(db)
+        log_entry = {
+            "user_id": user_id,
+            "type": "activity",
+            "data": activity_data,
+            "timestamp": datetime.utcnow()
+        }
+        await collection.insert_one(log_entry)
+        return True
+
     async def log_weight(self, user_id: str, weight: float, db: AsyncIOMotorDatabase):
         collection = self.get_collection(db)
         log_entry = {

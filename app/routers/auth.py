@@ -10,6 +10,7 @@ from ..core.config import settings
 from ..core.database import get_database
 from ..core.limiter import limiter
 from ..schemas.user import UserCreate, UserResponse
+from pymongo.errors import DuplicateKeyError
 
 router = APIRouter()
 user_service = UserService()
@@ -34,20 +35,29 @@ async def register(
             diet=user_data.diet,
             meal_plan_purchased=False,
             health_condition=user_data.health_condition,
+            diabetes_status=user_data.diabetes_status,
+            gym_goal=user_data.gym_goal,
+            region=user_data.region,
         )
         
-        user_id = await user_service.create_user(user=user, db=db)
+        try:
+            user_id = await user_service.create_user(user=user, db=db)
+        except DuplicateKeyError:
+            raise HTTPException(status_code=409, detail="400: Email already registered")
+            
         return {
             "message": "User registered successfully",
             "user_id": user_id
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/token")
-@limiter.limit("5/minute")
+@limiter.limit("20/minute")
 async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -81,15 +91,20 @@ async def login(
         "token_type": "bearer"
     }
 
+from pydantic import BaseModel
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
 @router.post("/refresh")
 async def refresh_token(
     request: Request,
-    refresh_token: str,
+    token_request: RefreshTokenRequest,
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Refresh JWT token"""
     try:
-        payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(token_request.refresh_token, settings.SECRET_KEY, algorithms=["HS256"])
         email: str = payload.get("sub")
         if email is None:
             raise HTTPException(status_code=401, detail="Invalid refresh token")

@@ -80,7 +80,7 @@ class UserService:
                 {"_id": ObjectId(user_id)},
                 {"$set": update_data}
             )
-            return result.modified_count > 0
+            return result.matched_count > 0
         except:
             return False
 
