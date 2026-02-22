@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, Field
 from typing import Optional
 from enum import Enum
 
@@ -21,16 +21,16 @@ class HealthCondition(str, Enum):
 class UserBase(BaseModel):
     email: EmailStr
     name: str
-    age: int
+    age: int = Field(..., gt=0)
     gender: str
-    height: float
-    weight: float
+    height: float = Field(..., gt=0)
+    weight: float = Field(..., gt=0)
     activity_level: ActivityLevel
     diet: DietType
     health_condition: HealthCondition
     diabetes_status: Optional[str] = None  # Allow None
     gym_goal: Optional[str] = None  # Allow None
-    region: str
+    region: Optional[str] = None
 
 
     @field_validator("diabetes_status", mode="before")
@@ -54,9 +54,9 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     name: Optional[str] = None
-    age: Optional[int] = None
-    height: Optional[float] = None
-    weight: Optional[float] = None
+    age: Optional[int] = Field(None, gt=0)
+    height: Optional[float] = Field(None, gt=0)
+    weight: Optional[float] = Field(None, gt=0)
     activity_level: Optional[ActivityLevel] = None
     diet: Optional[DietType] = None
     health_condition: Optional[HealthCondition] = None

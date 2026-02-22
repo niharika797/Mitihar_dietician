@@ -5,10 +5,10 @@ def calculate_bmi(height: float, weight: float) -> float:
     return weight / (height_m ** 2)
 
 def calculate_bmr(gender: str, weight: float, height: float, age: int) -> float:
-    if gender == 'male' or gender =='Male':
-        return 66.5 + (13.75 * weight) + (5.003 * height) - (6.75 * age)
-    elif gender =='female' or gender =='Female':
-        return 655.1 + (9.563 * weight) + (1.850 * height) - (4.676 * age)
+    if gender.lower() == 'male':
+        return (10 * weight) + (6.25 * height) - (5 * age) + 5
+    elif gender.lower() == 'female':
+        return (10 * weight) + (6.25 * height) - (5 * age) - 161
     return 0.0
 
 def calculate_tdee(bmr: float, activity_level: str) -> float:

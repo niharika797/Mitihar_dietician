@@ -17,6 +17,8 @@ class UserInDB(BaseModel):
     created_at: datetime
     updated_at: datetime
     health_condition: Optional[str]=None
+    diabetes_status: Optional[str]=None
+    gym_goal: Optional[str]=None
     region: Optional[str]=None
 
 class User(BaseModel):
@@ -31,4 +33,6 @@ class User(BaseModel):
     diet: str
     meal_plan_purchased: bool = False
     health_condition: Optional[str]=None
+    diabetes_status: Optional[str]=None
+    gym_goal: Optional[str]=None
     region: Optional[str]=None
