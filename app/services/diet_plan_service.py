@@ -4,8 +4,8 @@ from ..models.diet_plan import DietPlan, Meal
 from ..core.config import settings
 from motor.motor_asyncio import AsyncIOMotorClient
 from enum import Enum
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .meal_generator.meal_generator import meal_generator
 
 class ActivityLevel(str, Enum):
@@ -33,17 +33,20 @@ class region(str, Enum):
 # Service class for diet plan generation and storage
 class DietPlanService:
     def __init__(self):
-        self.client = AsyncIOMotorClient(settings.MONGO_URI)
-        self.db = self.client[settings.DATABASE_NAME]
-        self.diet_plans = self.db.diet_plans
-        self.meals = self.db.meals
+        self._mongo_client = None
+
+    @property
+    def diet_plans(self):
+        if self._mongo_client is None:
+            self._mongo_client = AsyncIOMotorClient(settings.MONGO_URI)
+        return self._mongo_client[settings.DATABASE_NAME].diet_plans
 
 
-    async def generate_diet_plan(self, user_data: Dict) -> DietPlan:
+    async def generate_diet_plan(self, user_data: Dict, session: AsyncSession) -> DietPlan:
         """Generate personalized diet plan using nutritional science principles."""
         # Validate inputs
         # Use the singleton meal_generator instance
-        meal_plan = meal_generator.generate_meal_plan(user_data)
+        meal_plan = await meal_generator.generate_meal_plan(user_data, session)
         return DietPlan(
             user_id=user_data["id"],
             created_at=datetime.now(),

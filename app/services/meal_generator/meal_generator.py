@@ -1,17 +1,19 @@
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
-from collections import defaultdict
-from pydantic import BaseModel  # Add this import
-import pandas as pd
-import numpy as np
+import logging
 import random
 import json
-import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+import pandas as pd
+import numpy as np
+from pydantic import BaseModel
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.db_models import MealTemplate, FoodItem
+from .calculations import calculate_bmi, calculate_bmr, calculate_tdee, calculate_macronutrients
 
 logger = logging.getLogger(__name__)
-
-from .data_loader import load_normalized_dataset
-from .calculations import calculate_bmi, calculate_bmr, calculate_tdee, calculate_macronutrients
 
 class MealPlanTargets(BaseModel):
     """
@@ -33,6 +35,7 @@ class MealPlanTargets(BaseModel):
                 "Breakfast": set(),
                 "MorningSnacks": set(),
                 "Lunch": set(),
+                "EveningSnacks": set(),
                 "Dinner": set()
             }
 
@@ -47,20 +50,11 @@ class MealGenerator:
             "Breakfast": set(),
             "MorningSnacks": set(),
             "Lunch": set(),
+            "EveningSnacks": set(),
             "Dinner": set()
         }
 
     def _normalize_diet_label(self, raw_diet: str) -> str:
-        """
-        Normalizes a raw DIET string from the dataset into a canonical form
-        that the tester's string-match checks can reliably find.
-
-        Rules:
-          "vegetarian"               → "Vegetarian"
-          contains "non"             → "Non-Vegetarian"
-          contains "egg"             → "Eggetarian"
-          anything else              → Title-cased original value
-        """
         if not isinstance(raw_diet, str):
             return "Vegetarian"  # Safe default
         cleaned = raw_diet.strip()
@@ -74,15 +68,12 @@ class MealGenerator:
         return cleaned.title()
 
     def _calculate_targets(self, user_data: Dict) -> Dict:
-        """
-        Calculates BMI, BMR, TDEE, and macronutrient targets based on user data.
-        """
         height = user_data["height"]
         weight = user_data["weight"]
         age = user_data["age"]
         gender = user_data["gender"]
         activity_level = user_data["activity_level"]
-        meal_plan_purchased = user_data["meal_plan_purchased"]
+        meal_plan_purchased = user_data.get("health_condition", "Healthy")
         health_condition = user_data.get("health_condition")
 
         bmi = calculate_bmi(height, weight)
@@ -101,15 +92,9 @@ class MealGenerator:
         }
 
     def _calculate_meal_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        """
-        Calculates calorie targets for each meal based on meal plan type.
-
-        Returns:
-            Dict: Dictionary containing calorie targets for each meal (Breakfast, MorningSnacks, Lunch, Dinner, EveningSnacks).
-        """
         tdee = targets["tdee"]
-        
-        if user_data["meal_plan_purchased"] == "Healthy":
+        plan = user_data.get("health_condition", "Healthy")
+        if plan == "Healthy":
             return {
                 "Breakfast": tdee * 0.25,
                 "MorningSnacks": tdee * 0.05,
@@ -117,7 +102,7 @@ class MealGenerator:
                 "EveningSnacks": tdee * 0.05,
                 "Dinner": tdee * 0.25,
             }
-        elif user_data["meal_plan_purchased"] == "Gym-Friendly":
+        elif plan == "Gym-Friendly":
             return {
                 "Breakfast": tdee * 0.25,
                 "MorningSnacks": tdee * 0.05,
@@ -135,14 +120,9 @@ class MealGenerator:
             }
 
     def _calculate_protein_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        """
-        Calculates protein targets for each meal based on meal plan type.
-
-        Returns:
-            Dict: Dictionary containing protein targets for each meal.
-        """
         protein = targets["protein"]
-        if user_data["meal_plan_purchased"] == "Healthy":
+        plan = user_data.get("health_condition", "Healthy")
+        if plan == "Healthy":
             return {
                 "Breakfast": protein * 0.25,
                 "MorningSnacks": protein * 0.10,
@@ -150,7 +130,7 @@ class MealGenerator:
                 "EveningSnacks": protein * 0.10,
                 "Dinner": protein * 0.25,
             }
-        elif user_data["meal_plan_purchased"] == "Gym-Friendly":
+        elif plan == "Gym-Friendly":
             return {
                 "Breakfast": protein * 0.30,
                 "MorningSnacks": protein * 0.10,
@@ -168,14 +148,9 @@ class MealGenerator:
             }
 
     def _calculate_carb_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        """
-        Calculates carbohydrate targets for each meal based on meal plan type.
-
-        Returns:
-            Dict: Dictionary containing carbohydrate targets for each meal.
-        """
         carbs = targets["carbs"]
-        if user_data["meal_plan_purchased"] == "Healthy":
+        plan = user_data.get("health_condition", "Healthy")
+        if plan == "Healthy":
             return {
                 "Breakfast": carbs * 0.25,
                 "MorningSnacks": carbs * 0.10,
@@ -183,7 +158,7 @@ class MealGenerator:
                 "EveningSnacks": carbs * 0.10,
                 "Dinner": carbs * 0.25,
             }
-        elif user_data["meal_plan_purchased"] == "Gym-Friendly":
+        elif plan == "Gym-Friendly":
             return {
                     "Breakfast": carbs * 0.30,
                 "MorningSnacks": carbs * 0.10,
@@ -201,14 +176,9 @@ class MealGenerator:
             }
 
     def _calculate_fiber_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        """
-        Calculates fiber targets for each meal based on meal plan type.
-
-        Returns:
-            Dict: Dictionary containing fiber targets for each meal.
-        """
         fiber = targets["fiber"]
-        if user_data["meal_plan_purchased"] == "Healthy":
+        plan = user_data.get("health_condition", "Healthy")
+        if plan == "Healthy":
             return {
                 "Breakfast": fiber * 0.25,
                 "MorningSnacks": fiber * 0.10,
@@ -216,7 +186,7 @@ class MealGenerator:
                 "EveningSnacks": fiber * 0.10,
                 "Dinner": fiber * 0.25,
             }
-        elif user_data["meal_plan_purchased"] == "Gym-Friendly":
+        elif plan == "Gym-Friendly":
             return {
                 "Breakfast": fiber * 0.30,
                 "MorningSnacks": fiber * 0.10,
@@ -234,14 +204,9 @@ class MealGenerator:
             }
 
     def _calculate_fat_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        """
-        Calculates fat targets for each meal based on meal plan type.
-
-        Returns:
-            Dict: Dictionary containing fat targets for each meal.
-        """
         fat = targets["fat"]
-        if user_data["meal_plan_purchased"] == "Healthy":
+        plan = user_data.get("health_condition", "Healthy")
+        if plan == "Healthy":
             return {
                 "Breakfast": fat * 0.25,
                 "MorningSnacks": fat * 0.10,
@@ -249,7 +214,7 @@ class MealGenerator:
                 "EveningSnacks": fat * 0.10,
                 "Dinner": fat * 0.25,
             }
-        elif user_data["meal_plan_purchased"] == "Gym-Friendly":
+        elif plan == "Gym-Friendly":
             return {
                 "Breakfast": fat * 0.30,
                 "MorningSnacks": fat * 0.10,
@@ -265,206 +230,8 @@ class MealGenerator:
                 "EveningSnacks": fat * 0.10,
                 "Dinner": fat * 0.25,
             }
-    
 
-    def safe_parse_amount(self, amount):
-        if isinstance(amount, str):
-            return [float(a.strip()) if a.strip().replace(".", "", 1).isdigit() else 0.0 for a in amount.split(",")]
-        elif isinstance(amount, (int, float)):
-            return [float(amount)]
-        elif isinstance(amount, list):
-            return [float(a) if isinstance(a, (int, float)) else 0.0 for a in amount]
-        else:
-            return [0.0]
-
-    
-    def generate_meal(self, meal_type: str, ctx: MealPlanTargets) -> List[Dict]:
-        try:
-            if meal_type not in ctx.meal_targets:
-                raise ValueError(f"Invalid meal type: {meal_type}")
-                
-            dataset = load_normalized_dataset(meal_type)
-            
-            # Group and filter dataset
-            grouped_dataset = dataset.groupby('Sr. No.').agg({
-                'MENU': lambda x: ' + '.join(x.dropna().unique()),
-                'calories_total': 'sum',
-                'Protein_total': 'sum',
-                'Carbs_total': 'sum',
-                'Fibre_total': 'sum',
-                'Fat_total': 'sum',
-                'DIET': 'first',
-                'Region': 'first',
-                'INGREDIENT': list,
-                'AMOUNT (g)': list
-            }).reset_index()
-
-            # Filter out previously used meals
-            available_meals = grouped_dataset[~grouped_dataset['Sr. No.'].isin(ctx.meal_history[meal_type])]
-            
-            # Apply diet preferences FIRST — this is the primary hard constraint.
-            user_diet = ctx.user_data.get("diet", "vegetarian").lower().strip()
-
-            if user_diet == "vegetarian":
-                # Strictly vegetarian only — no fallback to other types
-                available_meals = available_meals[
-                    available_meals["DIET"].str.lower().str.strip() == "vegetarian"
-                ]
-                grouped_dataset_filtered = grouped_dataset[
-                    grouped_dataset["DIET"].str.lower().str.strip() == "vegetarian"
-                ]
-            elif user_diet in ["non-vegetarian", "non vegetarian", "non_vegetarian"]:
-                # Prefer non-veg. Use ALL non-veg from the full dataset (ignore region for fallback).
-                non_veg_all = grouped_dataset[
-                    grouped_dataset["DIET"].str.lower().str.contains("non", na=False)
-                ]
-                non_veg_available = available_meals[
-                    available_meals["DIET"].str.lower().str.contains("non", na=False)
-                ]
-                # If we have non-veg options, use them; otherwise reset history and use all non-veg
-                if non_veg_available.empty and not non_veg_all.empty:
-                    ctx.meal_history[meal_type].clear()
-                    non_veg_available = non_veg_all.copy()
-                available_meals = non_veg_available if not non_veg_available.empty else available_meals
-                grouped_dataset_filtered = non_veg_all if not non_veg_all.empty else grouped_dataset
-            elif user_diet == "eggetarian":
-                egg_available = available_meals[
-                    available_meals["DIET"].str.lower().str.contains("egg", na=False)
-                ]
-                grouped_dataset_filtered = grouped_dataset[
-                    grouped_dataset["DIET"].str.lower().str.contains("egg", na=False)
-                ]
-                available_meals = egg_available if not egg_available.empty else available_meals
-            else:
-                grouped_dataset_filtered = grouped_dataset
-
-            # Apply region preference on top of the already diet-filtered pool
-            if ctx.user_data.get("region") and not available_meals.empty:
-                region_meals = available_meals[
-                    available_meals['Region'].str.lower() == ctx.user_data.get("region").lower()
-                ]
-                # Only use region-filtered set if it's non-empty
-                if region_meals.empty:
-                    region_meals = available_meals
-            else:
-                region_meals = available_meals
-
-            # Shuffle available meals
-            region_meals = region_meals.sample(frac=1).reset_index(drop=True)
-            available_meals = available_meals.sample(frac=1).reset_index(drop=True)
-
-            full_plan = []
-            start_date = datetime.strptime(ctx.user_data["start_date"], "%Y-%m-%d")
-
-            for day_offset in range(7):
-                current_date = start_date + timedelta(days=day_offset)
-                
-                # Try to find meals from region-specific options first
-                meal1 = self._find_suitable_meal(region_meals, "Option 1", current_date, meal_type, ctx)
-                if not meal1:
-                    # Fallback 1: Try without region constraint but stay within diet type
-                    meal1 = self._find_suitable_meal(available_meals, "Option 1", current_date, meal_type, ctx, relaxed=True)
-                
-                if not meal1:
-                    # Fallback 2: Reset history and try again within the diet-filtered pool
-                    ctx.meal_history[meal_type].clear()
-                    available_meals = grouped_dataset_filtered.copy()
-                    available_meals = available_meals.sample(frac=1).reset_index(drop=True)
-                    meal1 = self._find_suitable_meal(available_meals, "Option 1", current_date, meal_type, ctx, relaxed=True)
-
-                if not meal1 and not available_meals.empty:
-                    # Desperation fallback: pick first from diet-filtered pool
-                    row = available_meals.iloc[0]
-                    meal1 = self._create_meal_dict(row, 1.0, current_date, meal_type, "Option 1")
-
-                if meal1:
-                    ctx.meal_history[meal_type].add(meal1["Sr. No."])
-                    full_plan.append(meal1)
-                    # Remove selected meal from available options
-                    region_meals = region_meals[region_meals['Sr. No.'] != meal1["Sr. No."]]
-                    available_meals = available_meals[available_meals['Sr. No.'] != meal1["Sr. No."]]
-
-                # Find second option from remaining diet-filtered meals
-                remaining_meals = available_meals[~available_meals['Sr. No.'].isin(ctx.meal_history[meal_type])]
-                meal2 = self._find_suitable_meal(remaining_meals, "Option 2", current_date, meal_type, ctx, relaxed=True)
-                
-                if not meal2:
-                    # Fallback 2: Reset history and try again within the diet-filtered pool for meal2
-                    ctx.meal_history[meal_type].clear()
-                    # Keep meal1 in history so we don't pick the exact same meal
-                    if meal1:
-                        ctx.meal_history[meal_type].add(meal1["Sr. No."])
-                    remaining_meals = grouped_dataset_filtered[~grouped_dataset_filtered['Sr. No.'].isin(ctx.meal_history[meal_type])]
-                    if remaining_meals.empty:
-                        remaining_meals = grouped_dataset_filtered.copy()
-                    remaining_meals = remaining_meals.sample(frac=1).reset_index(drop=True)
-                    meal2 = self._find_suitable_meal(remaining_meals, "Option 2", current_date, meal_type, ctx, relaxed=True)
-
-                if not meal2 and not remaining_meals.empty:
-                    # Desperation fallback: pick first from remaining diet-filtered pool
-                    row = remaining_meals.iloc[0]
-                    meal2 = self._create_meal_dict(row, 1.0, current_date, meal_type, "Option 2")
-
-                if meal2:
-                    ctx.meal_history[meal_type].add(meal2["Sr. No."])
-                    full_plan.append(meal2)
-
-                # Reset meal history if running low on options
-                if len(ctx.meal_history[meal_type]) > 0.8 * len(grouped_dataset_filtered):
-                    ctx.meal_history[meal_type].clear()
-
-            return full_plan
-
-        except Exception as e:
-            logger.error(f"Error generating {meal_type}: {str(e)}")
-            return []
-
-    def _meets_nutritional_requirements(self, total_calories, total_protein, total_carbs, 
-                                     total_fiber, total_fat, target_calories, target_protein, 
-                                     target_carbs, target_fiber, target_fat, tolerance, carb_tolerance):
-        """Helper method to check if meal meets nutritional requirements."""
-        return (abs(total_calories - target_calories) <= tolerance and
-                abs(total_protein - target_protein) <= tolerance * 0.5 and
-                abs(total_carbs - target_carbs) <= target_carbs * carb_tolerance and
-                abs(total_fiber - target_fiber) <= tolerance * 0.5 and
-                abs(total_fat - target_fat) <= tolerance * 0.5)
-
-    def _create_meal_dict(self, row, factor, current_date, meal_type, option_type):
-        """Helper method to create meal dictionary."""
-        ingredients_scaled = {}
-        for ingredients, amounts in zip(row["INGREDIENT"], row["AMOUNT (g)"]):
-            if isinstance(ingredients, str):
-                ingredient_list = [i.strip() for i in ingredients.split(',')]
-                amounts_list = self.safe_parse_amount(amounts)
-                
-                if len(amounts_list) < len(ingredient_list):
-                    amounts_list.extend([0.0] * (len(ingredient_list) - len(amounts_list)))
-                
-                for ingredient, amount in zip(ingredient_list, amounts_list):
-                    if ingredient and len(ingredient) > 1:
-                        clean_ingredient = ingredient.strip().capitalize()
-                        current_amount = ingredients_scaled.get(clean_ingredient, 0)
-                        ingredients_scaled[clean_ingredient] = round(current_amount + (amount * factor), 2)
-
-        return {
-            "Date": current_date.strftime("%Y-%m-%d"),
-            "Meal Type": meal_type,
-            "Option": option_type,
-            "Menu Names": row["MENU"],
-            # ↓ FIXED: Always store a normalized, properly-cased diet label so
-            #   the tester's "Vegetarian" / "Non-Vegetarian" string checks pass.
-            "Diet Type": self._normalize_diet_label(row["DIET"]),
-            "Region": row["Region"],
-            "Total Calories": round(float(row["calories_total"] or 0) * factor, 2),
-            "Total Protein": round(float(row["Protein_total"] or 0) * factor, 2),
-            "Total Carbs": round(float(row["Carbs_total"] or 0) * factor, 2),
-            "Total Fiber": round(float(row["Fibre_total"] or 0) * factor, 2),
-            "Total Fat": round(float(row["Fat_total"] or 0) * factor, 2),
-            "Ingredients Scaling": ingredients_scaled,
-            "Sr. No.": row["Sr. No."]
-        }
-
-    def generate_meal_plan(self, user_data: Dict) -> Dict:
+    async def generate_meal_plan(self, user_data: Dict, session: AsyncSession) -> Dict:
         if "start_date" not in user_data:
             user_data["start_date"] = datetime.now().strftime("%Y-%m-%d")
             
@@ -479,21 +246,127 @@ class MealGenerator:
             user_data=user_data
         )
 
-        meal_types = ["Breakfast", "Lunch", "Dinner"]
+        meal_types = ["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner"]
         organized_meals = []
         
-        for meal_type in meal_types:
-            current_meals = self.generate_meal(meal_type, ctx)
-            if current_meals:
-                organized_meals.extend(current_meals)
-            else:
-                logger.warning(f"Could not generate complete plan for {meal_type}")
+        start_date = datetime.strptime(user_data["start_date"], "%Y-%m-%d")
+        
+        region = user_data.get("region", "North")
+        raw_diet = user_data.get("diet", "Vegetarian")
+        diet_type = self._normalize_diet_label(raw_diet)
+        plan_type = user_data.get("health_condition", "Healthy")
 
-        organized_meals.sort(key=lambda x: (
-            x["Date"],
-            {"Breakfast": 0, "Lunch": 1, "Dinner": 2}[x["Meal Type"]],
-            int(x["Option"].split()[-1])
-        ))
+        # Map morning/evening snacks to Morning_Snack for DB querying
+        meal_time_mapping = {
+            "Breakfast": "Breakfast",
+            "Lunch": "Lunch",
+            "Dinner": "Dinner",
+            "MorningSnacks": "Morning_Snack",
+            "EveningSnacks": "Morning_Snack",
+        }
+
+        used_food_ids = set()
+
+        for day_offset in range(7):
+            current_date = start_date + timedelta(days=day_offset)
+            date_str = current_date.strftime("%Y-%m-%d")
+
+            for meal_type in meal_types:
+                if meal_type not in ctx.meal_targets:
+                    continue
+                
+                db_meal_time = meal_time_mapping.get(meal_type)
+                if not db_meal_time:
+                    continue
+                
+                # Fetch Template
+                stmt = select(MealTemplate).where(
+                    MealTemplate.meal_time == db_meal_time,
+                    MealTemplate.region == region,
+                    MealTemplate.diet_type == diet_type,
+                    MealTemplate.plan_type == plan_type
+                )
+                result = await session.execute(stmt)
+                template = result.scalars().first()
+
+                if not template:
+                    stmt_fallback = select(MealTemplate).where(
+                        MealTemplate.meal_time == db_meal_time,
+                        MealTemplate.diet_type == diet_type,
+                        MealTemplate.plan_type == plan_type
+                    )
+                    result = await session.execute(stmt_fallback)
+                    template = result.scalars().first()
+
+                if not template:
+                    logger.warning(f"No template found for {db_meal_time}, {diet_type}, {plan_type}")
+                    continue
+
+                if True:  # single meal per day per meal_type
+                    meal_option = {
+                        "Date": date_str,
+                        "Meal Type": meal_type,
+                        "Diet Type": diet_type,
+                        "Region": region,
+                        "Total Calories": 0.0,
+                        "Total Protein": 0.0,
+                        "Total Carbs": 0.0,
+                        "Total Fiber": 0.0,
+                        "Total Fat": 0.0,
+                        "Menu Names": [],
+                        "Ingredients Scaling": {},
+                    }
+                    
+                    slot_failed = False
+                    for slot in template.slots:
+                        slot_type = slot["slot_type"]
+                        required = slot.get("required", True)
+                        cal_pct = slot["calorie_pct"]
+
+                        target_cal = ctx.meal_targets[meal_type] * cal_pct
+
+                        food_item = await self._find_food_item(
+                            session, slot_type, diet_type, region, db_meal_time, plan_type, used_food_ids
+                        )
+                        if not food_item:
+                            if required:
+                                logger.warning(f"Required slot {slot_type} not found for {meal_type}")
+                                slot_failed = True
+                                break
+                            else:
+                                continue
+                        
+                        used_food_ids.add(food_item.id)
+
+                        if float(food_item.cal_per_serving) > 0:
+                            factor = target_cal / float(food_item.cal_per_serving)
+                        else:
+                            factor = 1.0
+                        
+                        factor = max(0.5, min(3.0, factor))
+
+                        meal_option["Menu Names"].append(food_item.recipe_name)
+                        meal_option["Total Calories"] += float(food_item.cal_per_serving) * factor
+                        meal_option["Total Protein"] += float(food_item.protein_per_serving) * factor
+                        meal_option["Total Carbs"] += float(food_item.carbs_per_serving) * factor
+                        meal_option["Total Fiber"] += float(food_item.fiber_per_serving) * factor
+                        meal_option["Total Fat"] += float(food_item.fat_per_serving) * factor
+
+                        for ing in food_item.ingredients:
+                            name = ing["name"]
+                            amt = float(ing["amount_g"]) * factor
+                            meal_option["Ingredients Scaling"][name] = round(meal_option["Ingredients Scaling"].get(name, 0) + amt, 2)
+                    
+                    if not slot_failed and meal_option["Menu Names"]:
+                        meal_option["Menu Names"] = " + ".join(meal_option["Menu Names"])
+                        meal_option["Total Calories"] = round(meal_option["Total Calories"], 2)
+                        meal_option["Total Protein"] = round(meal_option["Total Protein"], 2)
+                        meal_option["Total Carbs"] = round(meal_option["Total Carbs"], 2)
+                        meal_option["Total Fiber"] = round(meal_option["Total Fiber"], 2)
+                        meal_option["Total Fat"] = round(meal_option["Total Fat"], 2)
+                        organized_meals.append(meal_option)
+
+        used_food_ids.clear()
 
         ingredient_checklist = self.generate_ingredient_checklist(organized_meals)
 
@@ -517,136 +390,66 @@ class MealGenerator:
             "ingredient_checklist": checklist_records
         })
 
-    def _find_suitable_meal(self, available_meals, option_type, current_date, meal_type, ctx: MealPlanTargets, relaxed=False):
-        """Helper method to find a suitable meal from available options."""
-        target_calories = ctx.meal_targets[meal_type]
-        target_protein = ctx.protein_targets[meal_type]
-        target_carbs = ctx.carb_targets[meal_type]
-        target_fiber = ctx.fiber_targets[meal_type]
-        target_fat = ctx.fat_targets[meal_type]
+    async def _find_food_item(self, session: AsyncSession, slot_type: str, diet_type: str, region: str, meal_time: str, plan_type: str, used_ids: set) -> Optional[FoodItem]:
+        # Try finding non-used items in preferred region
+        stmt = select(FoodItem).where(
+            FoodItem.slot_type == slot_type,
+            FoodItem.diet_type == diet_type,
+            FoodItem.region_tags.any(region),
+            FoodItem.meal_time_tags.any(meal_time),
+            FoodItem.plan_type_tags.any(plan_type)
+        )
+        if used_ids:
+            stmt = stmt.where(FoodItem.id.notin_(used_ids))
         
-        tolerance = ctx.user_data.get("tolerance", 100) * (1.5 if relaxed else 1.0)
-        carb_tolerance = ctx.user_data.get("carb_tolerance", 0.20) * (1.5 if relaxed else 1.0)
+        result = await session.execute(stmt)
+        items = result.scalars().all()
 
-        for _, row in available_meals.iterrows():
-            base_calories = float(row["calories_total"])
-            base_protein = float(row["Protein_total"])
-            
-            if base_calories > 0:
-                factor = target_calories / base_calories
-            elif base_protein > 0:
-                factor = target_protein / base_protein
-            else:
-                factor = 1.0
-            
-            factor = max(0.5, min(2.0, factor))
-
-            total_calories = base_calories * factor
-            total_protein = float(row["Protein_total"]) * factor
-            total_carbs = float(row["Carbs_total"]) * factor
-            total_fiber = float(row["Fibre_total"]) * factor
-            total_fat = float(row["Fat_total"]) * factor
-
-            if self._meets_nutritional_requirements(
-                total_calories, total_protein, total_carbs, total_fiber, total_fat,
-                target_calories, target_protein, target_carbs, target_fiber, target_fat,
-                tolerance, carb_tolerance
-            ):
-                return self._create_meal_dict(row, factor, current_date, meal_type, option_type)
+        if not items:
+            # Fallback 1: Ignore exact region, but exclude used_ids
+            stmt = select(FoodItem).where(
+                FoodItem.slot_type == slot_type,
+                FoodItem.diet_type == diet_type,
+                FoodItem.meal_time_tags.any(meal_time),
+                FoodItem.plan_type_tags.any(plan_type)
+            )
+            if used_ids:
+                stmt = stmt.where(FoodItem.id.notin_(used_ids))
+            result = await session.execute(stmt)
+            items = result.scalars().all()
         
+        if not items:
+            # Fallback 2: Reset history constraints
+            stmt = select(FoodItem).where(
+                FoodItem.slot_type == slot_type,
+                FoodItem.diet_type == diet_type,
+            )
+            result = await session.execute(stmt)
+            items = result.scalars().all()
+
+        if items:
+            return random.choice(items)
         return None
 
-    def round_to_nearest(self, value, base=10):
-        """Rounds a number to the nearest multiple of `base`."""
-        return int(base * round(value / base))
-    
     def generate_ingredient_checklist(self, meals):
-        try:
-            if isinstance(meals, str):
-                meals = json.loads(meals)
-            
-            if isinstance(meals, dict):
-                meal_list = []
-                for meal_type, meal_items in meals.items():
-                    if isinstance(meal_items, list):
-                        meal_list.extend(meal_items)
-                    else:
-                        meal_list.append(meal_items)
-            else:
-                meal_list = meals if isinstance(meals, list) else [meals]
+        all_ingredients = {}
+        for meal in meals:
+            ingredients_scaled = meal.get("Ingredients Scaling", {})
+            for ingredient, amount in ingredients_scaled.items():
+                if ingredient in all_ingredients:
+                    all_ingredients[ingredient] += amount
+                else:
+                    all_ingredients[ingredient] = amount
 
-            if not meal_list:
-                return pd.DataFrame()
+        ingredients_df = pd.DataFrame([
+            {"Ingredient": k, "Total Amount (g)": round(v, 2)}
+            for k, v in all_ingredients.items()
+        ])
 
-            all_ingredients = {}
-            for meal in meal_list:
-                if isinstance(meal, str):
-                    meal = json.loads(meal)
-                
-                ingredients_scaled = meal.get("Ingredients Scaling", {})
-                for ingredient, amount in ingredients_scaled.items():
-                    if ingredient in all_ingredients:
-                        all_ingredients[ingredient] += amount
-                    else:
-                        all_ingredients[ingredient] = amount
-
-            ingredients_df = pd.DataFrame([
-                {"Ingredient": k, "Total Amount (g)": round(v, 2)}
-                for k, v in all_ingredients.items()
-            ])
-
-            if ingredients_df.empty:
-                return []
-
-            return ingredients_df.sort_values("Total Amount (g)", ascending=False)
-        except Exception as e:
-            logger.error(f"Error generating ingredient checklist: {str(e)}")
+        if ingredients_df.empty:
             return pd.DataFrame()
 
-    def calculate_adjusted_meal_targets(self, user_data: Dict, extra_intake: Dict[str, float], adjustment_days: int = 7) -> Dict:
-        """Calculates adjusted targets based on extra intake."""
-        targets = self._calculate_targets(user_data)
-        meal_targets = self._calculate_meal_targets(user_data, targets)
-        protein_targets = self._calculate_protein_targets(user_data, targets)
-        carb_targets = self._calculate_carb_targets(user_data, targets)
-        fiber_targets = self._calculate_fiber_targets(user_data, targets)
-        fat_targets = self._calculate_fat_targets(user_data, targets)
-
-        daily_adjustments = {
-            "calories": extra_intake.get("calories", 0) / adjustment_days,
-            "protein": extra_intake.get("protein", 0) / adjustment_days,
-            "carbs": extra_intake.get("carbs", 0) / adjustment_days,
-            "fiber": extra_intake.get("fiber", 0) / adjustment_days,
-            "fat": extra_intake.get("fat", 0) / adjustment_days
-        }
-    
-        main_meals = ["Breakfast", "Lunch"]
-        per_meal_adjustment = {
-            k: v / len(main_meals) for k, v in daily_adjustments.items()
-        }
-        
-        adjusted_meal_targets = meal_targets.copy()
-        adjusted_protein_targets = protein_targets.copy()
-        adjusted_carb_targets = carb_targets.copy()
-        adjusted_fiber_targets = fiber_targets.copy()
-        adjusted_fat_targets = fat_targets.copy()
-
-        for meal_type in adjusted_meal_targets:
-            if meal_type in main_meals:
-                adjusted_meal_targets[meal_type] = max(0, adjusted_meal_targets[meal_type] - per_meal_adjustment["calories"])
-                adjusted_protein_targets[meal_type] = max(0, adjusted_protein_targets[meal_type] - per_meal_adjustment["protein"])
-                adjusted_carb_targets[meal_type] = max(0, adjusted_carb_targets[meal_type] - per_meal_adjustment["carbs"])
-                adjusted_fiber_targets[meal_type] = max(0, adjusted_fiber_targets[meal_type] - per_meal_adjustment["fiber"])
-                adjusted_fat_targets[meal_type] = max(0, adjusted_fat_targets[meal_type] - per_meal_adjustment["fat"])
-        
-        return {
-            "meal_targets": adjusted_meal_targets,
-            "protein_targets": adjusted_protein_targets,
-            "carb_targets": adjusted_carb_targets,
-            "fiber_targets": adjusted_fiber_targets,
-            "fat_targets": adjusted_fat_targets,
-            "adjustment_days": adjustment_days
-        }
+        return ingredients_df.sort_values("Total Amount (g)", ascending=False)
 
 # Singleton instance
 meal_generator = MealGenerator()

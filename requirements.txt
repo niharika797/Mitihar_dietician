@@ -16,3 +16,8 @@ pytest
 httpx
 python-dotenv
 slowapi
+sqlalchemy
+asyncpg
+greenlet
+alembic
+psycopg2-binary

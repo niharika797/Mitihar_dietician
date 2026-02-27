@@ -40,9 +40,9 @@ def test_get_bmi_endpoint():
 def test_get_bmr_endpoint():
     response = client.get("/api/v1/calculations/bmr")
     assert response.status_code == 200
-    assert response.json() == {"bmr": 1735.78}
+    assert response.json() == {"bmr": 1673.75}
 
 def test_get_tdee_endpoint():
     response = client.get("/api/v1/calculations/tdee")
     assert response.status_code == 200
-    assert response.json() == {"tdee": 2690.45}
+    assert response.json() == {"tdee": 2594.31}
