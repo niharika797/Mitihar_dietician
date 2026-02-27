@@ -1,0 +1,1769 @@
+{
+  "user_id": "69a1e489f6a4d055881d0c70",
+  "created_at": "2026-02-28T00:09:10.697000",
+  "meals": [
+    {
+      "Date": "2026-02-28",
+      "Meal Type": "Breakfast",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 658.27,
+      "Total Protein": 26.78,
+      "Total Carbs": 61.89,
+      "Total Fiber": 1.16,
+      "Total Fat": 27.1,
+      "Menu Names": "Matar Besan and Paneer Cheela Recipe - Matar Besan and Paneer Cheela Recipe + Curd bowl + Tea / Cofee / Milk",
+      "Ingredients Scaling": {
+        "Gram flour": 285.07,
+        "Cheese": 142.53,
+        "Ginger": 5.94,
+        "Green chillies": 190.04,
+        "Turmeric powder": 2.97,
+        "Cumin powder": 2.97,
+        "Curd": 901.75,
+        "Milk": 307.6
+      }
+    },
+    {
+      "Date": "2026-02-28",
+      "Meal Type": "MorningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 131.65,
+      "Total Protein": 6.12,
+      "Total Carbs": 22.95,
+      "Total Fiber": 6.32,
+      "Total Fat": 1.08,
+      "Menu Names": "Coconut Kewra Drink Recipe",
+      "Ingredients Scaling": {
+        "Fresh coconut": 37.62,
+        "Kewra essence": 12.54,
+        "Crushed ice": 300.92
+      }
+    },
+    {
+      "Date": "2026-02-28",
+      "Meal Type": "Lunch",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 737.13,
+      "Total Protein": 16.87,
+      "Total Carbs": 74.78,
+      "Total Fiber": 12.02,
+      "Total Fat": 12.32,
+      "Menu Names": "Gram and Potato Dry Vegetable Recipe + Kadhi pakode + Raw Mango Raita Recipe + Curd",
+      "Ingredients Scaling": {
+        "Onion": 82.25,
+        "Tomato": 54.51,
+        "Green chilli": 54.51,
+        "Ginger garlic paste": 10.22,
+        "Red chilli powder": 6.47,
+        "Turmeric powder": 1.7,
+        "Coriander powder": 6.81,
+        "Garam masala powder": 3.41,
+        "Amchur": 3.41,
+        "Cumin seeds": 3.41,
+        "Coriander": 13.63,
+        "Ginger": 6.81,
+        "Curd": 407.47,
+        "Gram flour": 41.61,
+        "Oil": 9.25,
+        "Mango": 97.79,
+        "Cumin powder": 3.06,
+        "Mustard seeds": 3.06,
+        "Curry leaves": 12.22
+      }
+    },
+    {
+      "Date": "2026-02-28",
+      "Meal Type": "EveningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 131.65,
+      "Total Protein": 8.53,
+      "Total Carbs": 10.06,
+      "Total Fiber": 3.11,
+      "Total Fat": 2.48,
+      "Menu Names": "Methi Muthiya (Wheat Flour And Fenugreek Dumplings) Recipe",
+      "Ingredients Scaling": {
+        "Methi leaves": 320.36,
+        "Turmeric powder": 1.67,
+        "Red chilli powder": 3.34,
+        "Asafoetida": 1.67,
+        "Cumin powder": 3.34,
+        "Ajwain": 3.34,
+        "Sesame seeds": 3.34,
+        "Lemon juice": 1.67,
+        "Sugar": 1.67,
+        "Fennel seeds": 6.67,
+        "Mustard seeds": 3.34,
+        "Cumin seeds": 3.34
+      }
+    },
+    {
+      "Date": "2026-02-28",
+      "Meal Type": "Dinner",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 1053.01,
+      "Total Protein": 39.93,
+      "Total Carbs": 77.67,
+      "Total Fiber": 24.34,
+      "Total Fat": 25.66,
+      "Menu Names": "Arbi Tomato Onion Sabzi (Recipe in Hindi) with Tomato Onion Arbi Vegetable Recipe + Dahi Methi Puri Recipe - Fangrik Layaves Puri with Yogyurat + Uttarakhand Mooli Thechua Recipe (Radish Salad) + Vegetable raita",
+      "Ingredients Scaling": {
+        "Arbi": 480.0,
+        "Onion": 40.0,
+        "Tomatoes": 80.0,
+        "Ginger garlic paste": 2.5,
+        "Turmeric powder": 1.9,
+        "Red chili powder": 1.9,
+        "Garam masala powder": 1.9,
+        "Green chillies": 240.0,
+        "Coriander powder": 1.9,
+        "Dry red chillies": 80.0,
+        "Methi leaves": 103.0,
+        "Cumin seeds": 1.43,
+        "Ajwain": 0.69,
+        "Curd": 198.02,
+        "Mooli/ mullangi": 160.0,
+        "Coriander": 90.0,
+        "Cucumber": 55.43,
+        "Carrot": 55.43
+      }
+    },
+    {
+      "Date": "2026-03-01",
+      "Meal Type": "Breakfast",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 660.81,
+      "Total Protein": 20.27,
+      "Total Carbs": 70.98,
+      "Total Fiber": 8.22,
+      "Total Fat": 10.09,
+      "Menu Names": "Soya Keema Aloo Paratha Recipe + Curd Chutney + Banana Milkshake",
+      "Ingredients Scaling": {
+        "Bajra flour": 92.04,
+        "Jowar flour": 92.04,
+        "Soy chunks": 368.16,
+        "Onion": 122.72,
+        "Green chillies": 245.44,
+        "Red chilli powder": 3.84,
+        "Garam masala powder": 7.67,
+        "Amchur": 7.67,
+        "Curd": 222.96,
+        "Corriander": 30.4,
+        "Mint leaves": 30.4,
+        "Coconut": 30.4,
+        "Sugar": 7.57,
+        "Milk": 37.5,
+        "Banana": 25.0
+      }
+    },
+    {
+      "Date": "2026-03-01",
+      "Meal Type": "MorningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 442.94,
+      "Total Protein": 5.46,
+      "Total Carbs": 39.83,
+      "Total Fiber": 8.38,
+      "Total Fat": 8.73,
+      "Menu Names": "Achari Chole Aloo Tikki Chaat Recipe",
+      "Ingredients Scaling": {
+        "Kabuli chana": 120.0,
+        "Cumin seeds": 2.5,
+        "Ginger": 7.5,
+        "Tomato": 40.0,
+        "Bay leaf": 40.0,
+        "Nutralite classic spread": 2.5,
+        "Turmeric powder": 2.5,
+        "Amchur": 7.5,
+        "Garam masala powder": 8.75,
+        "Coriander powder": 2.5,
+        "Anardana powder": 1.25,
+        "Kashmiri red chilli powder": 1.25,
+        "Black pepper powder": 1.25,
+        "Green chutney": 120.0,
+        "Sweet chutney": 120.0,
+        "Onions": 120.0,
+        "Green chillies": 160.0,
+        "Coriander": 20.0,
+        "Sev": 15.0,
+        "Onion": 40.0,
+        "Red chilli powder": 1.25,
+        "Corn flour": 7.5,
+        "Whole wheat bread crumbs": 90.0
+      }
+    },
+    {
+      "Date": "2026-03-01",
+      "Meal Type": "Lunch",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 1169.89,
+      "Total Protein": 21.63,
+      "Total Carbs": 58.87,
+      "Total Fiber": 17.59,
+      "Total Fat": 19.33,
+      "Menu Names": "Matta Rice Peas Pulao Recipe + Mint Coriander Spice Pulao Recipe + Strawberry Raita Recipe + Lassi",
+      "Ingredients Scaling": {
+        "Green peas": 120.0,
+        "Cardamom": 80.0,
+        "Cinnamon stick": 10.0,
+        "Bay leaf": 40.0,
+        "Cumin seeds": 5.0,
+        "Sugar": 38.76,
+        "Coriander": 40.0,
+        "Ghee": 7.5,
+        "Mint leaves": 40.0,
+        "Star anise": 40.0,
+        "Fennel seeds": 1.25,
+        "Bay leaves": 80.0,
+        "Curd": 468.8,
+        "Strawberries": 75.0,
+        "Onion": 40.0,
+        "Green chilli": 40.0,
+        "Cumin powder": 5.0,
+        "Black pepper powder": 2.5
+      }
+    },
+    {
+      "Date": "2026-03-01",
+      "Meal Type": "EveningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 131.65,
+      "Total Protein": 5.93,
+      "Total Carbs": 20.79,
+      "Total Fiber": 5.32,
+      "Total Fat": 1.28,
+      "Menu Names": "Matar Pudina Oat & Broken Wheat Tikki Recipe",
+      "Ingredients Scaling": {
+        "Green peas": 235.85,
+        "Paneer": 196.54,
+        "Rolled oats or instant oats": 78.62,
+        "Ginger": 9.83,
+        "Green chillies": 157.23,
+        "Onion": 78.62,
+        "Chaat masala powder": 4.91
+      }
+    },
+    {
+      "Date": "2026-03-01",
+      "Meal Type": "Dinner",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 967.5,
+      "Total Protein": 19.02,
+      "Total Carbs": 133.14,
+      "Total Fiber": 23.95,
+      "Total Fat": 14.03,
+      "Menu Names": "Paneer Malai Makhani Biryani Recipe + Banana Apple Mash Recipe + Paneer Jalfrezi Recipe + Rajma Chawal",
+      "Ingredients Scaling": {
+        "Basmati rice": 120.0,
+        "Ghee": 10.0,
+        "Ginger garlic paste": 6.25,
+        "Onion": 120.0,
+        "Biryani masala": 5.0,
+        "Lemon juice": 10.0,
+        "Paneer": 225.0,
+        "Turmeric powder": 3.75,
+        "Red chilli powder": 2.5,
+        "Homemade tomato puree": 125.0,
+        "Hung curd": 10.0,
+        "Ripe bananas": 149.39,
+        "Apple": 74.7,
+        "Cardamom powder": 1.86,
+        "Cinnamon powder": 0.74,
+        "Red bell pepper": 40.0,
+        "Green bell pepper": 40.0,
+        "Carrots": 80.0,
+        "Ginger": 5.0,
+        "Cloves garlic": 80.0,
+        "Tomato": 52.5,
+        "Honey": 2.5,
+        "Garam masala powder": 2.5,
+        "Coriander powder": 2.5,
+        "Stalk coriander": 40.0,
+        "Butter": 7.5,
+        "rice": 22.5,
+        "Rajmah": 22.5,
+        "onion": 17.5,
+        "Oil": 0.0
+      }
+    },
+    {
+      "Date": "2026-03-02",
+      "Meal Type": "Breakfast",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 672.01,
+      "Total Protein": 25.8,
+      "Total Carbs": 99.76,
+      "Total Fiber": 11.86,
+      "Total Fat": 16.71,
+      "Menu Names": "Quick and Easy Bread Upma (Recipe In Hindi) + Curd Bowl + Raab",
+      "Ingredients Scaling": {
+        "Wheat brown bread": 741.33,
+        "Tomatoes": 139.0,
+        "Onions": 92.67,
+        "Green chillies": 92.67,
+        "Sambar powder": 2.9,
+        "Turmeric powder": 2.9,
+        "Mustard seeds": 2.9,
+        "Curry leaves": 8.69,
+        "Coriander": 5.79,
+        "Curd": 180.35,
+        "bajra flour": 15.0,
+        "curd": 37.5
+      }
+    },
+    {
+      "Date": "2026-03-02",
+      "Meal Type": "MorningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 341.65,
+      "Total Protein": 11.64,
+      "Total Carbs": 51.02,
+      "Total Fiber": 5.78,
+      "Total Fat": 5.26,
+      "Menu Names": "Baked Paneer Bread Pakora Recipe",
+      "Ingredients Scaling": {
+        "Wheat brown bread": 400.0,
+        "Paneer": 100.0,
+        "Ginger": 2.5,
+        "Mint leaves": 15.0,
+        "Coriander": 15.0,
+        "Red chilli flakes": 5.0
+      }
+    },
+    {
+      "Date": "2026-03-02",
+      "Meal Type": "Lunch",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 883.34,
+      "Total Protein": 55.17,
+      "Total Carbs": 115.72,
+      "Total Fiber": 42.77,
+      "Total Fat": 17.08,
+      "Menu Names": "Carrot Fenugreek Leaves Stir Fry (Recipe in Hindi) + Achari Masala Powder Recipe + Mixed Vegetable Jalfrezi Recipe + Masala Chaas",
+      "Ingredients Scaling": {
+        "Carrots": 105.6,
+        "Fenugreek": 158.4,
+        "Onion": 92.8,
+        "Cumin": 3.3,
+        "Red chili powder": 3.3,
+        "/ 2 teaspoon coriander powder": 52.8,
+        "Turmeric powder": 2.25,
+        "Mango powder": 3.3,
+        "Coriander": 47.71,
+        "Methi seeds": 7.95,
+        "Mustard seeds": 7.95,
+        "Kalonji": 7.95,
+        "Cumin seeds": 10.45,
+        "Fennel seeds": 7.95,
+        "Dry red chillies": 508.93,
+        "Carrot": 120.0,
+        "Green beans": 120.0,
+        "Green bell pepper": 40.0,
+        "Sweet corn": 60.0,
+        "Green peas": 120.0,
+        "Tomatoes": 80.0,
+        "Ginger garlic paste": 2.5,
+        "Red chilli powder": 1.25,
+        "Coriander powder": 2.5,
+        "Garam masala powder": 1.25,
+        "Kasuri methi": 7.5,
+        "Sugar": 1.25,
+        "curd": 162.31
+      }
+    },
+    {
+      "Date": "2026-03-02",
+      "Meal Type": "EveningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 151.82,
+      "Total Protein": 3.5,
+      "Total Carbs": 20.95,
+      "Total Fiber": 4.87,
+      "Total Fat": 2.17,
+      "Menu Names": "Sookha Bhujia Bhel Recipe",
+      "Ingredients Scaling": {
+        "Sev": 240.0,
+        "Onions": 60.0,
+        "Tomatoes": 60.0,
+        "Cucumber": 30.0,
+        "Green chilli": 40.0,
+        "Coriander": 15.0,
+        "Green channa sprouts": 30.0,
+        "Sweet chutney": 15.0,
+        "Green chutney": 7.5,
+        "Lemon juice": 2.5,
+        "Chaat masala powder": 0.6
+      }
+    },
+    {
+      "Date": "2026-03-02",
+      "Meal Type": "Dinner",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 861.08,
+      "Total Protein": 27.74,
+      "Total Carbs": 103.65,
+      "Total Fiber": 33.86,
+      "Total Fat": 37.4,
+      "Menu Names": "Kasuri methi leaves recipe + Pahari Aloo Palda + Amla Methi Sukhi Sabzi Recipe - Amla Methi Sukhi Sabzi Recipe + Laccha Pyaaz",
+      "Ingredients Scaling": {
+        "Kasuri methi": 60.0,
+        "Tomatoes": 301.82,
+        "Cashew nuts": 320.0,
+        "Red chilli powder": 1.25,
+        "Turmeric powder": 4.72,
+        "Garam masala powder": 9.43,
+        "Bay leaf": 40.0,
+        "Green chilli": 40.0,
+        "Cinnamon stick": 40.0,
+        "Cloves": 120.0,
+        "Cumin seeds": 5.97,
+        "Coriander": 15.0,
+        "Potato": 139.07,
+        "Onion": 74.17,
+        "Curd": 92.71,
+        "Oil": 9.27,
+        "Gm amla": 22181.65,
+        "Fennel seeds": 3.47,
+        "Celery": 3.47,
+        "Asafoetida": 110.91,
+        "Green chillies": 221.82,
+        "Cloves garlic": 554.54,
+        "Onions": 221.82,
+        "Fenugreek": 138.64,
+        "Coriander powder": 6.93,
+        "Cumin powder": 6.93,
+        "Of green coriander": 6.93,
+        "onion": 105.0
+      }
+    },
+    {
+      "Date": "2026-03-03",
+      "Meal Type": "Breakfast",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 579.71,
+      "Total Protein": 10.84,
+      "Total Carbs": 50.22,
+      "Total Fiber": 5.66,
+      "Total Fat": 16.45,
+      "Menu Names": "Spinach Paneer Stuffed Oats Chila Recipe - Oats Cheela Recipe Stuffed With Creamy Palak Paneer + Imli chutney + Tea",
+      "Ingredients Scaling": {
+        "Wheat flour": 156.65,
+        "Oats": 26.11,
+        "Spinach": 130.54,
+        "Cottage cheese": 65.27,
+        "Cumin powder": 3.26,
+        "Red chili powder": 1.63,
+        "imli": 45.0,
+        "jaggery": 15.0,
+        "Milk": 120.04,
+        "Sugar": 16.0
+      }
+    },
+    {
+      "Date": "2026-03-03",
+      "Meal Type": "MorningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 131.65,
+      "Total Protein": 19.58,
+      "Total Carbs": 60.24,
+      "Total Fiber": 2.32,
+      "Total Fat": 5.89,
+      "Menu Names": "Methi Pakoras Recipe",
+      "Ingredients Scaling": {
+        "Gram flour": 276.53,
+        "Rice flour": 69.13,
+        "Methi leaves": 138.27,
+        "Red chilli powder": 5.76,
+        "Asafoetida": 1.38,
+        "Turmeric powder": 1.38,
+        "Ajwain": 2.88,
+        "Coriander": 8.64
+      }
+    },
+    {
+      "Date": "2026-03-03",
+      "Meal Type": "Lunch",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 1030.26,
+      "Total Protein": 32.08,
+      "Total Carbs": 111.05,
+      "Total Fiber": 11.43,
+      "Total Fat": 16.92,
+      "Menu Names": "Niramish Aloo Dum Sabzi (Recipe in Hindi) + Rice Recipe - Steamed Rice Recipe + Senai Pachadi Recipe (Elephant or Raita) + Buttermilk",
+      "Ingredients Scaling": {
+        "Potatoes": 352.76,
+        "Cumin seeds": 3.67,
+        "Dry red chillies": 117.59,
+        "Ginger powder": 3.67,
+        "Turmeric powder": 1.84,
+        "Red chili powder": 3.67,
+        "Garam masala powder": 1.84,
+        "Asafoetida": 3.92,
+        "Rice": 212.67,
+        "Elephant yam": 125.0,
+        "Green chilli": 20.0,
+        "Ginger": 5.0,
+        "Coriander": 22.5,
+        "Curd": 452.22,
+        "Curd (cow)": 221.48
+      }
+    },
+    {
+      "Date": "2026-03-03",
+      "Meal Type": "EveningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 421.73,
+      "Total Protein": 6.92,
+      "Total Carbs": 43.29,
+      "Total Fiber": 4.5,
+      "Total Fat": 22.39,
+      "Menu Names": "Apple Tea Latte Recipe",
+      "Ingredients Scaling": {
+        "Chamomile tea": 240.0,
+        "Apple": 40.0,
+        "Cinnamon powder": 1.25,
+        "Almond milk": 120.0,
+        "Honey": 7.5
+      }
+    },
+    {
+      "Date": "2026-03-03",
+      "Meal Type": "Dinner",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 875.02,
+      "Total Protein": 20.46,
+      "Total Carbs": 98.98,
+      "Total Fiber": 24.98,
+      "Total Fat": 11.97,
+      "Menu Names": "Mixed Sprouts Sabzi Recipe + Dubke + Sarson Ka Saag Recipe - Classic North Indian Saag Recipe + Salad",
+      "Ingredients Scaling": {
+        "Mixed sprouts": 80.0,
+        "Cumin seeds": 7.5,
+        "Onion": 185.0,
+        "Ginger garlic paste": 7.5,
+        "Tomato": 40.0,
+        "Or 2 green chillies": 40.0,
+        "Turmeric powder": 3.75,
+        "Red chilli powder": 5.0,
+        "Cumin powder": 3.75,
+        "Garam masala powder": 5.0,
+        "Coriander powder": 5.0,
+        "Gram flour": 52.36,
+        "oil": 26.18,
+        "Mustard greens": 250.0,
+        "Spinach leaves": 125.0,
+        "Bathua leaves": 125.0,
+        "Makki ka atta": 2.5,
+        "Ginger": 10.0,
+        "Cloves garlic": 160.0,
+        "Green chillies": 120.0,
+        "Ghee": 30.0,
+        "Cucumber": 525.0,
+        "Carrot": 420.0
+      }
+    },
+    {
+      "Date": "2026-03-04",
+      "Meal Type": "Breakfast",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 699.5,
+      "Total Protein": 15.05,
+      "Total Carbs": 50.13,
+      "Total Fiber": 15.51,
+      "Total Fat": 18.81,
+      "Menu Names": "Vermicelli Biryani (Recipe in Hindi) + Curd chutney + Piyush",
+      "Ingredients Scaling": {
+        "Macaroni": 125.0,
+        "Carrot": 40.0,
+        "Capsicum": 40.0,
+        "Onion": 80.0,
+        "Green peas": 120.0,
+        "Garam masala powder": 1.25,
+        "Coriander powder": 1.25,
+        "Biryani masala": 1.25,
+        "Turmeric powder": 2.5,
+        "Cumin seeds": 2.5,
+        "Fennel": 2.5,
+        "Green chillies": 80.0,
+        "Cloves garlic": 80.0,
+        "Ginger": 2.5,
+        "curd": 227.12,
+        "almonds": 4.99,
+        "sugar": 6.24
+      }
+    },
+    {
+      "Date": "2026-03-04",
+      "Meal Type": "MorningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 330.11,
+      "Total Protein": 2.66,
+      "Total Carbs": 4.4,
+      "Total Fiber": 1.27,
+      "Total Fat": 7.03,
+      "Menu Names": "Cheesy Potato Peas Potli Recipe",
+      "Ingredients Scaling": {
+        "Vivatta maida": 120.0,
+        "Ajwain": 1.25,
+        "Baking soda": 1.25,
+        "Green peas": 60.0,
+        "Onion": 40.0,
+        "Cheese": 120.0,
+        "Green chilli": 40.0,
+        "Ginger": 2.5,
+        "Kasuri methi": 1.25,
+        "Cumin seeds": 0.6,
+        "Amchur": 1.25,
+        "Turmeric powder": 1.25,
+        "Red chilli powder": 1.25,
+        "Garam masala powder": 1.25,
+        "Coriander powder": 1.25
+      }
+    },
+    {
+      "Date": "2026-03-04",
+      "Meal Type": "Lunch",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 880.27,
+      "Total Protein": 24.31,
+      "Total Carbs": 73.95,
+      "Total Fiber": 29.43,
+      "Total Fat": 12.92,
+      "Menu Names": "Sukhe Chole Recipe - Dry Masala Chickpeas + Soya Methi Palak Ki Sabzi Recipe + Beetroot, Carrot and Cucumber Salad Recipe - Beetroot, Carrot & Cucumber Salad with Peanuts Recipe + Koshimbir",
+      "Ingredients Scaling": {
+        "Cumin seeds": 6.44,
+        "Ginger": 6.55,
+        "Chana masala powder": 12.88,
+        "Red chilli powder": 12.88,
+        "Cumin powder": 4.05,
+        "Amchur": 12.88,
+        "Turmeric powder": 1.55,
+        "Coriander powder": 19.33,
+        "Spinach leaves": 240.0,
+        "Soy chunks": 50.0,
+        "Methi leaves": 120.0,
+        "Onion": 60.0,
+        "Homemade tomato puree": 90.0,
+        "Cloves garlic": 80.0,
+        "Green chillies": 80.0,
+        "Garam masala powder": 2.5,
+        "Butter": 5.0,
+        "Garlic": 80.0,
+        "Dry red chillies": 120.0,
+        "Chakundar": 128.26,
+        "Carrots": 128.26,
+        "Cucumber": 64.13,
+        "Peanuts": 48.1,
+        "Green chilli": 64.13,
+        "Coriander": 16.03,
+        "Lemon juice": 4.01,
+        "Black pepper powder": 4.01,
+        "Chaat masala powder": 4.01,
+        "cucumber": 45.0,
+        "tomato": 45.0,
+        "onion": 45.0,
+        "curd": 105.0
+      }
+    },
+    {
+      "Date": "2026-03-04",
+      "Meal Type": "EveningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 131.65,
+      "Total Protein": 8.47,
+      "Total Carbs": 25.27,
+      "Total Fiber": 4.24,
+      "Total Fat": 2.17,
+      "Menu Names": "Pan Fried Broccoli Pakora Recipe",
+      "Ingredients Scaling": {
+        "Broccoli": 447.5,
+        "Onion": 143.2,
+        "Gram flour": 89.5,
+        "Fennel seeds": 8.95,
+        "Chaat masala powder": 8.95
+      }
+    },
+    {
+      "Date": "2026-03-04",
+      "Meal Type": "Dinner",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 916.13,
+      "Total Protein": 46.56,
+      "Total Carbs": 92.83,
+      "Total Fiber": 37.71,
+      "Total Fat": 30.45,
+      "Menu Names": "Baingan Bharta Recipe - Smoked Roasted Eggplant with Green Chillies and Ginger + Mint Flavoured Mixed Vegetable Pulao Recipe + Til Moongphali Aur Kundru Sabzi Recipe - Sesame, Peanuts And Ivy Gourd Stir Fry + Lehsun chutney",
+      "Ingredients Scaling": {
+        "Brinjal": 72.74,
+        "Ginger": 18.18,
+        "Onion": 112.74,
+        "Tomato": 72.74,
+        "Green chillies": 265.47,
+        "Turmeric powder": 2.59,
+        "Garam masala powder": 2.27,
+        "Coriander powder": 17.27,
+        "Ghee": 27.28,
+        "Red chilli powder": 12.05,
+        "Coriander": 25.68,
+        "Basmati rice": 30.0,
+        "Green peas": 30.0,
+        "Carrot": 60.0,
+        "Green beans": 60.0,
+        "Mint leaves": 22.5,
+        "Garlic": 2.5,
+        "Cumin seeds": 1.25,
+        "Mustard seeds": 8.75,
+        "Bay leaf": 40.0,
+        "Cloves": 120.0,
+        "Tindora": 1200.0,
+        "Dry red chillies": 480.0,
+        "Curry leaves": 30.0,
+        "Raw peanuts": 90.0,
+        "Sesame seeds": 30.0,
+        "garlic": 30.0,
+        "oil": 15.0
+      }
+    },
+    {
+      "Date": "2026-03-05",
+      "Meal Type": "Breakfast",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 658.27,
+      "Total Protein": 22.86,
+      "Total Carbs": 112.03,
+      "Total Fiber": 26.24,
+      "Total Fat": 9.01,
+      "Menu Names": "Spiced Indian Potato Flatbread (Recipe In Hindi) + Sambhar + Tea / Cofee / Milk",
+      "Ingredients Scaling": {
+        "Wheat flour": 435.81,
+        "Onion": 72.63,
+        "Ginger": 9.08,
+        "Green chilli": 145.27,
+        "Turmeric powder": 2.27,
+        "Coriander powder": 4.54,
+        "Cumin powder": 2.27,
+        "Red chilli powder": 2.27,
+        "Garam masala powder": 4.54,
+        "Green coriander": 9.08,
+        "Tur dal": 32.9,
+        "Drumsticks": 38.38,
+        "Bottle gourd": 38.38,
+        "Tomato": 38.38,
+        "Oil": 5.48,
+        "Milk": 307.6
+      }
+    },
+    {
+      "Date": "2026-03-05",
+      "Meal Type": "MorningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 131.65,
+      "Total Protein": 3.88,
+      "Total Carbs": 21.52,
+      "Total Fiber": 5.54,
+      "Total Fat": 0.58,
+      "Menu Names": "Kabuli Chana Chaat - High Protein Snack of Chikki Chaat",
+      "Ingredients Scaling": {
+        "Kabuli chana": 261.07,
+        "Tomatoes": 87.02,
+        "Onions": 87.02,
+        "Cucumber": 43.51,
+        "Green chillies": 130.53,
+        "Coriander": 8.16,
+        "Chaat masala powder": 5.44,
+        "Amchur": 1.36,
+        "Aloo bhujia": 24.47,
+        "Lemon juice": 4.08
+      }
+    },
+    {
+      "Date": "2026-03-05",
+      "Meal Type": "Lunch",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 999.45,
+      "Total Protein": 18.02,
+      "Total Carbs": 85.46,
+      "Total Fiber": 34.13,
+      "Total Fat": 10.34,
+      "Menu Names": "Potato Cabbage Pea Vegetable Recipe + Stuffed Butter Recipe - Stuffed Spice Gravy + Bhindi and Capsicum Sabzi Recipe + Thecha",
+      "Ingredients Scaling": {
+        "Cauliflower": 451.75,
+        "Potato": 144.56,
+        "Green peas": 216.84,
+        "Red chilli powder": 19.69,
+        "Coriander powder": 34.85,
+        "Turmeric powder": 22.95,
+        "Onion": 27.11,
+        "Ginger": 28.32,
+        "Methi leaves": 4.52,
+        "Coriander": 7.02,
+        "Karela": 120.0,
+        "Paneer": 60.0,
+        "Black pepper powder": 1.25,
+        "Mint leaves": 2.5,
+        "Onions": 80.0,
+        "Homemade tomato puree": 120.0,
+        "Cloves garlic": 160.0,
+        "Green chilli": 40.0,
+        "Cumin powder": 2.5,
+        "Garam masala powder": 2.5,
+        "Sugar": 0.25,
+        "Fresh cream": 15.0,
+        "Bhindi": 375.95,
+        "Green bell pepper": 300.76,
+        "Cumin seeds": 9.4,
+        "Fresh coconut": 84.59,
+        "chilli": 45.0
+      }
+    },
+    {
+      "Date": "2026-03-05",
+      "Meal Type": "EveningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 179.51,
+      "Total Protein": 5.08,
+      "Total Carbs": 31.16,
+      "Total Fiber": 4.03,
+      "Total Fat": 1.73,
+      "Menu Names": "Crispy Corn Chaat Recipe - Crispy Corn Chaat Recipe",
+      "Ingredients Scaling": {
+        "Sweet corn": 240.0,
+        "All purpose flour": 15.0,
+        "Red chili powder": 2.5,
+        "Onion": 40.0,
+        "Lemon": 2.5
+      }
+    },
+    {
+      "Date": "2026-03-05",
+      "Meal Type": "Dinner",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 912.47,
+      "Total Protein": 19.61,
+      "Total Carbs": 62.92,
+      "Total Fiber": 19.74,
+      "Total Fat": 16.35,
+      "Menu Names": "Singhara Ato Chill Recipe (No Onion No Garlic Navratri Fasting / Fasting Recipe) + Spinach Mushroom Chickpea Curry Recipe + Sweet Corn And Capsicum Gravy Recipe + Chaas",
+      "Ingredients Scaling": {
+        "Green chilli": 230.25,
+        "Coriander": 22.84,
+        "Cumin powder": 26.28,
+        "Turmeric powder": 7.2,
+        "Black pepper powder": 23.78,
+        "Button mushrooms": 100.0,
+        "Spinach leaves": 240.0,
+        "Kabuli chana": 60.0,
+        "Onions": 160.0,
+        "Homemade tomato puree": 60.0,
+        "Ginger": 7.5,
+        "Cloves garlic": 160.0,
+        "Fresh red chillies": 80.0,
+        "Garam masala powder": 2.5,
+        "Coconut milk": 60.0,
+        "Mint leaves": 5.0,
+        "Sweet corn": 120.0,
+        "Red yellow and green bell peppers": 40.0,
+        "Tomato": 40.0,
+        "Curd": 60.0,
+        "Cashew nuts": 15.0,
+        "curd": 270.52
+      }
+    },
+    {
+      "Date": "2026-03-06",
+      "Meal Type": "Breakfast",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 400.1,
+      "Total Protein": 63.55,
+      "Total Carbs": 154.86,
+      "Total Fiber": 23.74,
+      "Total Fat": 23.25,
+      "Menu Names": "Matar Besan And Paneer Cheela Recipe -Green Peas & Paneer Crepes + Green Chutney + Piyush",
+      "Ingredients Scaling": {
+        "Green peas": 720.0,
+        "Gram flour": 720.0,
+        "Paneer": 360.0,
+        "Ginger": 15.0,
+        "Green chillies": 480.0,
+        "Turmeric powder": 7.5,
+        "Cumin powder": 7.5,
+        "Coriander leaves": 93.37,
+        "Mint leaves": 93.37,
+        "Curd": 93.37,
+        "curd": 46.77,
+        "almonds": 4.99,
+        "sugar": 6.24
+      }
+    },
+    {
+      "Date": "2026-03-06",
+      "Meal Type": "MorningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 16.26,
+      "Total Protein": 51.24,
+      "Total Carbs": 145.8,
+      "Total Fiber": 0.27,
+      "Total Fat": 15.09,
+      "Menu Names": "Homemade Sev Recipe - Gram Flour Vermicelli Snack",
+      "Ingredients Scaling": {
+        "Gram flour": 1440.0,
+        "Asafoetida": 7.5,
+        "Turmeric powder": 7.5
+      }
+    },
+    {
+      "Date": "2026-03-06",
+      "Meal Type": "Lunch",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 963.27,
+      "Total Protein": 34.1,
+      "Total Carbs": 97.57,
+      "Total Fiber": 25.93,
+      "Total Fat": 18.29,
+      "Menu Names": "Chotti Aloor Dum Recipe - Baby Potatoes In Tomato Gravy + Corn and Peas Curry Recipe - Corn And Peas Curry Recipe + Methi Chaman Recipe -Paneer In Dark Leafy Greens Based Gravy + Masala Chaas",
+      "Ingredients Scaling": {
+        "Baby potatoes": 600.0,
+        "Tomatoes": 80.0,
+        "Cumin powder": 2.5,
+        "Coriander powder": 5.1,
+        "Turmeric powder": 1.52,
+        "Cloves": 80.0,
+        "Cardamom": 80.0,
+        "Cinnamon stick": 5.0,
+        "Corn cob": 80.0,
+        "Cumin seeds": 8.85,
+        "Coriander seeds": 2.5,
+        "Dry red chilies": 200.0,
+        "Bud garlic": 240.0,
+        "Ginger": 5.0,
+        "Onions": 80.0,
+        "Coconut": 15.0,
+        "Rye": 2.5,
+        "Curry leaves": 5.0,
+        "Tomato puree": 60.0,
+        "1 tsp turmeric powder": 10.0,
+        "Garam masala powder": 4.42,
+        "Kashmiri red chilli powder": 2.5,
+        "Green peas": 30.0,
+        "Methi leaves": 184.57,
+        "Spinach leaves": 184.57,
+        "Paneer": 115.36,
+        "Green chillies": 123.05,
+        "Onion": 61.52,
+        "Fresh cream": 61.52,
+        "curd": 162.31
+      }
+    },
+    {
+      "Date": "2026-03-06",
+      "Meal Type": "EveningSnacks",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 53.52,
+      "Total Protein": 2.37,
+      "Total Carbs": 8.04,
+      "Total Fiber": 1.98,
+      "Total Fat": 0.75,
+      "Menu Names": "Chana Dal Aloo Cutlet Recipe - Gram Dal Potato Cutlet Recipe",
+      "Ingredients Scaling": {
+        "Chana dal": 720.0,
+        "Green chilli": 480.0,
+        "Gram flour": 45.0,
+        "Chaat masala powder": 15.0,
+        "Red chilli powder": 7.5,
+        "Ginger": 30.0,
+        "Asafoetida": 3.6,
+        "Cumin seeds": 7.5,
+        "Fresh coconut": 90.0,
+        "Cardamom powder": 15.0
+      }
+    },
+    {
+      "Date": "2026-03-06",
+      "Meal Type": "Dinner",
+      "Diet Type": "Vegetarian",
+      "Region": "North",
+      "Total Calories": 529.15,
+      "Total Protein": 17.75,
+      "Total Carbs": 64.1,
+      "Total Fiber": 27.56,
+      "Total Fat": 10.78,
+      "Menu Names": "Kala Chana Masala Curry Recipe + Rajmah gravy + Bhindi Raita (Recipe In Hindi) + Masala chaas",
+      "Ingredients Scaling": {
+        "Kala chana": 343.69,
+        "Bay leaf": 57.28,
+        "Cumin seeds": 7.07,
+        "Mustard seeds": 3.58,
+        "Asafoetida": 3.46,
+        "Green chillies": 114.56,
+        "Tomato": 114.56,
+        "Whole wheat flour": 5.37,
+        "Red chilli powder": 17.53,
+        "Turmeric powder": 1.79,
+        "Coriander powder": 3.58,
+        "Lemon juice": 2.72,
+        "Coriander": 10.74,
+        "Kidney beans": 90.0,
+        "Onion": 105.0,
+        "Oil": 15.0,
+        "Okra": 348.69,
+        "Hung": 251.06,
+        "Mustard": 3.49,
+        "Peanut powder": 10.46,
+        "Chaat masala powder": 3.49,
+        "Sugar": 6.97,
+        "curd": 135.26
+      }
+    }
+  ],
+  "ingredient_checklist": [
+    {
+      "Ingredient": "Gm amla",
+      "Total Amount (g)": 22181.65
+    },
+    {
+      "Ingredient": "Curd",
+      "Total Amount (g)": 3077.65
+    },
+    {
+      "Ingredient": "Gram flour",
+      "Total Amount (g)": 2950.07
+    },
+    {
+      "Ingredient": "Green chillies",
+      "Total Amount (g)": 2700.81
+    },
+    {
+      "Ingredient": "Green peas",
+      "Total Amount (g)": 1652.69
+    },
+    {
+      "Ingredient": "Onion",
+      "Total Amount (g)": 1617.76
+    },
+    {
+      "Ingredient": "Dry red chillies",
+      "Total Amount (g)": 1306.52
+    },
+    {
+      "Ingredient": "Cloves garlic",
+      "Total Amount (g)": 1274.54
+    },
+    {
+      "Ingredient": "Tindora",
+      "Total Amount (g)": 1200.0
+    },
+    {
+      "Ingredient": "Green chilli",
+      "Total Amount (g)": 1194.16
+    },
+    {
+      "Ingredient": "curd",
+      "Total Amount (g)": 1146.79
+    },
+    {
+      "Ingredient": "Wheat brown bread",
+      "Total Amount (g)": 1141.33
+    },
+    {
+      "Ingredient": "Paneer",
+      "Total Amount (g)": 1056.9
+    },
+    {
+      "Ingredient": "Onions",
+      "Total Amount (g)": 901.51
+    },
+    {
+      "Ingredient": "Methi leaves",
+      "Total Amount (g)": 870.72
+    },
+    {
+      "Ingredient": "Tomatoes",
+      "Total Amount (g)": 827.84
+    },
+    {
+      "Ingredient": "Spinach leaves",
+      "Total Amount (g)": 789.57
+    },
+    {
+      "Ingredient": "Milk",
+      "Total Amount (g)": 772.74
+    },
+    {
+      "Ingredient": "Chana dal",
+      "Total Amount (g)": 720.0
+    },
+    {
+      "Ingredient": "Cucumber",
+      "Total Amount (g)": 718.07
+    },
+    {
+      "Ingredient": "Carrot",
+      "Total Amount (g)": 695.43
+    },
+    {
+      "Ingredient": "Baby potatoes",
+      "Total Amount (g)": 600.0
+    },
+    {
+      "Ingredient": "Wheat flour",
+      "Total Amount (g)": 592.46
+    },
+    {
+      "Ingredient": "Arbi",
+      "Total Amount (g)": 480.0
+    },
+    {
+      "Ingredient": "Tomato",
+      "Total Amount (g)": 452.69
+    },
+    {
+      "Ingredient": "Cauliflower",
+      "Total Amount (g)": 451.75
+    },
+    {
+      "Ingredient": "Broccoli",
+      "Total Amount (g)": 447.5
+    },
+    {
+      "Ingredient": "Kabuli chana",
+      "Total Amount (g)": 441.07
+    },
+    {
+      "Ingredient": "Sweet corn",
+      "Total Amount (g)": 420.0
+    },
+    {
+      "Ingredient": "Soy chunks",
+      "Total Amount (g)": 418.16
+    },
+    {
+      "Ingredient": "Homemade tomato puree",
+      "Total Amount (g)": 395.0
+    },
+    {
+      "Ingredient": "Coriander",
+      "Total Amount (g)": 383.74
+    },
+    {
+      "Ingredient": "Green bell pepper",
+      "Total Amount (g)": 380.76
+    },
+    {
+      "Ingredient": "Bhindi",
+      "Total Amount (g)": 375.95
+    },
+    {
+      "Ingredient": "Potatoes",
+      "Total Amount (g)": 352.76
+    },
+    {
+      "Ingredient": "Okra",
+      "Total Amount (g)": 348.69
+    },
+    {
+      "Ingredient": "Kala chana",
+      "Total Amount (g)": 343.69
+    },
+    {
+      "Ingredient": "Cashew nuts",
+      "Total Amount (g)": 335.0
+    },
+    {
+      "Ingredient": "Cloves",
+      "Total Amount (g)": 320.0
+    },
+    {
+      "Ingredient": "Carrots",
+      "Total Amount (g)": 313.86
+    },
+    {
+      "Ingredient": "Crushed ice",
+      "Total Amount (g)": 300.92
+    },
+    {
+      "Ingredient": "Fenugreek",
+      "Total Amount (g)": 297.04
+    },
+    {
+      "Ingredient": "Potato",
+      "Total Amount (g)": 283.63
+    },
+    {
+      "Ingredient": "Cheese",
+      "Total Amount (g)": 262.53
+    },
+    {
+      "Ingredient": "Sev",
+      "Total Amount (g)": 255.0
+    },
+    {
+      "Ingredient": "Hung",
+      "Total Amount (g)": 251.06
+    },
+    {
+      "Ingredient": "Mustard greens",
+      "Total Amount (g)": 250.0
+    },
+    {
+      "Ingredient": "Bud garlic",
+      "Total Amount (g)": 240.0
+    },
+    {
+      "Ingredient": "Chamomile tea",
+      "Total Amount (g)": 240.0
+    },
+    {
+      "Ingredient": "Curd (cow)",
+      "Total Amount (g)": 221.48
+    },
+    {
+      "Ingredient": "Bay leaf",
+      "Total Amount (g)": 217.28
+    },
+    {
+      "Ingredient": "Rice",
+      "Total Amount (g)": 212.67
+    },
+    {
+      "Ingredient": "Fresh coconut",
+      "Total Amount (g)": 212.21
+    },
+    {
+      "Ingredient": "Mint leaves",
+      "Total Amount (g)": 208.77
+    },
+    {
+      "Ingredient": "Dry red chilies",
+      "Total Amount (g)": 200.0
+    },
+    {
+      "Ingredient": "Green beans",
+      "Total Amount (g)": 180.0
+    },
+    {
+      "Ingredient": "Ginger",
+      "Total Amount (g)": 177.21
+    },
+    {
+      "Ingredient": "onion",
+      "Total Amount (g)": 167.5
+    },
+    {
+      "Ingredient": "Cardamom",
+      "Total Amount (g)": 160.0
+    },
+    {
+      "Ingredient": "Mooli/ mullangi",
+      "Total Amount (g)": 160.0
+    },
+    {
+      "Ingredient": "Basmati rice",
+      "Total Amount (g)": 150.0
+    },
+    {
+      "Ingredient": "Ripe bananas",
+      "Total Amount (g)": 149.39
+    },
+    {
+      "Ingredient": "Sweet chutney",
+      "Total Amount (g)": 135.0
+    },
+    {
+      "Ingredient": "Asafoetida",
+      "Total Amount (g)": 132.44
+    },
+    {
+      "Ingredient": "Spinach",
+      "Total Amount (g)": 130.54
+    },
+    {
+      "Ingredient": "Chakundar",
+      "Total Amount (g)": 128.26
+    },
+    {
+      "Ingredient": "Green chutney",
+      "Total Amount (g)": 127.5
+    },
+    {
+      "Ingredient": "Bathua leaves",
+      "Total Amount (g)": 125.0
+    },
+    {
+      "Ingredient": "Elephant yam",
+      "Total Amount (g)": 125.0
+    },
+    {
+      "Ingredient": "Macaroni",
+      "Total Amount (g)": 125.0
+    },
+    {
+      "Ingredient": "Almond milk",
+      "Total Amount (g)": 120.0
+    },
+    {
+      "Ingredient": "Karela",
+      "Total Amount (g)": 120.0
+    },
+    {
+      "Ingredient": "Vivatta maida",
+      "Total Amount (g)": 120.0
+    },
+    {
+      "Ingredient": "Coriander powder",
+      "Total Amount (g)": 115.31
+    },
+    {
+      "Ingredient": "Apple",
+      "Total Amount (g)": 114.7
+    },
+    {
+      "Ingredient": "Red chilli powder",
+      "Total Amount (g)": 103.83
+    },
+    {
+      "Ingredient": "Button mushrooms",
+      "Total Amount (g)": 100.0
+    },
+    {
+      "Ingredient": "Mango",
+      "Total Amount (g)": 97.79
+    },
+    {
+      "Ingredient": "Coriander leaves",
+      "Total Amount (g)": 93.37
+    },
+    {
+      "Ingredient": "Bajra flour",
+      "Total Amount (g)": 92.04
+    },
+    {
+      "Ingredient": "Jowar flour",
+      "Total Amount (g)": 92.04
+    },
+    {
+      "Ingredient": "Raw peanuts",
+      "Total Amount (g)": 90.0
+    },
+    {
+      "Ingredient": "Kidney beans",
+      "Total Amount (g)": 90.0
+    },
+    {
+      "Ingredient": "Whole wheat bread crumbs",
+      "Total Amount (g)": 90.0
+    },
+    {
+      "Ingredient": "Turmeric powder",
+      "Total Amount (g)": 89.95
+    },
+    {
+      "Ingredient": "Cumin seeds",
+      "Total Amount (g)": 86.88
+    },
+    {
+      "Ingredient": "Garlic",
+      "Total Amount (g)": 82.5
+    },
+    {
+      "Ingredient": "Bay leaves",
+      "Total Amount (g)": 80.0
+    },
+    {
+      "Ingredient": "Mixed sprouts",
+      "Total Amount (g)": 80.0
+    },
+    {
+      "Ingredient": "Corn cob",
+      "Total Amount (g)": 80.0
+    },
+    {
+      "Ingredient": "Fresh red chillies",
+      "Total Amount (g)": 80.0
+    },
+    {
+      "Ingredient": "Rolled oats or instant oats",
+      "Total Amount (g)": 78.62
+    },
+    {
+      "Ingredient": "Fresh cream",
+      "Total Amount (g)": 76.52
+    },
+    {
+      "Ingredient": "Strawberries",
+      "Total Amount (g)": 75.0
+    },
+    {
+      "Ingredient": "Ghee",
+      "Total Amount (g)": 74.78
+    },
+    {
+      "Ingredient": "Cumin powder",
+      "Total Amount (g)": 73.41
+    },
+    {
+      "Ingredient": "Brinjal",
+      "Total Amount (g)": 72.74
+    },
+    {
+      "Ingredient": "Sugar",
+      "Total Amount (g)": 72.47
+    },
+    {
+      "Ingredient": "Rice flour",
+      "Total Amount (g)": 69.13
+    },
+    {
+      "Ingredient": "Kasuri methi",
+      "Total Amount (g)": 68.75
+    },
+    {
+      "Ingredient": "Cottage cheese",
+      "Total Amount (g)": 65.27
+    },
+    {
+      "Ingredient": "Garam masala powder",
+      "Total Amount (g)": 62.98
+    },
+    {
+      "Ingredient": "Tomato puree",
+      "Total Amount (g)": 60.0
+    },
+    {
+      "Ingredient": "Coconut milk",
+      "Total Amount (g)": 60.0
+    },
+    {
+      "Ingredient": "Curry leaves",
+      "Total Amount (g)": 55.91
+    },
+    {
+      "Ingredient": "Cinnamon stick",
+      "Total Amount (g)": 55.0
+    },
+    {
+      "Ingredient": "/ 2 teaspoon coriander powder",
+      "Total Amount (g)": 52.8
+    },
+    {
+      "Ingredient": "Peanuts",
+      "Total Amount (g)": 48.1
+    },
+    {
+      "Ingredient": "Coconut",
+      "Total Amount (g)": 45.4
+    },
+    {
+      "Ingredient": "imli",
+      "Total Amount (g)": 45.0
+    },
+    {
+      "Ingredient": "tomato",
+      "Total Amount (g)": 45.0
+    },
+    {
+      "Ingredient": "chilli",
+      "Total Amount (g)": 45.0
+    },
+    {
+      "Ingredient": "cucumber",
+      "Total Amount (g)": 45.0
+    },
+    {
+      "Ingredient": "Chaat masala powder",
+      "Total Amount (g)": 42.4
+    },
+    {
+      "Ingredient": "oil",
+      "Total Amount (g)": 41.18
+    },
+    {
+      "Ingredient": "Stalk coriander",
+      "Total Amount (g)": 40.0
+    },
+    {
+      "Ingredient": "Capsicum",
+      "Total Amount (g)": 40.0
+    },
+    {
+      "Ingredient": "Red yellow and green bell peppers",
+      "Total Amount (g)": 40.0
+    },
+    {
+      "Ingredient": "Red bell pepper",
+      "Total Amount (g)": 40.0
+    },
+    {
+      "Ingredient": "Star anise",
+      "Total Amount (g)": 40.0
+    },
+    {
+      "Ingredient": "Or 2 green chillies",
+      "Total Amount (g)": 40.0
+    },
+    {
+      "Ingredient": "Oil",
+      "Total Amount (g)": 39.0
+    },
+    {
+      "Ingredient": "Bottle gourd",
+      "Total Amount (g)": 38.38
+    },
+    {
+      "Ingredient": "Drumsticks",
+      "Total Amount (g)": 38.38
+    },
+    {
+      "Ingredient": "Amchur",
+      "Total Amount (g)": 34.07
+    },
+    {
+      "Ingredient": "Sesame seeds",
+      "Total Amount (g)": 33.34
+    },
+    {
+      "Ingredient": "Tur dal",
+      "Total Amount (g)": 32.9
+    },
+    {
+      "Ingredient": "Black pepper powder",
+      "Total Amount (g)": 32.79
+    },
+    {
+      "Ingredient": "Corriander",
+      "Total Amount (g)": 30.4
+    },
+    {
+      "Ingredient": "garlic",
+      "Total Amount (g)": 30.0
+    },
+    {
+      "Ingredient": "Green channa sprouts",
+      "Total Amount (g)": 30.0
+    },
+    {
+      "Ingredient": "Mustard seeds",
+      "Total Amount (g)": 29.58
+    },
+    {
+      "Ingredient": "Ginger garlic paste",
+      "Total Amount (g)": 28.97
+    },
+    {
+      "Ingredient": "Fennel seeds",
+      "Total Amount (g)": 28.29
+    },
+    {
+      "Ingredient": "Oats",
+      "Total Amount (g)": 26.11
+    },
+    {
+      "Ingredient": "Banana",
+      "Total Amount (g)": 25.0
+    },
+    {
+      "Ingredient": "Lemon juice",
+      "Total Amount (g)": 24.98
+    },
+    {
+      "Ingredient": "Aloo bhujia",
+      "Total Amount (g)": 24.47
+    },
+    {
+      "Ingredient": "Rajmah",
+      "Total Amount (g)": 22.5
+    },
+    {
+      "Ingredient": "rice",
+      "Total Amount (g)": 22.5
+    },
+    {
+      "Ingredient": "Cardamom powder",
+      "Total Amount (g)": 16.86
+    },
+    {
+      "Ingredient": "All purpose flour",
+      "Total Amount (g)": 15.0
+    },
+    {
+      "Ingredient": "bajra flour",
+      "Total Amount (g)": 15.0
+    },
+    {
+      "Ingredient": "jaggery",
+      "Total Amount (g)": 15.0
+    },
+    {
+      "Ingredient": "Red chili powder",
+      "Total Amount (g)": 13.0
+    },
+    {
+      "Ingredient": "Chana masala powder",
+      "Total Amount (g)": 12.88
+    },
+    {
+      "Ingredient": "Kewra essence",
+      "Total Amount (g)": 12.54
+    },
+    {
+      "Ingredient": "Butter",
+      "Total Amount (g)": 12.5
+    },
+    {
+      "Ingredient": "sugar",
+      "Total Amount (g)": 12.48
+    },
+    {
+      "Ingredient": "Peanut powder",
+      "Total Amount (g)": 10.46
+    },
+    {
+      "Ingredient": "1 tsp turmeric powder",
+      "Total Amount (g)": 10.0
+    },
+    {
+      "Ingredient": "Honey",
+      "Total Amount (g)": 10.0
+    },
+    {
+      "Ingredient": "Hung curd",
+      "Total Amount (g)": 10.0
+    },
+    {
+      "Ingredient": "almonds",
+      "Total Amount (g)": 9.98
+    },
+    {
+      "Ingredient": "Green coriander",
+      "Total Amount (g)": 9.08
+    },
+    {
+      "Ingredient": "Ajwain",
+      "Total Amount (g)": 8.16
+    },
+    {
+      "Ingredient": "Methi seeds",
+      "Total Amount (g)": 7.95
+    },
+    {
+      "Ingredient": "Kalonji",
+      "Total Amount (g)": 7.95
+    },
+    {
+      "Ingredient": "Corn flour",
+      "Total Amount (g)": 7.5
+    },
+    {
+      "Ingredient": "Of green coriander",
+      "Total Amount (g)": 6.93
+    },
+    {
+      "Ingredient": "Biryani masala",
+      "Total Amount (g)": 6.25
+    },
+    {
+      "Ingredient": "Whole wheat flour",
+      "Total Amount (g)": 5.37
+    },
+    {
+      "Ingredient": "Red chilli flakes",
+      "Total Amount (g)": 5.0
+    },
+    {
+      "Ingredient": "Kashmiri red chilli powder",
+      "Total Amount (g)": 3.75
+    },
+    {
+      "Ingredient": "Ginger powder",
+      "Total Amount (g)": 3.67
+    },
+    {
+      "Ingredient": "Mustard",
+      "Total Amount (g)": 3.49
+    },
+    {
+      "Ingredient": "Celery",
+      "Total Amount (g)": 3.47
+    },
+    {
+      "Ingredient": "Mango powder",
+      "Total Amount (g)": 3.3
+    },
+    {
+      "Ingredient": "Cumin",
+      "Total Amount (g)": 3.3
+    },
+    {
+      "Ingredient": "Sambar powder",
+      "Total Amount (g)": 2.9
+    },
+    {
+      "Ingredient": "Nutralite classic spread",
+      "Total Amount (g)": 2.5
+    },
+    {
+      "Ingredient": "Coriander seeds",
+      "Total Amount (g)": 2.5
+    },
+    {
+      "Ingredient": "Rye",
+      "Total Amount (g)": 2.5
+    },
+    {
+      "Ingredient": "Makki ka atta",
+      "Total Amount (g)": 2.5
+    },
+    {
+      "Ingredient": "Fennel",
+      "Total Amount (g)": 2.5
+    },
+    {
+      "Ingredient": "Lemon",
+      "Total Amount (g)": 2.5
+    },
+    {
+      "Ingredient": "Cinnamon powder",
+      "Total Amount (g)": 1.99
+    },
+    {
+      "Ingredient": "Anardana powder",
+      "Total Amount (g)": 1.25
+    },
+    {
+      "Ingredient": "Baking soda",
+      "Total Amount (g)": 1.25
+    }
+  ]
+}

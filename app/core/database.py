@@ -1,22 +1,55 @@
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from ..core.config import settings
+import os
 from typing import AsyncGenerator
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import DeclarativeBase
 
-class Database:
-    client: AsyncIOMotorClient = None
+from motor.motor_asyncio import AsyncIOMotorClient
+from .config import settings
 
-async def get_database() -> AsyncGenerator[AsyncIOMotorDatabase, None]:
-        """
-        Get database instance.
-        Returns AsyncGenerator to properly handle async context.
-        """
-        try:
-            yield Database.client[settings.DATABASE_NAME]
-        finally:
-            pass
+client: AsyncIOMotorClient = None
 
 async def connect_to_mongodb():
-    Database.client = AsyncIOMotorClient(settings.MONGO_URI)
+    global client
+    client = AsyncIOMotorClient(settings.MONGO_URI)
+    print("Connected to MongoDB")
 
 async def close_mongodb_connection():
-    Database.client.close()
+    global client
+    if client:
+        client.close()
+        print("Closed MongoDB connection")
+
+def get_database():
+    return client[settings.DATABASE_NAME]
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://admin:mityahar_dev@localhost:5432/mityahar_db"
+)
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    future=True,
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False,
+)
+
+class Base(DeclarativeBase):
+    pass
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()

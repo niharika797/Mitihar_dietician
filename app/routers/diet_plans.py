@@ -9,6 +9,8 @@ from ..models.diet_plan import DietPlan
 from ..core.exceptions import DietPlanNotFoundException
 from ..services.meal_generator.meal_generator import meal_generator  # Use singleton
 from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
+from ..core.database import get_db
 
 router = APIRouter()
 from ..core.limiter import limiter
@@ -25,9 +27,9 @@ def _validate_generated_plan(diet_plan: DietPlan, user_diet: str) -> str | None:
     meals = getattr(diet_plan, "meals", None) or []
     checklist = getattr(diet_plan, "ingredient_checklist", None) or []
 
-    # 1. Must have exactly 42 meals (7 days × 3 meal types × 2 options)
-    if len(meals) != 42:
-        return f"Expected 42 meals, got {len(meals)}"
+    # 1. Must have exactly 35 meals (7 days × 5 meal types × 1 option)
+    if len(meals) != 35:
+        return f"Expected 35 meals, got {len(meals)}"
 
     # 2. Every meal must have a Date field
     missing_date = [i for i, m in enumerate(meals) if not m.get("Date")]
@@ -108,6 +110,7 @@ async def get_today_meals(current_user: UserInDB = Depends(get_current_user)):
 async def generate_diet_plan(
     request: Request,
     current_user: UserInDB = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db)
 ):
     """
     Generate a new 7-day diet plan for the current user.
@@ -136,7 +139,7 @@ async def generate_diet_plan(
             )
 
             diet_plan = await diet_plan_service.generate_diet_plan(
-                current_user.model_dump()
+                current_user.model_dump(), session
             )
 
             # If ingredient_checklist came back empty, try to regenerate it

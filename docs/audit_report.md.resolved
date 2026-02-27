@@ -1,0 +1,53 @@
+# Mitihar Dietician Backend Audit Report
+
+This report outlines the structural inconsistencies found between the database models, API schemas, router implementations, and the expected outputs from the ML models.
+
+## 1. Unused and Disconnected Models & Schemas
+
+Many defined models and schemas are completely disconnected from the actual implementations in the routers and services. 
+
+### A. Diet Plan & Meals
+*   **Active Model:** [app/models/diet_plan.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/diet_plan.py) ([DietPlan](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/diet_plan.py#25-31)) is used directly as the response model in [routers/diet_plans.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py). It contains `user_id`, [meals](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#78-104) (List of Dicts), and [ingredient_checklist](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#227-258).
+*   **Dead Schemas:** The entire [app/schemas/diet_plan.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/diet_plan.py) file is **unused**. 
+    *   It defines [DietPlanBase](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/diet_plan.py#15-19) expecting fields like `daily_calories` and `meals_per_day`, which don't exist in the active [DietPlan](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/diet_plan.py#25-31) model.
+    *   It expects [meal_plan](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/meal_plan.py#16-61) to be a `Dict[str, List[MealBase]]` (e.g., grouped by day or type), but the router and DB use a flat `List[Dict]` for [meals](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#78-104).
+*   **Missing Field in Model:** The schemas expect `fats` internally for meals, but the models ([Meal](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/diet_plan.py#5-16) sub-model) only define `fiber` and `similarity`, omitting fats.
+
+### B. Progress Tracking
+*   **Dead Models:** [app/models/progress.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/progress.py) Defines structured Pydantic models like [Progress](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/progress.py#5-13) and [WeightLog](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/progress.py#14-18). These are **never used**.
+*   **Active Implementation:** [routers/progress.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/progress.py) and `progress_service.py` completely bypass these models. They store progress events directly as raw dictionaries in the database with the schema format: `{"user_id": "...", "type": "meal|water|steps|weight", "data": {...}}`.
+*   **Schema Consistency:** The schemas in [app/schemas/progress.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/progress.py) ([MealLogCreate](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/progress.py#5-11), [WaterLogCreate](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/progress.py#12-14), etc.) are used correctly by the routers, but their data is dumped straight into the free-form [data](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/core/database.py#8-17) field of the MongoDB document instead of using a structured DB model.
+
+### C. Meal Adjustment
+*   **Dead Model:** [app/models/meal_adjustment.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/meal_adjustment.py) defines a [MealAdjustment](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/meal_adjustment.py#5-28) model which is **never used** anywhere in the codebase.
+*   **Active Implementation:** Adjustments in [routers/meal_plan.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/meal_plan.py) (`/adjust`) just take a [CalorieReductionInput](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/meal_plan.py#13-15) (a simple int), recalculate TDEE, and instantly trigger a full diet plan regeneration, overwriting the old plan rather than storing an "adjustment" entity.
+
+## 2. API Schema vs DB Model Inconsistencies
+
+### User Profile
+The [User](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/user.py#24-39) model and its schemas are mostly consistent, but there are a few notable gaps:
+*   `created_at` and `updated_at` exist in the DB model [UserInDB](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/user.py#5-23) but are **missing from the [UserResponse](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/user.py#67-72) schema**, meaning the frontend can never see when an account was created.
+*   [routers/auth.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/auth.py) manually unpacks the [UserCreate](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/user.py#51-53) schema to create the [User](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/user.py#24-39) DB model. While it works, it skips default assignments from Pydantic in a few areas making it brittle to future schema changes.
+
+## 3. Dataset vs Required ML Outputs
+
+The food datasets ([breakfast_final.csv](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/services/datasets%20for%20eyantra/datasets%20for%20eyantra/datasets%20for%20eyantra/breakfast_final.csv), [fruits_final.csv](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/services/datasets%20for%20eyantra/datasets%20for%20eyantra/datasets%20for%20eyantra/fruits_final.csv), etc.) have the following fields:
+*   **Recipes:** `name`, `image_url`, `description`, `cuisine`, `course`, [diet](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#58-76), [ingredients](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#260-292), `instructions`, `calories`, `carbs`, `protein`, `fiber`
+*   **Fruits:** `name`, `protein`, `total fat`, `fibre`, `carbs`, `calories`
+
+### Expected Fields for the ML Output
+Based on the validation logic in [routers/diet_plans.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py) and the structure expected by the frontend, the ML `meal_generator` MUST output meals (as dictionaries) with the following exact keys to avoid breaking the application:
+
+1.  **`Date`**: Required by the router validation. Every meal must have a string date indicating which day it belongs to (e.g., "YYYY-MM-DD").
+2.  **[Meal](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/diet_plan.py#5-16)**: To distinguish the time (e.g., "Breakfast", "Lunch").
+3.  **`Name`** (or `Recipe_Name`): The name of the dish.
+4.  **`Calories`, `Proteins`, `Carbs`, `Fiber`**: Nutritional info requested by the [Meal](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/diet_plan.py#5-16) structure. *(Note: Add `Fats` if the frontend expects it, even though the backend model lacks it).*
+5.  **`Ingredients`**: Must be a `List[str]` (essential for the [ingredient_checklist](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#227-258) generator).
+6.  **`Instructions`**: String detailing the recipe.
+7.  **`Vegetarian` / `Non-Vegetarian` keyword**: The router has a hardcoded check that scans the string representation of the meal dictionary for the words "Vegetarian" or "Non-Vegetarian". The [diet](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#58-76) field from the CSV must be included in the output dictionary so this validation passes.
+
+## Summary of Recommendations
+1.  **Delete Dead Code:** Remove [app/schemas/diet_plan.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/diet_plan.py), [app/models/progress.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/progress.py), and [app/models/meal_adjustment.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/meal_adjustment.py) to prevent future confusion.
+2.  **Standardize DB Access:** For Progress logs, either enforce a Pydantic model for the [data](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/core/database.py#8-17) field payload or rename [app/models/progress.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/progress.py) to reflect that it's intentionally unstructured.
+3.  **Update User Response:** Add `created_at` to [UserResponse](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/schemas/user.py#67-72) if the frontend needs it.
+4.  **Enforce ML Output Schema:** Create a strict Pydantic model for the output of the ML generator to guarantee that `Date`, `Ingredients`, and the diet-type string are always present, replacing the messy unstructured list of dicts currently used.

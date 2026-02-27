@@ -8,12 +8,12 @@ def test_calculate_bmi():
 def test_calculate_bmr_male():
     # gender male, weight 70kg, height 175cm, age 25
     bmr = calculate_bmr('male', 70, 175, 25)
-    assert round(bmr, 2) == 1735.78 # 66.5 + 962.5 + 875.525 - 168.75
+    assert round(bmr, 2) == 1673.75
 
 def test_calculate_tdee():
-    # bmr 1735.78, MA (1.55)
-    tdee = calculate_tdee(1735.78, 'MA')
-    assert round(tdee, 2) == 2690.46
+    # bmr 1673.75, MA (1.55)
+    tdee = calculate_tdee(1673.75, 'MA')
+    assert round(tdee, 2) == 2594.31
 
 def test_calculate_macronutrients_healthy():
     tdee = 2000
