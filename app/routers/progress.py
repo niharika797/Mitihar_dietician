@@ -8,6 +8,7 @@ from ..services.progress_service import (
     calculate_and_store_calorie_adjustment,
     get_meal_log_by_id, update_meal_log, delete_meal_log,
     get_weight_history, get_weekly_report, calculate_and_store_streak,
+    calculate_adherence,
 )
 from ..schemas.progress import (
     MealLogCreate, WaterLogCreate, StepsLogCreate,
@@ -304,3 +305,22 @@ async def get_streak(
     """Return current consecutive logging streak and store it on today's ProgressLog."""
     streak = await calculate_and_store_streak(session, current_user.id)
     return {"streak_days": streak}
+
+
+# ─── GET /api/v1/progress/adherence/weekly ───────────────────────────────────
+
+@router.get("/adherence/weekly")
+async def get_weekly_adherence(
+    days: int = 7,
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Returns adherence percentage for the last N days (default 7, max 30).
+    Adherence = recommended meal slots actually logged / total recommended slots.
+    Only meals logged with a recommendation_id count as 'adhered'.
+    Custom meals (recommendation_id=None) do not count for adherence.
+    """
+    days = min(max(days, 1), 30)
+    result = await calculate_adherence(session, current_user.id, days)
+    return result

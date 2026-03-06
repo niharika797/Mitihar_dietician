@@ -53,6 +53,7 @@ class DietPlanService:
             created_at=datetime.now(),
             meals=meal_plan.get("meals", []),
             ingredient_checklist=meal_plan.get("ingredient_checklist", []),
+            version=1,
         )
 
     # ------------------------------------------------------------------
@@ -60,13 +61,36 @@ class DietPlanService:
     # ------------------------------------------------------------------
 
     async def store_diet_plan(self, diet_plan: DietPlan, *, session: AsyncSession) -> int:
-        """Insert a new recommendation row and return its id."""
+        """
+        Soft-delete any existing active plan, then insert a new one.
+        New plan version = previous version + 1 (so version history is trackable).
+        Returns the new recommendation id.
+        """
+        # Find current active plan to read its version before soft-deleting
+        existing_result = await session.execute(
+            select(Recommendation)
+            .where(
+                Recommendation.patient_id == int(diet_plan.user_id),
+                Recommendation.is_active == True,
+            )
+            .order_by(Recommendation.created_at.desc())
+            .limit(1)
+        )
+        existing = existing_result.scalars().first()
+
+        next_version = 1
+        if existing is not None:
+            next_version = (existing.version or 1) + 1
+            existing.is_active = False  # soft-delete previous plan
+            await session.flush()
+
         rec = Recommendation(
             patient_id=int(diet_plan.user_id),
             week_start_date=date.today(),
             meals=diet_plan.meals,
             ingredient_checklist=diet_plan.ingredient_checklist,
             is_active=True,
+            version=next_version,
         )
         session.add(rec)
         await session.flush()
@@ -91,6 +115,7 @@ class DietPlanService:
             created_at=rec.created_at,
             meals=rec.meals or [],
             ingredient_checklist=rec.ingredient_checklist or [],
+            version=rec.version or 1,
         )
 
     async def update_diet_plan(self, patient_id_str: str, updated_plan: DietPlan, *, session: AsyncSession) -> bool:

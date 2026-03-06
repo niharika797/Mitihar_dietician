@@ -11,5 +11,6 @@ class DietPlanResponse(BaseModel):
     created_at: Optional[datetime] = None
     meals: list[dict] = []
     ingredient_checklist: list[dict] = []
+    version: int = 1
 
     model_config = {"from_attributes": False}

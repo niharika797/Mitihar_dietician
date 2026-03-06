@@ -6,7 +6,8 @@ class OnboardingRequest(BaseModel):
     date_of_birth: date
     health_goals: list[str] = Field(default_factory=list)
     medical_conditions: list[str] = Field(default_factory=list)
-    food_allergies: list[str] = Field(default_factory=list)
+    food_allergies: list[str] = Field(default_factory=list, min_length=1)
+    # mandatory — patient must list at least one allergy or "None"
     target_weight_kg: float = Field(..., gt=0)
     meals_per_day: Literal[3, 5]
     sleep_hours: float = Field(..., gt=0, le=24)
@@ -17,6 +18,10 @@ class OnboardingRequest(BaseModel):
     fasting_days: list[str] = Field(default_factory=list)
     smoking: bool = False
     alcohol: bool = False
+    pace_preference: Optional[str] = Field(default=None)
+    # "slow" | "moderate" | "fast"
+    eating_habits: list[str] = Field(default_factory=list)
+    # e.g. ["skips_breakfast", "late_night_eating", "irregular_meals"]
 
     @field_validator("date_of_birth")
     @classmethod
@@ -55,6 +60,8 @@ class PatientProfileResponse(BaseModel):
     water_glasses: int
     occupation: Optional[str]
     nonveg_meals_per_week: int
+    pace_preference: Optional[str] = None
+    eating_habits: list = []
     bmi: Optional[float]
     bmr: Optional[float]
     tdee: Optional[float]

@@ -5,7 +5,7 @@ from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from .core.config import settings
-from .core.middleware import SubscriptionCheckMiddleware, DoctorIsolationMiddleware
+from .core.middleware import SubscriptionCheckMiddleware, DoctorIsolationMiddleware, AdminIPWhitelistMiddleware
 from .routers import auth, users, diet_plans
 from .routers.calculations import router as calculations_router
 from .routers.progress import router as progress_router
@@ -26,6 +26,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --- Middleware (outermost first) ---
+app.add_middleware(AdminIPWhitelistMiddleware)
 app.add_middleware(DoctorIsolationMiddleware)
 app.add_middleware(SubscriptionCheckMiddleware)
 

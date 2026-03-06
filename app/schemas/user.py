@@ -50,6 +50,9 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    doctor_code: Optional[str] = Field(default=None)
+    # If provided, patient connects to a doctor immediately on registration.
+    # The code must be a valid, unused SubscriptionCode.
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None

@@ -12,7 +12,7 @@ from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from ..models.db_models import MealLog, ProgressLog
+from ..models.db_models import MealLog, ProgressLog, Patient
 
 
 # ---------------------------------------------------------------------------
@@ -23,8 +23,8 @@ async def log_meal(
     session: AsyncSession,
     patient_id: int,
     data: dict,
-) -> None:
-    """Insert a row into meal_logs."""
+) -> MealLog:
+    """Insert a row into meal_logs. Returns the created MealLog."""
     entry = MealLog(
         patient_id=patient_id,
         logged_date=date.today(),
@@ -34,10 +34,81 @@ async def log_meal(
         carbs_g=data.get("carbs", 0),
         fat_g=data.get("fat", 0),
         fiber_g=data.get("fiber", 0),
+        recommendation_id=data.get("recommendation_id"),  # nullable — None for custom meals
     )
     session.add(entry)
     await session.flush()
+    return entry
 
+
+async def calculate_adherence(
+    session: AsyncSession,
+    patient_id: int,
+    days: int = 7,
+) -> dict:
+    """
+    Adherence = (meal slots logged / meal slots recommended) * 100 for each day.
+
+    Logic:
+      - For each day in the last N days, count distinct meal_types in meal_logs
+        where recommendation_id IS NOT NULL (i.e., patient logged a recommended meal).
+      - Compare against the patient's meals_per_day setting.
+      - Return day-by-day breakdown and overall weekly percentage.
+    """
+    from sqlalchemy import func as sa_func
+    today = date.today()
+    start = today - timedelta(days=days - 1)
+
+    # Get patient's meals_per_day target
+    patient_result = await session.execute(
+        select(Patient.meals_per_day, Patient.id).where(Patient.id == patient_id)
+    )
+    patient_row = patient_result.first()
+    meals_per_day_target = patient_row.meals_per_day if patient_row else 5
+
+    # Count logged recommended meals per day
+    result = await session.execute(
+        select(
+            MealLog.logged_date,
+            sa_func.count(sa_func.distinct(MealLog.meal_type)).label("logged_slots"),
+        )
+        .where(
+            MealLog.patient_id == patient_id,
+            MealLog.logged_date >= start,
+            MealLog.recommendation_id.isnot(None),  # only recommended meals count
+        )
+        .group_by(MealLog.logged_date)
+        .order_by(MealLog.logged_date)
+    )
+    logged_by_day = {str(r.logged_date): int(r.logged_slots) for r in result.all()}
+
+    daily = []
+    total_logged = 0
+    total_possible = 0
+
+    for i in range(days):
+        day = start + timedelta(days=i)
+        day_str = str(day)
+        logged = logged_by_day.get(day_str, 0)
+        possible = meals_per_day_target
+        pct = round((logged / possible) * 100, 1) if possible > 0 else 0.0
+        total_logged += logged
+        total_possible += possible
+        daily.append({
+            "date": day_str,
+            "logged_slots": logged,
+            "target_slots": possible,
+            "adherence_pct": pct,
+        })
+
+    overall_pct = round((total_logged / total_possible) * 100, 1) if total_possible > 0 else 0.0
+    return {
+        "period_days": days,
+        "week_start": str(start),
+        "week_end": str(today),
+        "overall_adherence_pct": overall_pct,
+        "daily": daily,
+    }
 
 # ---------------------------------------------------------------------------
 # Progress-log upserts  (one row per patient + date)

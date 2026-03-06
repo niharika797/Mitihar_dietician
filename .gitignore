@@ -35,3 +35,7 @@ Thumbs.db
 
 # MongoDB
 *.bson
+
+# Secret Keys & Configs
+client_secret_*.json
+*.json

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import date, datetime
 from typing import Optional
 
@@ -9,6 +9,8 @@ class MealLogCreate(BaseModel):
     carbs: Optional[float] = 0
     fat: Optional[float] = 0
     fiber: Optional[float] = 0
+    recommendation_id: Optional[int] = Field(default=None)
+    # ID of the recommendation this meal was taken from. Null for custom meals.
 
 class WaterLogCreate(BaseModel):
     glasses: int

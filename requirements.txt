@@ -1,4 +1,5 @@
 fastapi
+google-auth
 uvicorn
 pydantic
 python-jose[cryptography]

@@ -31,6 +31,8 @@ class FoodItem(Base):
     ingredients         = Column(JSONB, nullable=False, default=[])  # [{"name": str, "amount_g": float}]
     source              = Column(String(20), nullable=False, default="manual")
     is_verified         = Column(Boolean, nullable=False, default=False)
+    image_url           = Column(String(500), nullable=True)
+    # URL to food image — populated by ETL script in Phase 6
     created_at          = Column(DateTime(timezone=True), server_default=func.now())
     updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -94,6 +96,7 @@ class Doctor(Base):
     patients          = relationship("Patient", back_populates="doctor", foreign_keys="Patient.doctor_id")
     patient_requests  = relationship("PatientRequest", back_populates="doctor")
     subscription_codes = relationship("SubscriptionCode", back_populates="doctor")
+    clinical_notes    = relationship("ClinicalNote", foreign_keys="ClinicalNote.doctor_id", overlaps="doctor")
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +162,12 @@ class Patient(Base):
     nonveg_meals_per_week = Column(Integer, default=3)
     role                  = Column(String(10), default="patient")
     is_active             = Column(Boolean, default=True)
+    google_id             = Column(String(128), unique=True, nullable=True)
+    # Stable Google 'sub' claim — set on first Google Sign-In, never changes
+    pace_preference       = Column(String(20), nullable=True)
+    # valid values: "slow" | "moderate" | "fast" — patient's preferred weight-loss pace
+    eating_habits         = Column(JSONB, default=[])
+    # e.g. ["skips_breakfast", "late_night_eating", "irregular_meals"]
     created_at            = Column(DateTime(timezone=True), server_default=func.now())
     updated_at            = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -301,3 +310,52 @@ class SubscriptionCode(Base):
     # relationships
     doctor             = relationship("Doctor", back_populates="subscription_codes")
     used_by_patient    = relationship("Patient")
+
+
+# ---------------------------------------------------------------------------
+# ClinicalNote
+# ---------------------------------------------------------------------------
+
+class ClinicalNote(Base):
+    __tablename__ = "clinical_notes"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    doctor_id   = Column(Integer, ForeignKey("doctors.id"), nullable=False)
+    patient_id  = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    note_type   = Column(String(20), nullable=False, default="general")
+    # "general" | "dietary" | "medical" | "progress"
+    content     = Column(Text, nullable=False)
+    is_private  = Column(Boolean, default=True)   # True = doctor-only, False = visible to patient
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at  = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # relationships
+    doctor      = relationship("Doctor", overlaps="clinical_notes")
+    patient     = relationship("Patient")
+
+    __table_args__ = (
+        Index("idx_cn_doctor_patient", "doctor_id", "patient_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# AuditLog
+# ---------------------------------------------------------------------------
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    actor_id    = Column(Integer, nullable=False)   # doctor.id or admin.id
+    actor_role  = Column(String(10), nullable=False)  # "doctor" | "admin"
+    action      = Column(String(100), nullable=False)  # e.g. "accept_request", "deactivate_doctor"
+    entity_type = Column(String(50), nullable=True)   # e.g. "patient", "doctor", "recipe"
+    entity_id   = Column(Integer, nullable=True)      # ID of the affected record
+    detail      = Column(JSONB, default={})           # any extra context
+    ip_address  = Column(String(45), nullable=True)   # IPv4 or IPv6
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_al_actor", "actor_id", "actor_role"),
+        Index("idx_al_created", "created_at"),
+    )

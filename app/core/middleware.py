@@ -137,3 +137,82 @@ class DoctorIsolationMiddleware(BaseHTTPMiddleware):
         request.state.doctor_id = doctor_id
 
         return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Admin IP-whitelist middleware (DB query only on /admin routes)
+# ---------------------------------------------------------------------------
+
+from sqlalchemy import select as sa_select
+from .database import AsyncSessionLocal
+
+
+class AdminIPWhitelistMiddleware(BaseHTTPMiddleware):
+    """
+    Checks the requesting IP against the admin's allowed_ips list (stored in DB).
+    Only fires on /admin routes.
+    If no admin JWT present, skips check (route dep will reject unauthenticated).
+    If allowed_ips is empty list [], IP whitelisting is DISABLED (any IP allowed).
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        admin_prefix = f"{settings.API_V1_STR}/admin"
+
+        # Only intercept admin routes
+        if not path.startswith(admin_prefix):
+            return await call_next(request)
+
+        # Skip the login route (admin needs to authenticate first)
+        if path.startswith(f"{admin_prefix}/login") or path.startswith(f"{settings.API_V1_STR}/auth"):
+            return await call_next(request)
+
+        token = _extract_token(request)
+        if token is None:
+            return await call_next(request)  # no token → route dep will 401
+
+        payload = _safe_decode(token)
+        if payload is None:
+            return await call_next(request)  # bad token → route dep will 401
+
+        if payload.get("role") != "admin":
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Admin access required"},
+            )
+
+        admin_id = payload.get("admin_id")
+        if not admin_id:
+            return await call_next(request)
+
+        # DB lookup — only happens for authenticated admin requests
+        try:
+            from ..models.db_models import Admin as AdminModel
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    sa_select(AdminModel.allowed_ips).where(AdminModel.id == admin_id)
+                )
+                allowed_ips = result.scalar_one_or_none()
+
+            # If allowed_ips is empty or None, whitelisting is disabled
+            if not allowed_ips:
+                return await call_next(request)
+
+            client_ip = request.client.host if request.client else "unknown"
+            if client_ip not in allowed_ips:
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": "IP not whitelisted",
+                        "code": "IP_NOT_ALLOWED",
+                    },
+                )
+        except Exception:
+            # If DB query fails, allow through — don't lock admins out
+            import logging
+            logging.getLogger(__name__).warning(
+                "IP whitelist check failed for admin %s — allowing through", admin_id
+            )
+
+        return await call_next(request)

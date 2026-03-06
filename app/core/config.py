@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     # CORS settings
     CORS_ORIGINS: Union[str, List[str]] = ["http://localhost:3000"]
 
+    # Google OAuth (client-side ID token flow)
+    # Get these from https://console.cloud.google.com → APIs & Services → Credentials
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None   # kept for future server-side flow
+    GOOGLE_REDIRECT_URI: Optional[str] = None    # kept for future server-side flow
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

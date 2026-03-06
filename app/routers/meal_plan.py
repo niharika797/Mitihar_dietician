@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
@@ -30,6 +30,14 @@ async def adjust_meal_plan(
     try:
         diet_service = DietPlanService()
         
+        # Compute age (needed in user_data for meal generator's target calculations)
+        if current_user.date_of_birth:
+            today = date.today()
+            dob = current_user.date_of_birth
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        else:
+            age = 30
+
         # Use stored TDEE from patient profile (set during onboarding)
         # Fall back to on-the-fly calculation only if tdee not yet stored
         if current_user.tdee:
@@ -39,12 +47,6 @@ async def adjust_meal_plan(
             logging.getLogger(__name__).warning(
                 f"Patient {current_user.id} has no stored TDEE — falling back to calculation"
             )
-            if current_user.date_of_birth:
-                today = date.today()
-                dob = current_user.date_of_birth
-                age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-            else:
-                age = 30
             from ..services.meal_generator.calculations import calculate_bmr, calculate_tdee
             bmr = calculate_bmr(
                 current_user.gender,
@@ -87,11 +89,12 @@ async def adjust_meal_plan(
             "health_condition": current_user.health_condition or "Healthy",
             "region": current_user.region or "North",
             "target_calories": target_calories,
+            "age": age,
         }
         
         # Generate new plan with adjusted calories
         new_plan = await diet_service.generate_diet_plan(user_data, session)
-        await diet_service.update_diet_plan(str(current_user.id), new_plan, session=session)
+        await diet_service.store_diet_plan(new_plan, session=session)
         
         return {
             "message": "Meal plan adjusted successfully",
@@ -176,13 +179,14 @@ async def get_shopping_list(
     # Aggregate duplicates by ingredient name (case-insensitive)
     aggregated: dict[str, dict] = {}
     for item in checklist:
-        name = str(item.get("ingredient") or item.get("name") or "Unknown").strip()
+        name = str(item.get("ingredient") or item.get("Ingredient") or item.get("name") or "Unknown").strip()
         key = name.lower()
         if key not in aggregated:
             aggregated[key] = {
                 "ingredient": name,
-                "quantity": item.get("quantity") or item.get("amount") or "",
-                "unit": item.get("unit") or "",
+                "quantity": item.get("quantity") or item.get("Total Amount (g)") or item.get("amount") or "",
+                "unit": item.get("unit") or item.get("Unit") or ("g" if item.get("Total Amount (g)") else ""),
+                "at_home": item.get("at_home", False)
             }
         # If already exists, quantities are left as-is (unit mismatch risk)
         # Full numeric aggregation deferred to Phase 2 after standardising units
@@ -224,4 +228,69 @@ async def get_shopping_list(
     return {
         "total_items": total_items,
         "grouped": grouped,
+    }
+
+
+# ─── POST /api/v1/meal-plan/shopping-list/toggle ─────────────────────────
+
+@router.post("/shopping-list/toggle")
+async def toggle_ingredient_at_home(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    ingredient_name: str = Query(..., min_length=1),
+    at_home: bool = Query(...),
+):
+    """
+    Mark an ingredient as 'available at home' or 'need to buy'.
+    Stores the toggle state on the active Recommendation's ingredient_checklist JSONB.
+
+    Each checklist item gets an 'at_home' boolean field.
+    Matching is case-insensitive on ingredient name.
+
+    Returns 404 if no active plan.
+    Returns 404 if the ingredient is not found in the checklist.
+    """
+    rec_result = await session.execute(
+        select(Recommendation)
+        .where(
+            Recommendation.patient_id == current_user.id,
+            Recommendation.is_active == True,
+        )
+        .order_by(Recommendation.created_at.desc())
+        .limit(1)
+    )
+    rec = rec_result.scalars().first()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No active meal plan found")
+
+    checklist = list(rec.ingredient_checklist or [])
+    search = ingredient_name.strip().lower()
+    found = False
+
+    updated_checklist = []
+    for item in checklist:
+        name = str(item.get("ingredient") or item.get("Ingredient") or item.get("name") or "").lower()
+        if name == search:
+            item = dict(item)      # copy — JSONB items are read-only dicts
+            item["at_home"] = at_home
+            found = True
+        updated_checklist.append(item)
+
+    if not found:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Ingredient '{ingredient_name}' not found in checklist",
+        )
+
+    from sqlalchemy import update as sa_update
+    await session.execute(
+        sa_update(Recommendation)
+        .where(Recommendation.id == rec.id)
+        .values(ingredient_checklist=updated_checklist)
+    )
+    await session.flush()
+    return {
+        "ingredient": ingredient_name,
+        "at_home": at_home,
+        "message": f"Marked as {'available at home' if at_home else 'need to buy'}",
     }

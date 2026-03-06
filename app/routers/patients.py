@@ -65,6 +65,8 @@ async def onboard_patient(
             fasting_days=body.fasting_days,
             smoking=body.smoking,
             alcohol=body.alcohol,
+            pace_preference=body.pace_preference,
+            eating_habits=body.eating_habits,
             bmi=round(bmi, 2),
             bmr=round(bmr, 2),
             tdee=round(tdee, 2),
