@@ -1,35 +1,15 @@
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import Optional
 from datetime import datetime
 
-class MealBase(BaseModel):
-    name: str
-    calories: float
-    proteins: float
-    carbs: float
-    fats: float
-    ingredients: List[str]
-    instructions: str
+class DietPlanResponse(BaseModel):
+    """
+    Replaces the legacy app/models/diet_plan.py DietPlan class.
+    Matches the exact same fields so existing endpoints need only a class name swap.
+    """
+    user_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    meals: list[dict] = []
+    ingredient_checklist: list[dict] = []
 
-
-class DietPlanBase(BaseModel):
-    daily_calories: float
-    meals_per_day: int
-    meal_plan: Dict[str, List[MealBase]]
-
-class DietPlanCreate(DietPlanBase):
-    user_id: str
-
-class DietPlanUpdate(BaseModel):
-    daily_calories: Optional[float] = None
-    meals_per_day: Optional[int] = None
-    meal_plan: Optional[Dict[str, List[MealBase]]] = None
-
-class DietPlanResponse(DietPlanBase):
-    id: str
-    user_id: str
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": False}

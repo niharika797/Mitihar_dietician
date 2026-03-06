@@ -15,6 +15,13 @@ from .calculations import calculate_bmi, calculate_bmr, calculate_tdee, calculat
 
 logger = logging.getLogger(__name__)
 
+# ── Upgrade 4: Slot-quality blocklist ─────────────────────────────────────────
+BLOCKLIST_PATTERNS = [
+    "chutney", "powder", "masala powder", "pickle", "achar",
+    "papad", "papadum", "murabba", "jam", "sauce", "dip",
+]
+PROTECTED_SLOTS = ["grain", "dal_protein", "main_dish", "sabzi"]
+
 class MealPlanTargets(BaseModel):
     """
     Container for all nutritional targets of a meal plan.
@@ -258,18 +265,38 @@ class MealGenerator:
 
         # Map morning/evening snacks to Morning_Snack for DB querying
         meal_time_mapping = {
-            "Breakfast": "Breakfast",
-            "Lunch": "Lunch",
-            "Dinner": "Dinner",
+            "Breakfast":    "Breakfast",
+            "Lunch":        "Lunch",
+            "Dinner":       "Dinner",
             "MorningSnacks": "Morning_Snack",
-            "EveningSnacks": "Morning_Snack",
+            "EveningSnacks": "Evening_Snack",   # separate pool from morning snack
         }
 
-        used_food_ids = set()
+        daily_used_ids  = set()   # HARD block — cleared every day, no same dish twice per day
+        weekly_used_ids = set()   # SOFT preference — persists all 7 days, avoids repeats across week
+
+        # ── Upgrade 1: Non-veg weekly budget pre-allocation ────────────────
+        nonveg_assigned: set = set()   # (day_idx, db_meal_time) tuples
+        if diet_type == "Non-Vegetarian":
+            nonveg_budget = min(int(user_data.get("nonveg_meals_per_week", 3)), 4)
+            candidate_slots = [
+                (d, mt) for d in range(7) for mt in ["Lunch", "Dinner"]
+            ]
+            random.shuffle(candidate_slots)
+            days_taken: set = set()
+            for d, mt in candidate_slots:
+                if len(nonveg_assigned) >= nonveg_budget:
+                    break
+                if d in days_taken:      # no two non-veg meals on same day
+                    continue
+                nonveg_assigned.add((d, mt))
+                days_taken.add(d)
+            logger.info(f"Non-veg budget: {nonveg_budget}, assigned slots: {nonveg_assigned}")
 
         for day_offset in range(7):
             current_date = start_date + timedelta(days=day_offset)
             date_str = current_date.strftime("%Y-%m-%d")
+            daily_used_ids.clear()   # new day → today's slate is clean
 
             for meal_type in meal_types:
                 if meal_type not in ctx.meal_targets:
@@ -279,11 +306,17 @@ class MealGenerator:
                 if not db_meal_time:
                     continue
                 
-                # Fetch Template
+                # ── Upgrade 1: per-slot diet type ────────────────────────
+                if (day_offset, db_meal_time) in nonveg_assigned:
+                    query_diet = "Non-Vegetarian"
+                else:
+                    query_diet = "Vegetarian"   # all non-assigned slots are veg
+
+                # Fetch Template (use query_diet for template lookup)
                 stmt = select(MealTemplate).where(
                     MealTemplate.meal_time == db_meal_time,
                     MealTemplate.region == region,
-                    MealTemplate.diet_type == diet_type,
+                    MealTemplate.diet_type == query_diet,
                     MealTemplate.plan_type == plan_type
                 )
                 result = await session.execute(stmt)
@@ -292,21 +325,32 @@ class MealGenerator:
                 if not template:
                     stmt_fallback = select(MealTemplate).where(
                         MealTemplate.meal_time == db_meal_time,
-                        MealTemplate.diet_type == diet_type,
+                        MealTemplate.diet_type == query_diet,
                         MealTemplate.plan_type == plan_type
                     )
                     result = await session.execute(stmt_fallback)
                     template = result.scalars().first()
 
+                # If still no template for query_diet, try Vegetarian template
+                if not template and query_diet != "Vegetarian":
+                    stmt_veg = select(MealTemplate).where(
+                        MealTemplate.meal_time == db_meal_time,
+                        MealTemplate.region == region,
+                        MealTemplate.diet_type == "Vegetarian",
+                        MealTemplate.plan_type == plan_type
+                    )
+                    result = await session.execute(stmt_veg)
+                    template = result.scalars().first()
+
                 if not template:
-                    logger.warning(f"No template found for {db_meal_time}, {diet_type}, {plan_type}")
+                    logger.warning(f"No template found for {db_meal_time}, {query_diet}, {plan_type}")
                     continue
 
                 if True:  # single meal per day per meal_type
                     meal_option = {
                         "Date": date_str,
                         "Meal Type": meal_type,
-                        "Diet Type": diet_type,
+                        "Diet Type": query_diet,
                         "Region": region,
                         "Total Calories": 0.0,
                         "Total Protein": 0.0,
@@ -326,7 +370,9 @@ class MealGenerator:
                         target_cal = ctx.meal_targets[meal_type] * cal_pct
 
                         food_item = await self._find_food_item(
-                            session, slot_type, diet_type, region, db_meal_time, plan_type, used_food_ids
+                            session, slot_type, query_diet, region, db_meal_time, plan_type,
+                            daily_used_ids, weekly_used_ids, target_cal,
+                            user_diet=diet_type,   # original user diet for breakfast-egg exception
                         )
                         if not food_item:
                             if required:
@@ -336,7 +382,8 @@ class MealGenerator:
                             else:
                                 continue
                         
-                        used_food_ids.add(food_item.id)
+                        daily_used_ids.add(food_item.id)
+                        weekly_used_ids.add(food_item.id)
 
                         if float(food_item.cal_per_serving) > 0:
                             factor = target_cal / float(food_item.cal_per_serving)
@@ -354,6 +401,9 @@ class MealGenerator:
 
                         for ing in food_item.ingredients:
                             name = ing["name"]
+                            # ── Upgrade 3B: skip pantry staples ──────────
+                            if ing.get("is_pantry_staple"):
+                                continue
                             amt = float(ing["amount_g"]) * factor
                             meal_option["Ingredients Scaling"][name] = round(meal_option["Ingredients Scaling"].get(name, 0) + amt, 2)
                     
@@ -365,8 +415,6 @@ class MealGenerator:
                         meal_option["Total Fiber"] = round(meal_option["Total Fiber"], 2)
                         meal_option["Total Fat"] = round(meal_option["Total Fat"], 2)
                         organized_meals.append(meal_option)
-
-        used_food_ids.clear()
 
         ingredient_checklist = self.generate_ingredient_checklist(organized_meals)
 
@@ -390,45 +438,129 @@ class MealGenerator:
             "ingredient_checklist": checklist_records
         })
 
-    async def _find_food_item(self, session: AsyncSession, slot_type: str, diet_type: str, region: str, meal_time: str, plan_type: str, used_ids: set) -> Optional[FoodItem]:
-        # Try finding non-used items in preferred region
-        stmt = select(FoodItem).where(
-            FoodItem.slot_type == slot_type,
-            FoodItem.diet_type == diet_type,
-            FoodItem.region_tags.any(region),
-            FoodItem.meal_time_tags.any(meal_time),
-            FoodItem.plan_type_tags.any(plan_type)
-        )
-        if used_ids:
-            stmt = stmt.where(FoodItem.id.notin_(used_ids))
-        
-        result = await session.execute(stmt)
-        items = result.scalars().all()
+    # ── Upgrade 2: Diet-type fallback chain ────────────────────────────────────
+    @staticmethod
+    def _diet_fallback_chain(user_diet: str, meal_time: str) -> list[str]:
+        """Return ordered list of diet_types to try for a given slot."""
+        if meal_time in ("Breakfast", "Morning_Snack", "Evening_Snack"):
+            if user_diet in ("Non-Vegetarian", "Eggetarian"):
+                return ["Eggetarian", "Vegetarian"]
+            return ["Vegetarian"]
+        # Lunch / Dinner
+        if user_diet == "Non-Vegetarian":
+            return ["Non-Vegetarian", "Eggetarian", "Vegetarian"]
+        if user_diet == "Eggetarian":
+            return ["Eggetarian", "Vegetarian"]
+        return ["Vegetarian"]
 
-        if not items:
-            # Fallback 1: Ignore exact region, but exclude used_ids
-            stmt = select(FoodItem).where(
+    async def _find_food_item(
+        self,
+        session: AsyncSession,
+        slot_type: str,
+        diet_type: str,
+        region: str,
+        meal_time: str,
+        plan_type: str,
+        daily_used_ids: set,
+        weekly_used_ids: set,
+        target_cal: float = 0,
+        user_diet: str = None,   # original user diet — used for breakfast-egg fallback
+    ) -> Optional[FoodItem]:
+        """
+        4-level waterfall wrapped with a diet-type fallback chain.
+        BETWEEN and daily_used_ids are NEVER dropped.
+
+        user_diet: the patient's original diet preference (Non-Vegetarian / Eggetarian).
+                   diet_type: the per-slot override (query_diet).
+                   The fallback chain uses user_diet for breakfast so Non-Veg/Eggetarian
+                   users can still get egg dishes at Breakfast even though query_diet="Vegetarian".
+        """
+        # Use user_diet for chain decisions so breakfast-egg exception fires correctly.
+        # Fall back to diet_type if user_diet not provided (backward compat).
+        chain_diet = user_diet if user_diet is not None else diet_type
+        diet_chain = self._diet_fallback_chain(chain_diet, meal_time)
+
+        for try_diet in diet_chain:
+            result = await self._find_food_item_single_diet(
+                session, slot_type, try_diet, region, meal_time, plan_type,
+                daily_used_ids, weekly_used_ids, target_cal,
+            )
+            if result is not None:
+                return result
+
+        return None
+
+    async def _find_food_item_single_diet(
+        self,
+        session: AsyncSession,
+        slot_type: str,
+        diet_type: str,
+        region: str,
+        meal_time: str,
+        plan_type: str,
+        daily_used_ids: set,
+        weekly_used_ids: set,
+        target_cal: float = 0,
+    ) -> Optional[FoodItem]:
+        """Run the 4-level waterfall for a single diet_type."""
+        from sqlalchemy import func as sa_func
+
+        # ── Upgrade 4: order by calorie proximity, take top 5 ─────────────
+        def _order_clause():
+            if target_cal > 0:
+                return sa_func.abs(FoodItem.cal_per_serving - target_cal)
+            return FoodItem.id  # stable fallback
+
+        def base_stmt():
+            s = select(FoodItem).where(
                 FoodItem.slot_type == slot_type,
                 FoodItem.diet_type == diet_type,
                 FoodItem.meal_time_tags.any(meal_time),
-                FoodItem.plan_type_tags.any(plan_type)
+                FoodItem.plan_type_tags.any(plan_type),
             )
-            if used_ids:
-                stmt = stmt.where(FoodItem.id.notin_(used_ids))
-            result = await session.execute(stmt)
-            items = result.scalars().all()
-        
-        if not items:
-            # Fallback 2: Reset history constraints
-            stmt = select(FoodItem).where(
-                FoodItem.slot_type == slot_type,
-                FoodItem.diet_type == diet_type,
-            )
-            result = await session.execute(stmt)
-            items = result.scalars().all()
+            if target_cal > 0:
+                s = s.where(FoodItem.cal_per_serving.between(target_cal / 3.0, target_cal / 0.5))
+            if daily_used_ids:
+                s = s.where(FoodItem.id.notin_(daily_used_ids))
+            return s.order_by(_order_clause()).limit(5)
 
-        if items:
-            return random.choice(items)
+        def _pick(items: list) -> Optional[FoodItem]:
+            """Upgrade 4: apply blocklist filtering for protected slots."""
+            for item in items:
+                if slot_type in PROTECTED_SLOTS:
+                    name_lower = item.recipe_name.lower()
+                    if any(pat in name_lower for pat in BLOCKLIST_PATTERNS):
+                        continue
+                return item
+            return None
+
+        async def fetch(s) -> list:
+            return (await session.execute(s)).scalars().all()
+
+        # Level 1 — region + weekly memory
+        s = base_stmt().where(FoodItem.region_tags.any(region))
+        if weekly_used_ids:
+            s = s.where(FoodItem.id.notin_(weekly_used_ids))
+        if (picked := _pick(await fetch(s))) is not None:
+            return picked
+
+        # Level 2 — no region, keep weekly memory
+        s = base_stmt()
+        if weekly_used_ids:
+            s = s.where(FoodItem.id.notin_(weekly_used_ids))
+        if (picked := _pick(await fetch(s))) is not None:
+            return picked
+
+        # Level 3 — region, drop weekly memory
+        s = base_stmt().where(FoodItem.region_tags.any(region))
+        if (picked := _pick(await fetch(s))) is not None:
+            return picked
+
+        # Level 4 — no region, no weekly memory (BETWEEN still enforced)
+        s = base_stmt()
+        if (picked := _pick(await fetch(s))) is not None:
+            return picked
+
         return None
 
     def generate_ingredient_checklist(self, meals):
@@ -436,10 +568,17 @@ class MealGenerator:
         for meal in meals:
             ingredients_scaled = meal.get("Ingredients Scaling", {})
             for ingredient, amount in ingredients_scaled.items():
-                if ingredient in all_ingredients:
-                    all_ingredients[ingredient] += amount
+                # ── Upgrade 5: normalize to title case before grouping ────
+                normalized = ingredient.strip().title()
+                if normalized in all_ingredients:
+                    all_ingredients[normalized] += amount
                 else:
-                    all_ingredients[ingredient] = amount
+                    all_ingredients[normalized] = amount
+
+        # ── Upgrade 3B: skip pantry staples ───────────────────────────────
+        # (raw ingredient dicts with is_pantry_staple are in Ingredients Scaling
+        #  but here we only have name→total_g. Pantry filtering happens at
+        #  the Ingredients Scaling build step — see generate_meal_plan.)
 
         ingredients_df = pd.DataFrame([
             {"Ingredient": k, "Total Amount (g)": round(v, 2)}

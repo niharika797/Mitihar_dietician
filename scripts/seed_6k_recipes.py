@@ -331,7 +331,6 @@ def main():
             diet_raw  = str(row.get("Diet", "")).strip().lower()
             servings  = int(row.get("Servings", 4))
             ing_str   = str(row.get("TranslatedIngredients", ""))
-            instr     = str(row.get("TranslatedInstructions", ""))
 
             diet_type      = DIET_MAP.get(diet_raw, "Vegetarian")
             slot_type      = COURSE_TO_SLOT.get(course.lower(), "grain")
@@ -371,7 +370,6 @@ def main():
                 meal_time_tags      = meal_time_tags,
                 plan_type_tags      = PLAN_TYPE_TAGS_DEFAULT,
                 ingredients         = nutrition["ingredients"],
-                instructions        = instr[:2000] if instr else "",
                 source              = "6k_dataset",
                 is_verified         = False,
             )

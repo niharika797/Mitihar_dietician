@@ -21,7 +21,7 @@ class HealthCondition(str, Enum):
 class UserBase(BaseModel):
     email: EmailStr
     name: str
-    age: int = Field(..., gt=0)
+    age: Optional[int] = Field(None, gt=0)
     gender: str
     height: float = Field(..., gt=0)
     weight: float = Field(..., gt=0)
@@ -60,12 +60,22 @@ class UserUpdate(BaseModel):
     activity_level: Optional[ActivityLevel] = None
     diet: Optional[DietType] = None
     health_condition: Optional[HealthCondition] = None
-    diabetes_status: Optional[str] = None  # Add this if updates can include it
-    gym_goal: Optional[str] = None  # Add this if updates can include it
+    diabetes_status: Optional[str] = None
+    gym_goal: Optional[str] = None
     region: Optional[str] = None
 
-class UserResponse(UserBase):
-    id: str
-    meal_plan_purchased: bool
+class UserResponse(BaseModel):
+    """Response model that maps Patient ORM fields to the API contract."""
+    id: int
+    email: EmailStr
+    name: str
+    gender: str
+    height_cm: float
+    weight_kg: float
+    activity_level: str
+    diet_type: str
+    health_condition: Optional[str] = None
+    region: Optional[str] = None
+    is_active: bool = True
 
     model_config = ConfigDict(from_attributes=True)
