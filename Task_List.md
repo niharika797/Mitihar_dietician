@@ -1,468 +1,414 @@
 ## Complete Mityahar Code Task List
 
-> Last updated: Phase 0 ✅ complete · Phase 1 backend ~80% complete · Phase 6 ML engine partially complete
-> Legend: [x] = verified done from code · [ ] = not done · [~] = partial / column exists but logic incomplete
+> Last audited: 2026-03-08 — Sprint 2 complete, 95/95 tests passing
+> Legend: [x] = verified done from code · [ ] = not done · [~] = partial / logic incomplete
 
 ---
 
-## 🔴 PHASE 0 — Foundation (Do First, Everything Depends on This)
+## 🔴 PHASE 0 — Foundation
 
-### Database Migration — MongoDB → PostgreSQL
+### Database & Models
+- [x] SQLAlchemy 2.0 async + asyncpg + Alembic installed
+- [x] PyMongo / motor removed
+- [x] `app/core/database.py` — async engine + session factory
+- [x] All 10 DB tables as SQLAlchemy models:
+  - [x] `doctors`, `patients`, `admins`, `food_items`, `recommendations`
+  - [x] `meal_logs`, `progress_logs`, `patient_requests`, `subscription_codes`, `meal_templates`
+- [x] Alembic initial migration for all tables
+- [x] Dead MongoDB model files deleted
+- [x] `pace_preference` + `eating_habits` columns on `patients` ← confirmed: onboarding writes both
 
-- [x] Install SQLAlchemy 2.0 async + asyncpg + Alembic in requirements.txt
-- [x] Remove PyMongo and motor dependencies
-- [x] Create `app/core/database.py` — async PostgreSQL engine and session factory
-- [x] Create all 9 tables as SQLAlchemy models:
-  - [x] `doctors` table
-  - [x] `patients` table
-  - [x] `admins` table
-  - [x] `food_items` table
-  - [x] `recommendations` table
-  - [x] `meal_logs` table
-  - [x] `progress_logs` table
-  - [x] `patient_requests` table
-  - [x] `subscription_codes` table
-  - [x] `meal_templates` table ← 10th table added during Phase 0 (not in original list)
-- [x] Write Alembic initial migration for all 9 tables
-- [x] Delete all MongoDB model files (`app/models/diet_plan.py`, `app/models/meal_plan.py`, `app/models/meal_adjustment.py`, `app/models/progress.py`)
-- [x] Rewrite `app/models/user.py` as PostgreSQL SQLAlchemy model
+### Auth System
+- [x] `app/core/security.py` — JWT for 3 roles (patient / doctor / admin)
+- [x] `role`, `user_type` fields in JWT payload
+- [x] `get_current_patient()`, `get_current_doctor()`, `get_current_admin()` dependencies
+- [x] SubscriptionCheck middleware — reads `sub_status` from JWT (zero DB query)
+- [x] DoctorIsolationMiddleware — auto-scopes every doctor route to `doctor_id`
+- [x] bcrypt password hashing (passlib + monkeypatch applied)
+- [x] `POST /api/v1/auth/refresh` — JWT refresh token rotation
 
-### Authentication System — Three Roles
-
-- [x] Rewrite `app/core/security.py` — JWT generation for three roles (patient, doctor, admin)
-- [x] Add `role` field to JWT payload
-- [x] Add `user_type` field to JWT payload (standalone / doctor_connected)
-- [x] Create role-based dependency functions:
-  - [x] `get_current_patient()`
-  - [x] `get_current_doctor()`
-  - [x] `get_current_admin()`
-- [x] Create subscription check middleware — reads `sub_status` from JWT claim (zero DB query)
-- [x] Create doctor data isolation middleware — auto-scopes every doctor route to their `doctor_id`
-- [x] Verify password hashing is bcrypt — confirmed (passlib + bcrypt, monkeypatch applied)
-- [x] Add JWT refresh token rotation — `POST /api/v1/auth/refresh` built
-
-### Rate Limiting — Fix Existing
-
-- [ ] Replace in-memory slowapi with Redis-backed slowapi ← deferred to Phase 7 (production infra)
-- [x] Add rate limiting to auth endpoints — `20/minute` on `/token` and `/doctors/auth/login`
-- [ ] Add rate limiting to all progress log endpoints ← no `@limiter` on progress POST routes
-- [ ] Add rate limiting to all patient registration endpoints ← `/register` has no rate limit
+### Rate Limiting
+- [x] `20/minute` on `/token` and `/doctor/login`
+- [x] Rate limiting on `POST /auth/register` ← `@limiter.limit("10/minute")` added in Sprint 2
+- [x] Rate limiting on all 5 progress log POST endpoints ← added in Sprint 2
+- [ ] Redis-backed slowapi ← deferred to Phase 7
 
 ### Dead Code Cleanup
-
-- [x] Delete `app/schemas/diet_plan.py` (unused, conflicting) — replaced with clean DietPlanResponse
-- [x] Delete `app/models/meal_adjustment.py` (never used)
-- [x] Delete `app/services/Healthy.py` (broken Kaggle path)
-- [x] Delete `app/services/datasets for eyantra/` entire folder (never imported)
-- [x] Evaluate and delete `app/models/meal_plan.py` if unused — deleted
-- [x] Clean up `app/crud/` folder
+- [x] Deleted: `app/schemas/diet_plan.py`, `app/models/meal_adjustment.py`
+- [x] Deleted: `app/services/Healthy.py`, `app/services/datasets for eyantra/`
+- [x] Deleted: `app/models/meal_plan.py`, cleaned `app/crud/`
 
 ---
 
-**PHASE 0 SCORE: 25 / 28**
-Remaining 3: Redis rate limiting — all correctly deferred to Phase 7 production setup.
+**PHASE 0 SCORE: 27 / 28** — 1 remaining: Redis (deferred to Phase 7).
 
 ---
 
 ## 🟠 PHASE 1 — Patient Core Experience
 
-### Onboarding — Backend
+### Auth
+- [x] `POST /api/v1/auth/register` — dual flow: standalone (no code) + doctor-connected (with code)
+- [x] `POST /api/v1/auth/token` — patient login, JWT + refresh
+- [x] `POST /api/v1/auth/doctor/login` — doctor login, JWT + refresh
+- [x] `POST /api/v1/auth/admin/login` — admin login, JWT + refresh
+- [x] `POST /api/v1/auth/google/verify` — Google ID token verification, patient upsert, links existing accounts
+- [ ] Firebase Cloud Messaging device token storage on login ← Phase 5
 
-- [ ] Rewrite `POST /api/v1/auth/register` — split into two flows (standalone vs doctor-connected) ← deferred Sprint 1
-- [x] Target weight, date of birth — in OnboardingRequest with past-date validator
-- [~] Health goals ✅ stored · pace_preference ❌ missing (requires new DB column + Alembic)
-- [x] Medical conditions (15+ as JSONB array)
-- [~] Food allergies — field exists and stored, but not enforced as non-empty (defaults to [])
-- [x] Dietary preferences (list[str]) — added Block J
-- [x] Regional food preference — captured at registration
-- [x] Meals per day — `Literal[3, 5]` enforced
-- [x] Fasting days — list[str] added Block J
-- [x] Lifestyle fields — sleep, water, occupation, smoking, alcohol — all stored
-- [ ] Current eating habits fields ← requires new DB columns + Alembic migration (deferred Sprint 1)
-- [x] `POST /api/v1/patients/request-doctor` — patient submits request to doctor
-- [x] `GET /api/v1/patients/request-status` — patient checks approval status (Block F)
-- [x] Auto-calculate and STORE BMI, BMR, TDEE on profile completion
-- [x] Auto-recalculate BMI/BMR/TDEE when patient updates weight or height (Block G)
-- [x] Auto-trigger first meal plan generation immediately after onboarding (Block F, fire-and-soft-fail)
-- [x] Add disclaimer acceptance logging — `POST /api/v1/patients/disclaimer` stores UTC timestamp
-- [ ] `POST /api/v1/auth/google` — Firebase Google OAuth ← requires Firebase Admin SDK (deferred Sprint 6)
+### Onboarding
+- [x] `POST /api/v1/patients/onboarding` — stores all fields + calculates BMI/BMR/TDEE
+  - [x] Target weight, date of birth (past-date validator)
+  - [x] Health goals, medical conditions (15+)
+  - [x] Dietary preferences, regional preference, meals per day, fasting days
+  - [x] Lifestyle fields: sleep, water, occupation, smoking, alcohol
+  - [x] pace_preference + eating_habits ← columns exist, written at onboarding
+  - [x] nonveg_meals_per_week
+  - [x] food_allergies — `Field(..., min_length=1)` enforced ← fixed in Sprint 2
+- [x] Auto-calculate + store BMI, BMR, TDEE on onboarding
+- [x] Auto-recalculate BMI/BMR/TDEE when patient updates weight or height (`PUT /users/me`)
+- [x] Auto-trigger first meal plan generation after onboarding (fire-and-soft-fail)
+- [x] `POST /api/v1/patients/disclaimer` — stores `disclaimer_accepted_at` UTC timestamp
 
-### Meal Plan — Backend Fixes
+### Patient Subscription & Doctor Connection
+- [x] `POST /api/v1/patients/activate` — patient enters subscription code, links to doctor
+- [x] `POST /api/v1/patients/request-doctor` — patient requests connection (alternative to code)
+- [x] `GET /api/v1/patients/request-status` — patient polls approval status
 
-- [x] Fix calorie target — replaced hardcoded `2000` with patient's stored TDEE
-- [x] Fix plan regeneration — old plan soft-deleted, new one generated (no HTTP 400 block)
-- [~] Plan versioning — previous plans preserved via soft-delete ✅ but `version` counter never increments ❌ (deferred Sprint 1)
-- [ ] Fix plan storage — change to food_item reference IDs ← requires Phase 6 ML rewrite (deferred)
-- [x] `GET /api/v1/meal-plan/week` — grouped by Date field, 7-day dict (Block I)
-- [x] `GET /api/v1/meal-plan/history` — metadata of all plans, newest first (Block I)
-- [ ] Remove region filter from `meal_generator.py` algorithm ← Phase 6 ML work (deferred)
+### Meal Plan
+- [x] `GET /api/v1/meal-plan/week` — 7-day plan grouped by date
+- [x] `GET /api/v1/meal-plan/history` — metadata of all plans, newest first
+- [x] Fix calorie target — uses patient's stored TDEE (not hardcoded 2000)
+- [x] Plan regeneration — old plan soft-deleted, new one created
+- [x] Plan versioning — soft-delete ✅ + version counter increments in `diet_plan_service.store_diet_plan()` ✅
+- [ ] Fix plan storage — store `food_id` references, not full embedded JSON ← Phase 6 ML work
 
-### Meal Logging — Backend Fixes
+### Meal Logging
+- [x] `POST /api/v1/progress/meal` — log a meal
+- [x] `PUT /api/v1/progress/log/meal/{log_id}` — edit meal log within 24h window
+- [x] `DELETE /api/v1/progress/log/meal/{log_id}` — delete meal log within 24h window
+- [x] `food_id` reference (nullable) + `custom_food_name` + `portion_servings` columns exist
+- [ ] Link meal log to specific recommendation slot ← deferred Sprint 3+
+- [ ] `GET /api/v1/progress/adherence/weekly` ← depends on slot linking
 
-- [ ] Link `POST /api/v1/progress/meal` to specific recommendation slot ← needs recommendation_id from client (deferred Sprint 1)
-- [x] `food_id` reference (nullable) — column exists on meal_logs from Phase 0
-- [x] `custom_food_name` field — column exists from Phase 0
-- [x] `portion_size` field — `portion_servings` column exists from Phase 0
-- [x] `PUT /api/v1/progress/log/meal/{log_id}` — edit meal log within 24h window (Block H)
-- [x] `DELETE /api/v1/progress/log/meal/{log_id}` — delete meal log within 24h window (Block H)
-- [ ] Build adherence calculation ← depends on recommendation slot linking first (deferred Sprint 1)
-- [ ] `GET /api/v1/progress/adherence/weekly` ← depends on adherence calculation (deferred Sprint 1)
+### Progress Tracking
+- [x] `GET /api/v1/progress/today` — uses patient.tdee, fallback 2000 only if None
+- [x] `PUT /api/v1/progress/log/water` — overwrite today's count
+- [x] `PUT /api/v1/progress/log/steps` — overwrite today's count
+- [x] `PUT /api/v1/progress/log/weight` — overwrite today's weight
+- [x] `DELETE /api/v1/progress/log/water` + `DELETE /api/v1/progress/log/steps` — reset to 0
+- [x] `GET /api/v1/progress/weekly-report` — 7-day breakdown, totals, averages vs TDEE
+- [x] `GET /api/v1/progress/weight-history` — last N days, capped 365
+- [x] `GET /api/v1/progress/streak` — consecutive logging days
 
-### Progress Tracking — Backend Fixes
+### Shopping List
+- [x] `GET /api/v1/meal-plan/shopping-list` — aggregated + grouped by category
+- [x] `POST /api/v1/meal-plan/shopping-list/toggle` — mark item as "available at home"
 
-- [x] Fix `GET /api/v1/progress/today` — uses patient.tdee, fallback 2000 only if None
-- [x] `PUT /api/v1/progress/log/water` — overwrite today's count (Block H)
-- [x] `PUT /api/v1/progress/log/steps` — overwrite today's count (Block H)
-- [x] `PUT /api/v1/progress/log/weight` — overwrite today's weight (Block H)
-- [x] `DELETE /api/v1/progress/log/water` — reset to 0 (Block H)
-- [x] `DELETE /api/v1/progress/log/steps` — reset to 0 (Block H)
-- [x] `GET /api/v1/progress/weekly-report` — 7-day breakdown, totals, averages vs TDEE (Block H)
-- [x] `GET /api/v1/progress/weight-history` — entries for last N days, capped 365 (Block H)
-- [x] Streak calculation — `GET /api/v1/progress/streak`, capped at 365 days (Block H)
-
-### Shopping List — Backend
-
-- [x] `GET /api/v1/meal-plan/shopping-list` — aggregated ingredient list (Block K)
-- [x] Group ingredients by category (Vegetables, Dairy, Grains, Proteins, Fruits, Spices) (Block K)
-- [ ] Mark items as "available at home" toggle endpoint ← deferred Sprint 1
-
-### Patient App — React Native Screens
-
-- [ ] Setup Expo project with navigation (React Navigation)
-- [ ] Screen: Splash
-- [ ] Screen: Welcome / Landing
-- [ ] Screen: Google OAuth login
-- [ ] Screen: "Do you have a doctor?" choice
-- [ ] Screen: Enter doctor code / select doctor from list
-- [ ] Screen: Registration request submitted (waiting)
-- [ ] Screen: Health questionnaire — Step 1 (Body Metrics)
-- [ ] Screen: Health questionnaire — Step 2 (Health Goals)
-- [ ] Screen: Health questionnaire — Step 3 (Medical Conditions)
-- [ ] Screen: Health questionnaire — Step 4 (Allergies — mandatory)
-- [ ] Screen: Health questionnaire — Step 5 (Dietary Preferences)
-- [ ] Screen: Health questionnaire — Step 6 (Lifestyle)
-- [ ] Screen: Health questionnaire — Step 7 (Eating Habits)
-- [ ] Screen: Profile Summary (BMI/BMR/TDEE shown after questionnaire)
-- [ ] Screen: Home Dashboard
-- [ ] Screen: Weekly Meal Plan view (7-day tab navigation)
-- [ ] Screen: Recipe Detail (ingredients, instructions, nutrition, doctor note)
-- [ ] Screen: Log Meal — "I had this" flow
-- [ ] Screen: Log Meal — "I had something else" flow (search + custom)
-- [ ] Screen: Progress Overview
-- [ ] Screen: Log Water
-- [ ] Screen: Log Steps
-- [ ] Screen: Log Weight
-- [ ] Screen: Weekly Report
-- [ ] Screen: Shopping List / Ingredient Checklist
-- [ ] Screen: Find a Doctor (location-based, Tier 1 only)
-- [ ] Screen: Profile Overview
-- [ ] Screen: Edit Profile
-- [ ] Screen: Notification Preferences
-- [ ] Screen: Disclaimer screen (Tier 1 — mandatory on first launch)
-- [ ] Screen: Subscription expired screen (Tier 2)
-- [ ] Connect all screens to backend APIs
-- [ ] Handle loading states on every screen
-- [ ] Handle error states on every screen
-- [ ] Handle empty states (no plan yet, no logs yet)
+### Profile
+- [x] `GET /api/v1/users/me` — current user profile
+- [x] `PUT /api/v1/users/me` — update profile, auto-recalculates BMI/BMR/TDEE
+- [x] `GET /api/v1/users/bmi` — current BMI
 
 ---
 
-**PHASE 1 BACKEND SCORE: 30 / 44 (2 partial)**
-React Native screens: 0 / 36 — not started, separate frontend sprint.
+**PHASE 1 BACKEND SCORE: 40 / 42**
+Remaining 2: FCM token storage (Phase 5), slot linking + adherence (deferred).
+
+**Expo (React Native) screens: 0 / 36** — Sprint 5, not started.
 
 ---
 
 ## 🟡 PHASE 2 — Doctor Dashboard
 
-### Doctor — Backend
-
-- [x] `POST /api/v1/doctors/auth/login` — email + password login (Phase 0)
-- [x] `GET /api/v1/doctor/requests` — list pending patient requests (Block B)
-- [x] `PATCH /api/v1/doctor/requests/{request_id}/accept` — accept patient (Block B)
-- [x] `PATCH /api/v1/doctor/requests/{request_id}/reject` — reject with optional note (Block B)
-- [x] `GET /api/v1/doctor/patients` — paginated list with filters (Block B)
-- [x] `GET /api/v1/doctor/patients/{patient_id}` — full patient profile view (Block B)
-- [ ] `GET /api/v1/doctor/patients/{patient_id}/logs` — meal logs with recommended vs actual
-- [ ] `GET /api/v1/doctor/patients/{patient_id}/progress` — weight, water, steps history
-- [x] `GET /api/v1/doctor/patients/{patient_id}/plan` — current meal plan (Block B)
-- [x] `PUT /api/v1/doctor/patients/{patient_id}/plan` — doctor overrides meal plan (Block B)
-- [ ] `POST /api/v1/doctor/patients/{patient_id}/plan/notes` — add note to specific meal
-- [ ] `POST /api/v1/doctor/patients/{patient_id}/notes` — add private clinical note
-- [ ] `GET /api/v1/doctor/patients/{patient_id}/notes` — get all clinical notes
-- [ ] `DELETE /api/v1/doctor/patients/{patient_id}` — remove patient from doctor's list
-- [ ] `GET /api/v1/doctor/recipes` — browse food database
-- [ ] `POST /api/v1/doctor/recipes` — add new recipe (with auto-fetch for blank fields)
-- [ ] Build auto-fetch recipe details from internet when fields left blank (Edamam API or similar)
-- [ ] `POST /api/v1/doctor/recipes/{recipe_id}/assign` — assign recipe to patient(s)
-- [x] `GET /api/v1/doctor/codes` — list all activation codes used/unused/expired (Block B)
-- [ ] `GET /api/v1/doctor/dashboard` — aggregated stats for dashboard cards
-- [ ] Build patient inactivity detection — flag patients with no logs in X days
-- [ ] Build subscription expiry detection — flag patients expiring this week
-- [x] Enforce doctor data isolation on ALL doctor endpoints — DoctorIsolationMiddleware (Phase 0)
-
-### Doctor Dashboard — React Web Screens
-
-- [ ] Setup React + Vite project with React Router
-- [ ] Setup shared component library (shadcn/ui)
-- [ ] Screen: Login (email + password + MFA field)
-- [ ] Screen: Home Dashboard (4 stat cards + attention list + pending requests)
-- [ ] Screen: Patient List (table with filters and search)
-- [ ] Screen: Individual Patient — Profile Tab
-- [ ] Screen: Individual Patient — Meal Logs Tab (recommended vs actual)
-- [ ] Screen: Individual Patient — Progress Tab (weight/water/steps graphs)
-- [ ] Screen: Individual Patient — Current Plan Tab (with edit/swap/note per meal)
-- [ ] Screen: Individual Patient — Clinical Notes Tab
-- [ ] Screen: Pending Requests (accept/reject with optional rejection note)
-- [ ] Screen: Recipe Library (search, filter, browse)
-- [ ] Screen: Add New Recipe form
-- [ ] Screen: Assign Recipe modal
-- [ ] Screen: Codes and Billing (code history, billing summary, buy more)
-- [ ] Screen: My Profile (edit details, photo, availability, change password)
-- [ ] Connect all screens to backend APIs
-- [ ] Add MFA setup and verification flow (Google Authenticator)
+### Doctor Backend
+- [x] `POST /api/v1/auth/doctor/login` — JWT with role=doctor
+  - [x] MFA fork: `mfa_enabled=False` → full JWT; `mfa_enabled=True` → partial 5-min token ← Sprint 2
+- [x] `POST /api/v1/auth/doctor/mfa-login` — step-2: partial token + TOTP code → full JWT ← Sprint 2
+- [x] `POST /api/v1/auth/doctor/mfa-setup` — generate secret, return otpauth:// URI for QR ← Sprint 2
+- [x] `POST /api/v1/auth/doctor/mfa-confirm` — verify first live code, set mfa_enabled=True ← Sprint 2
+- [x] `POST /api/v1/auth/doctor/mfa-disable` — disable MFA (requires valid TOTP) ← Sprint 2
+- [x] `GET /api/v1/doctor/requests` — pending patient requests
+- [x] `POST /api/v1/doctor/requests/{id}/accept` — accept patient
+- [x] `POST /api/v1/doctor/requests/{id}/reject` — reject with optional note
+- [x] `GET /api/v1/doctor/patients` — paginated list with total count
+- [x] `GET /api/v1/doctor/patients/{patient_id}` — full patient profile
+- [x] `GET /api/v1/doctor/patients/{patient_id}/logs` — meal logs for last N days
+- [x] `GET /api/v1/doctor/patients/{patient_id}/progress` — weight/water/steps history
+- [x] `GET /api/v1/doctor/patients/{patient_id}/plan` — current active meal plan
+- [x] `PUT /api/v1/doctor/patients/{patient_id}/plan` — doctor overrides entire plan
+- [x] `POST /api/v1/doctor/patients/{patient_id}/plan/notes` — inject note into specific meal slot
+- [x] `POST /api/v1/doctor/patients/{patient_id}/notes` — add private clinical note
+- [x] `GET /api/v1/doctor/patients/{patient_id}/notes` — list all clinical notes
+- [x] `DELETE /api/v1/doctor/patients/{patient_id}` — remove patient (becomes standalone)
+- [x] `GET /api/v1/doctor/recipes` — browse food DB (filter by diet, meal_time, search, paginated)
+- [x] `POST /api/v1/doctor/recipes` — add new recipe (source='doctor', pending admin approval)
+- [x] `POST /api/v1/doctor/recipes/{id}/assign` — inject recipe into patient plan(s)
+- [x] `POST /api/v1/doctor/subscription-codes` — generate codes with expiry
+- [x] `GET /api/v1/doctor/subscription-codes` — list all codes for this doctor
+- [x] `GET /api/v1/doctor/dashboard` — stats: total/active patients, pending requests, etc.
+- [x] Doctor data isolation — DoctorIsolationMiddleware enforced on all endpoints
+- [ ] Auto-fetch recipe nutrition from Edamam API ← optional, deferred
 
 ---
 
-**PHASE 2 BACKEND SCORE: 11 / 23 done**
-React Web screens: 0 / 18 — not started.
+**PHASE 2 BACKEND SCORE: 25 / 26** — 1 remaining: Edamam auto-fetch (optional).
+
+**Next.js 15 Web screens: 0 / 18** — Sprint 3, not started.
 
 ---
 
 ## 🟢 PHASE 3 — Admin Dashboard
 
-### Admin — Backend
-
-- [ ] `POST /api/v1/admin/auth/login` — email + password + MFA ← dedicated login endpoint not built
-- [x] `GET /api/v1/admin/overview` — platform-wide stats (get_stats, Block C)
-- [x] `POST /api/v1/admin/doctors` — create new doctor account (Block C)
-- [x] `GET /api/v1/admin/doctors` — list all doctors with patient counts (Block C)
-- [ ] `GET /api/v1/admin/doctors/{doctor_id}` — full doctor profile and history
-- [x] `PATCH /api/v1/admin/doctors/{doctor_id}/deactivate` — deactivate doctor (Block C)
-- [ ] `DELETE /api/v1/admin/doctors/{doctor_id}` — remove doctor (with patient handling rules)
-- [ ] `POST /api/v1/admin/codes/generate` — generate activation code batch for a doctor
-- [ ] `GET /api/v1/admin/codes` — view all codes across all doctors
-- [ ] `GET /api/v1/admin/billing` — full platform billing overview
-- [ ] `POST /api/v1/admin/billing/{doctor_id}/mark-paid` — mark a doctor's payment received
-- [ ] `PATCH /api/v1/admin/patients/{patient_id}/subscription/override` — manual subscription override
-- [ ] `GET /api/v1/admin/food` — food database management view
-- [ ] `PATCH /api/v1/admin/food/{food_id}/approve` — approve doctor-added recipe
-- [ ] `PATCH /api/v1/admin/food/{food_id}/reject` — reject with note
-- [ ] `DELETE /api/v1/admin/food/{food_id}` — remove food item
-- [ ] `GET /api/v1/admin/audit-logs` — paginated audit log viewer
-- [ ] Build audit log writer — records every significant action with timestamp, actor, IP
-- [ ] `DELETE /api/v1/admin/patients/{patient_id}` — DPDP Act compliance data erasure
-- [ ] Add IP whitelisting middleware for all admin routes
-
-### Admin Dashboard — React Web Screens
-
-- [ ] Extend Doctor Dashboard React project with admin role routing
-- [ ] Screen: Admin Login (email + password + MFA + IP check)
-- [ ] Screen: Overview Dashboard (all doctors, all patients, revenue this month, growth chart)
-- [ ] Screen: All Doctors List (table with status, patient count, revenue MTD)
-- [ ] Screen: Add New Doctor form
-- [ ] Screen: Individual Doctor view (profile, patients, codes, billing, activity)
-- [ ] Screen: Food Database (browse all 6,871+ items, pending approvals tab)
-- [ ] Screen: Approve/Reject Doctor Recipe
-- [ ] Screen: Billing Overview (per doctor breakdown, paid/pending/overdue)
-- [ ] Screen: Generate Codes modal
-- [ ] Screen: Audit Logs viewer (filterable, exportable as CSV)
-- [ ] Screen: Platform Settings
-- [ ] Connect all screens to backend APIs
+### Admin Backend
+- [x] `POST /api/v1/auth/admin/login` — email + password, JWT with role=admin
+  - [x] MFA fork: `mfa_enabled=False` → full JWT; `mfa_enabled=True` → partial 5-min token ← Sprint 2
+- [x] `POST /api/v1/auth/admin/mfa-login` — step-2: partial token + TOTP code → full JWT ← Sprint 2
+- [x] `POST /api/v1/auth/admin/mfa-setup` — generate secret, return otpauth:// URI for QR ← Sprint 2
+- [x] `POST /api/v1/auth/admin/mfa-confirm` — verify first live code, set mfa_enabled=True ← Sprint 2
+- [x] `POST /api/v1/auth/admin/mfa-disable` — disable MFA (requires valid TOTP) ← Sprint 2
+- [x] `GET /api/v1/admin/stats` — total patients, active subscriptions, total doctors, active plans
+- [x] `POST /api/v1/admin/doctors` — create doctor account
+- [x] `GET /api/v1/admin/doctors` — list all doctors
+- [x] `GET /api/v1/admin/doctors/{doctor_id}` — full profile + patient count
+- [x] `PATCH /api/v1/admin/doctors/{doctor_id}/deactivate` — deactivate doctor
+- [x] `DELETE /api/v1/admin/doctors/{doctor_id}` — soft-delete doctor, disconnect all patients
+- [x] `POST /api/v1/admin/codes/generate` — generate code batch for a doctor, audit-logged
+- [x] `GET /api/v1/admin/codes` — all codes, filterable by doctor + used status
+- [x] `GET /api/v1/admin/billing` — platform-wide: total codes, used, per-doctor breakdown
+- [x] `POST /api/v1/admin/billing/{doctor_id}/mark-paid` — audit-log entry, no new table ← Sprint 2
+- [x] `PATCH /api/v1/admin/patients/{patient_id}/subscription/override` — manual override, audit-logged
+- [x] `GET /api/v1/admin/food` — food DB view, filterable, paginated
+- [x] `PATCH /api/v1/admin/food/{food_id}/approve` — approve doctor recipe
+- [x] `PATCH /api/v1/admin/food/{food_id}/reject` — soft-delete
+- [x] `DELETE /api/v1/admin/food/{food_id}` — hard delete food item
+- [x] `GET /api/v1/admin/audit-logs` — paginated, filterable by role + action
+- [x] Audit log writer — `log_action()` in `audit_service.py`
+- [x] `DELETE /api/v1/admin/patients/{patient_id}` — DPDP Act right-to-erasure
+- [x] IP whitelisting middleware — `AdminIPWhitelistMiddleware` in `middleware.py` ← Sprint 2
+      Reads `allowed_ips` JSONB from Admin row. Empty list = whitelisting disabled (any IP allowed).
 
 ---
 
-**PHASE 3 BACKEND SCORE: 4 / 20 done**
-React Web screens: 0 / 13 — not started.
+**PHASE 3 BACKEND SCORE: 23 / 23** ✅ COMPLETE
+
+**Next.js 15 Web screens: 0 / 13** — Sprint 4, not started.
 
 ---
 
 ## 🔵 PHASE 4 — Subscriptions and Billing
 
 - [ ] Integrate Razorpay SDK into backend
-- [ ] Build doctor subscription payment flow (monthly billing)
-- [ ] Build `POST /api/v1/billing/pay` — Razorpay payment initiation
-- [ ] Build Razorpay webhook handler — mark payment received on success
-- [ ] Build subscription auto-expiry job — runs daily, expires subscriptions past end date
-- [ ] Build subscription renewal flow — extend `subscription_end_date` on payment
-- [ ] Build doctor billing reminder — email 7 days before due date
-- [ ] Build patient expiry reminder notification — push notification 3 days before expiry
-- [ ] Build code purchase flow — doctor requests codes, admin generates, codes delivered
-- [ ] Build Tier 1 standalone premium flow (₹149/month — Phase 2 of app)
-- [ ] Build Find a Doctor API — location-based doctor listing sorted by distance
-- [ ] Build standalone → doctor-connected upgrade flow
+- [ ] `POST /api/v1/billing/pay` — Razorpay payment initiation
+- [ ] Razorpay webhook handler — mark payment received on success
+- [ ] Subscription auto-expiry job — daily cron, expires subscriptions past end_date
+- [ ] Subscription renewal flow — extend `subscription_end_date` on payment
+- [ ] Doctor billing reminder — email 7 days before due date
+- [ ] Patient expiry reminder — push notification 3 days before expiry
+- [ ] Code purchase flow — doctor requests codes, admin generates, codes delivered
+- [ ] Tier 1 standalone premium flow (₹149/month)
+- [ ] Find a Doctor API — location-based listing sorted by distance
+- [ ] Standalone → doctor-connected upgrade flow
 
 ---
 
-## 🟣 PHASE 5 — Notifications and Polish
+## 🟣 PHASE 5 — Notifications
 
-- [ ] Integrate Firebase Cloud Messaging (FCM) into FastAPI backend
-- [ ] Store FCM device tokens for each patient on login
-- [ ] Build notification service layer
-- [ ] Patient notifications:
-  - [ ] Meal reminders (breakfast, lunch, dinner — user-set times)
-  - [ ] Water intake reminder every 2 hours if not logged
-  - [ ] New weekly plan ready
-  - [ ] Doctor approved your request
-  - [ ] Doctor updated your plan
-  - [ ] Doctor added a note to your meal
-  - [ ] Subscription expiring in 3 days
-  - [ ] Milestone achieved (first kg lost, 7-day streak)
-  - [ ] Inactivity reminder (no log in 2 days)
-- [ ] Doctor notifications:
-  - [ ] New patient request received
-  - [ ] Patient inactive for X days
-  - [ ] Subscription expiring for X patients this week
-  - [ ] Billing due reminder
-- [ ] Admin notifications:
-  - [ ] Doctor payment overdue
-  - [ ] Doctor code stock running low
-- [ ] Add loading skeletons to all app screens
-- [ ] Add proper error messages to all API failures
-- [ ] Add empty state screens (no plan, no logs, no patients)
-- [ ] Handle offline state in React Native (no internet message)
+- [ ] FCM integration into FastAPI
+- [ ] Store FCM device tokens per patient on login
+- [ ] Notification service layer
+- [ ] Patient notifications: meal reminders, water reminder, new plan ready, doctor accepted/updated/noted, sub expiry, milestone, inactivity
+- [ ] Doctor notifications: new request, patient inactive, subs expiring, billing due
+- [ ] Admin notifications: payment overdue, code stock low
+- [ ] Loading skeletons on all app screens
+- [ ] Proper error messages on all API failures
+- [ ] Empty state screens (no plan, no logs, no patients)
+- [ ] Offline state handling in React Native
 
 ---
 
-## ⚪ PHASE 6 — Dataset and ML Upgrade
+## ⚪ PHASE 6 — Dataset and ML
 
-> ⚠️ NOTE: meal_generator.py was FULLY REWRITTEN in Phase 0 to read from PostgreSQL `food_items`
-> and `meal_templates` tables via SQLAlchemy — this is the largest Phase 6 task and it's done.
-> However the food_items table is currently EMPTY — no ETL script has loaded actual food data yet.
-> All ETL tasks below must be completed before the meal generator can produce real results.
+### ETL Status (from live DB audit 2026-03-08: 2,116 rows total)
+- [x] `seed_food_items.py` — 184 hand-curated excel rows loaded (`is_verified=True`)
+- [x] `seed_6k_recipes.py` — 1,930 rows from IndianFoodDatasetCSV.csv with USDA nutrition
+- [x] `fix_6k_calories.py` — cup-density bug fixed
+- [x] `clean_recipe_names.py` — regex cleaning applied
+- [x] `ai_clean_recipe_names.py` — Gemini + Ollama pass applied
+- [x] `tag_pantry_staples.py` — pantry staple tags on ingredients JSONB
+- [x] `seed_meal_templates.py` — 180 templates (5 meal times × 4 regions × 3 diets × 3 plan types)
+- [ ] Add `image_url` column to `food_items` via Alembic + cross-reference eyantra dataset ← optional
+- [ ] `scripts/data_validation.py` — check for nulls, negative nutrition, impossible calories
 
-### ETL — Merge All Datasets into PostgreSQL
-
-- [ ] Write ETL script to load `IndianFoodDataset` (6,871 rows) into `food_items` table as primary source
-- [ ] Normalize column names across all sources (fiber vs fibre, name vs MENU etc.)
-- [ ] Cross-reference `meal_generator/data/*.xlsx` files by food name — merge nutrition data where names match
-- [ ] Cross-reference eyantra datasets — pull `image_url` where food names match
-      ← NOTE: `food_items` table has no `image_url` column yet — add via Alembic migration first
-- [~] Flag all items with missing nutrition as `nutrition_verified = false`
-      ← Column exists as `is_verified` (Boolean, default=False) — name differs from spec, ETL flagging logic not written
-- [ ] Call Edamam/Nutritionix API to fill nutrition gaps for unflagged items
-- [ ] Remove `Region` column entirely from all datasets ← xlsx files still have region columns
-- [ ] Remove duplicate entries across all three sources
-- [ ] Write data validation script — check for nulls, negative nutrition values, impossible calorie counts
-
-### ML Engine — Rewrite to Read from PostgreSQL
-
-- [x] Rewrite `meal_generator.py` — reads from `food_items` + `meal_templates` PostgreSQL tables via SQLAlchemy
-      ← DONE. Full 4-level waterfall, diet fallback chain, non-veg budget, weekly deduplication all built.
-- [ ] Remove region filter from algorithm logic completely
-      ← Region still filters both MealTemplate AND FoodItem queries at 4 points in the code
-- [ ] Add allergy filtering — exclude food items containing patient's allergenic ingredients from `ingredients` JSONB
-      ← `patient.food_allergies` is stored but never read in _find_food_item()
-- [ ] Expand health condition support from 3 values to full 15+ conditions mapped to diet type filters:
-  - [ ] Diabetic → filter to Diabetic Friendly tagged recipes only
-  - [ ] PCOS → prioritize high-fiber low-GI meals
-  - [ ] Kidney disease → flag high potassium/phosphorus, doctor warning
-  - [ ] Jain → exclude onion, garlic, potato, carrot, radish from ingredients
-  - [ ] Gluten free → filter to Gluten Free tagged recipes
-  - [ ] Vegan → filter to Vegan tagged recipes
-- [ ] Add long-term meal history — avoid repeating same meals across consecutive weeks
-      ← `weekly_used_ids` is an in-memory set that resets each generation call — no cross-week persistence
-- [ ] Store meal recommendation references as `food_id` links, not full embedded data
-      ← `recommendations.meals` still stores full JSON objects with all nutrition embedded
+### Meal Generator — Remaining Improvements
+- [x] Allergy filtering — `_is_allergenic()` checks `ingredients` JSONB. Normalises allergens to
+      lowercase frozenset. Handles "None" sentinel. Both callers updated. Done Sprint 1.
+- [ ] Remove region filter from algorithm — still filters `FoodItem.region_tags.any(region)` at
+      Level 1; reduces food variety unnecessarily
+- [ ] Expand health condition support from 3 to 15+ conditions (PCOS, Jain, Kidney, Gluten-free, Vegan)
+- [ ] Cross-week meal history — `weekly_used_ids` is in-memory, resets on each `generate_meal_plan()` call
+- [ ] Store meal plans as `food_id` links instead of full embedded JSON
 
 ---
 
-**PHASE 6 SCORE: 1 / 15 done (1 partial)**
-The one done item (meal_generator PostgreSQL rewrite) is the most architecturally significant.
-All 9 ETL tasks remain — food_items table is empty until these run.
+**PHASE 6 SCORE: 8 / 13** — ETL fully done + allergy filtering done, 5 ML improvements remain.
 
 ---
 
 ## ⚫ PHASE 7 — Production Deployment
 
-- [ ] Create GCP project in Mumbai region (asia-south1)
-- [ ] Set up Cloud SQL PostgreSQL instance (private VPC, no public IP)
-- [ ] Run Alembic migrations on Cloud SQL
-- [ ] Set up Google Secret Manager — move all `.env` secrets
-- [ ] Set up Cloud Storage bucket for food images
-- [ ] Configure Cloudflare DNS for `mityahar.com` and `api.mityahar.com`
-- [ ] Set up SSL via Cloudflare
-- [ ] Write Dockerfile for FastAPI backend
-- [ ] Write `cloudbuild.yaml` or GitHub Actions CI/CD pipeline
-- [ ] Configure Cloud Run service — auto-scaling, environment variables from Secret Manager
-- [ ] Set up Redis via Cloud Memorystore
-- [ ] Run load test before launch
-- [ ] Submit React Native app to Google Play Store (₹2,088 one-time)
-- [ ] Submit React Native app to Apple TestFlight (₹8,267/year)
-- [ ] Set up Cloud Monitoring and alerting
-- [ ] Set up error tracking (Sentry — free tier)
+- [ ] GCP project — Mumbai region (asia-south1)
+- [ ] Cloud SQL PostgreSQL (private VPC, no public IP)
+- [ ] Alembic migrations on Cloud SQL
+- [ ] Google Secret Manager — move all `.env` secrets
+- [ ] Cloud Storage bucket for food images
+- [ ] Cloudflare DNS for `mityahar.com` + `api.mityahar.com`
+- [ ] SSL via Cloudflare
+- [ ] Dockerfile for FastAPI backend
+- [ ] `cloudbuild.yaml` or GitHub Actions CI/CD
+- [ ] Cloud Run — auto-scaling, env vars from Secret Manager
+- [ ] Redis via Cloud Memorystore (replaces in-memory slowapi)
+- [ ] Load test before launch
+- [ ] Google Play Store submission (₹2,088 one-time)
+- [ ] Apple TestFlight (₹8,267/year)
+- [ ] Cloud Monitoring + alerting
+- [ ] Sentry error tracking (free tier)
 
 ---
 
-## 🔑 SECURITY TASKS (Cross-Phase — Implement as You Build)
+## 🔑 SECURITY (Cross-Phase)
 
-- [x] Verify bcrypt is used for password hashing — confirmed in security.py (passlib + bcrypt)
-- [ ] Add MFA (TOTP — Google Authenticator) for doctor login ← `mfa_secret` + `mfa_enabled` columns exist but logic not built
-- [ ] Add MFA + IP whitelisting for admin login ← `allowed_ips` JSONB column exists but middleware not built
+- [x] bcrypt password hashing — confirmed in security.py
+- [x] Consent logging — `disclaimer_accepted_at` timestamp stored on Patient row
+- [x] Audit log writer — `log_action()` called from all mutating admin routes
+- [x] MFA (TOTP — Google Authenticator) for **doctor login** ← Sprint 2
+      `app/services/mfa_service.py` — `generate_mfa_secret()`, `get_totp_uri()`, `verify_totp()`
+      Setup → Confirm → Login step-2 flow implemented. Backward-compatible: mfa_enabled=False unchanged.
+- [x] MFA (TOTP) for **admin login** ← Sprint 2 — same pattern as doctor
+- [x] IP whitelisting middleware for admin routes ← Sprint 2
+      `AdminIPWhitelistMiddleware` in `middleware.py`, mounted in `main.py`.
+      DB query only fires on authenticated /admin requests. Empty allowed_ips = disabled.
+- [x] Rate limit `POST /auth/register` ← Sprint 2 (10/minute)
+- [x] Rate limit progress log POST endpoints ← Sprint 2 (30-60/minute each)
+- [ ] HttpOnly cookie for refresh tokens (web frontends) ← Sprint 3 — small backend change required
 - [ ] Encrypt sensitive patient fields at application level (phone, health data) via Google KMS
-- [ ] Fix CORS — ensure not set to `*` wildcard in production
-- [ ] Add security headers (HSTS, X-Frame-Options, Content-Security-Policy)
-- [ ] Add request signing for admin endpoints
-- [ ] Audit log every doctor and admin action (actor, action, timestamp, IP)
-- [ ] Add data retention policy enforcement (DPDP Act)
-- [x] Add consent logging — `disclaimer_accepted_at` timestamp stored on Patient row (Block J)
+- [ ] Fix CORS — not `*` wildcard in production
+- [ ] Security headers (HSTS, X-Frame-Options, CSP)
+- [ ] Data retention policy enforcement (DPDP Act) ← erasure endpoint exists, scheduled purge not built
 
 ---
 
-## 📊 COMPLETE TASK COUNT
+## 🖥️ FRONTEND ARCHITECTURE (decided 2026-03-08)
 
-| Phase | Total | Done | Partial | Remaining | Priority |
-|---|---|---|---|---|---|
-| Phase 0 — Foundation | 28 | 25 | 0 | 3 | 🔴 Critical |
-| Phase 1 — Patient Backend | 44 | 30 | 2 | 12 | 🔴 Critical |
-| Phase 1 — React Native | 36 | 0 | 0 | 36 | 🔴 Critical |
-| Phase 2 — Doctor Backend | 23 | 11 | 0 | 12 | 🟠 High |
-| Phase 2 — React Web | 18 | 0 | 0 | 18 | 🟠 High |
-| Phase 3 — Admin Backend | 20 | 4 | 0 | 16 | 🟡 Medium |
-| Phase 3 — Admin Web | 13 | 0 | 0 | 13 | 🟡 Medium |
-| Phase 4 — Billing | 12 | 0 | 0 | 12 | 🟡 Medium |
-| Phase 5 — Notifications | 20 | 0 | 0 | 20 | 🟢 Normal |
-| Phase 6 — Dataset + ML | 15 | 1 | 1 | 13 | 🟢 Normal |
-| Phase 7 — Deployment | 16 | 0 | 0 | 16 | ⚪ Last |
-| Security (ongoing) | 10 | 2 | 0 | 8 | 🔴 Throughout |
-| **Total** | **255** | **73** | **3** | **179** | |
+### Monorepo Structure
+```
+mityahar-frontend/
+├── apps/
+│   ├── admin/          # Next.js 15 (App Router)
+│   ├── doctor/         # Next.js 15 (App Router)
+│   └── patient/        # Expo SDK 54 (New Architecture)
+├── packages/
+│   ├── api-client/     # Auto-generated TS client from FastAPI /openapi.json
+│   ├── types/          # Shared Zod schemas + TypeScript interfaces
+│   └── ui/             # Shared shadcn/ui primitives (web only)
+├── turbo.json
+└── pnpm-workspace.yaml
+```
+
+### Admin Dashboard — Next.js 15
+| Layer | Choice | Reason |
+|---|---|---|
+| Framework | Next.js 15 App Router | Edge middleware JWT validation, opinionated structure |
+| Language | TypeScript strict | Mirror Pydantic type safety end-to-end |
+| Styling | Tailwind CSS v4 + shadcn/ui | Owned components, no vendor lock-in |
+| Server state | TanStack Query v5 | Caching, background refetch, optimistic updates |
+| Client state | Zustand v5 | Auth tokens (in-memory), UI flags |
+| Forms | React Hook Form + Zod | Mirrors Pydantic schemas, zero runtime cost |
+| Charts | Recharts | Billing, doctor stats, food DB metrics |
+| HTTP | Axios | Interceptors for silent token refresh |
+| Token storage | Zustand (memory) + HttpOnly cookie | Best XSS + CSRF protection |
+| **Screens** | **0 / 13** | Sprint 4 |
+
+### Doctor Dashboard — Next.js 15
+| Layer | Choice | Reason |
+|---|---|---|
+| Framework | Next.js 15 App Router | Same stack as admin, 80% shared config |
+| Language | TypeScript strict | — |
+| Styling | Tailwind CSS v4 + shadcn/ui | — |
+| Server state | TanStack Query v5 | Patient list, meal logs, progress charts |
+| Client state | Zustand v5 | — |
+| Forms | React Hook Form + Zod | — |
+| Charts | Recharts | Patient weight history, adherence, calorie trends |
+| HTTP | Axios | — |
+| Token storage | Zustand (memory) + HttpOnly cookie | — |
+| **Screens** | **0 / 18** | Sprint 3 |
+
+### Patient App — Expo SDK 54
+| Layer | Choice | Reason |
+|---|---|---|
+| Framework | Expo SDK 54 (New Architecture) | JSI/Fabric, OTA updates via EAS, no bridge bottleneck |
+| Language | TypeScript strict | — |
+| Styling | NativeWind v4 | Tailwind utility classes in React Native |
+| Routing | Expo Router v4 | File-based, same mental model as Next.js App Router |
+| Server state | TanStack Query v5 | Same pattern as web — no new concepts |
+| Client state | Zustand v5 | Same pattern as web |
+| Forms | React Hook Form + Zod | — |
+| Charts | Victory Native | Mobile-optimised, smooth animations |
+| Animations | React Native Reanimated 3 | Progress bars, meal log transitions |
+| Push notifications | Expo Notifications | Phase 5 — meal reminders, sub expiry |
+| Token storage | Expo SecureStore | iOS Keychain / Android Keystore hardware-backed |
+| HTTP | Axios | — |
+| **Screens** | **0 / 36** | Sprint 5 |
+
+### Token Security Architecture
+```
+Web (Admin + Doctor):
+  Login → access_token in Zustand (memory only, gone on tab close)
+          refresh_token in HttpOnly + Secure + SameSite=Strict cookie
+  Refresh → silent POST /auth/refresh on 401 → new access_token → back in Zustand
+  Requires: FastAPI backend change — Set-Cookie header on login endpoints (Sprint 3)
+
+Mobile (Patient):
+  Login → access_token + refresh_token in Expo SecureStore
+          (maps to iOS Keychain / Android Keystore — not localStorage, not AsyncStorage)
+```
 
 ---
 
-## SPRINT PLAN (agreed approach — backend first, then all 3 frontends together)
+## 📊 ACCURATE TASK COUNT (2026-03-08, post-Sprint-2)
 
-### Sprint 1 — Phase 1 Backend Cleanup ← NEXT
-Small remaining gaps. All require Alembic migrations — do now before Phase 2 adds complexity.
-- Alembic: add `pace_preference`, `eating_habits` columns to patients table
-- Alembic: add `image_url` column to food_items table (Phase 6 ETL prep)
-- `/register` flow split (standalone vs doctor-connected)
-- Enforce `food_allergies` as non-empty on onboarding
-- Meal log → recommendation slot linking
-- Adherence calculation + `GET /progress/adherence/weekly`
-- `version` counter increment on plan regeneration
-- "Available at home" shopping list toggle
-
-### Sprint 2 — Phase 2 Doctor Backend (12 remaining endpoints)
-Patient logs view, progress view, clinical notes, meal plan notes, recipe library, dashboard stats, inactivity + expiry detection, remove patient.
-
-### Sprint 3 — Phase 3 Admin Backend (16 remaining endpoints)
-Admin login, billing, food management, audit log, DPDP erasure, IP whitelisting, codes management.
-
-### Sprint 4 — Doctor Dashboard React Web (18 screens)
-First shippable product. Doctors onboard → generate codes → patients activate.
-
-### Sprint 5 — Admin Dashboard React Web (13 screens)
-Extends Doctor Dashboard project with admin routing.
-
-### Sprint 6 — Phase 6 ETL + ML Upgrade
-Load 6,871 food items, remove region filter, allergy filtering, expand health conditions, cross-week history.
-
-### Sprint 7 — Patient App React Native (36 screens)
-Starts only after backend is fully locked and stable.
-
-### Sprint 8 — Phase 4 Billing + Phase 5 Notifications
-
-### Sprint 9 — Production Deploy (Phase 7)
+| Area | Total | Done | Remaining |
+|---|---|---|---|
+| Phase 0 — Foundation | 28 | 27 | 1 (Redis) |
+| Phase 1 — Patient Backend | 42 | 40 | 2 (FCM, slot linking) |
+| Phase 1 — Expo (Patient App) | 36 | 0 | 36 |
+| Phase 2 — Doctor Backend | 26 | 25 | 1 (Edamam optional) |
+| Phase 2 — Next.js (Doctor Web) | 18 | 0 | 18 |
+| Phase 3 — Admin Backend | 23 | 23 | 0 ✅ |
+| Phase 3 — Next.js (Admin Web) | 13 | 0 | 13 |
+| Phase 4 — Billing | 11 | 0 | 11 |
+| Phase 5 — Notifications | 20 | 0 | 20 |
+| Phase 6 — Dataset + ML | 13 | 8 | 5 |
+| Phase 7 — Deployment | 16 | 0 | 16 |
+| Security (cross-phase) | 12 | 8 | 4 |
+| **Total** | **258** | **131** | **127** |
 
 ---
 
-This is the complete picture. Every checkbox verified from actual file reads, not assumed.
+## 🚀 SPRINT STATUS
+
+| Sprint | Scope | Status |
+|---|---|---|
+| Sprint 0 | DB schema, migrations, models | ✅ Done |
+| Sprint 1 | Patient + Doctor + Admin backend, ETL, allergy filtering | ✅ Done |
+| **Sprint 2** | **Rate limits, MFA (TOTP), IP whitelist, mark-paid, food_allergies fix** | ✅ **Done — 95/95 tests** |
+| Sprint 3 | Doctor Dashboard — Next.js 15 (18 screens) | 🔲 Next |
+| Sprint 4 | Admin Dashboard — Next.js 15 (13 screens) | 🔲 Queued |
+| Sprint 5 | Patient App — Expo SDK 54 (36 screens) | 🔲 Queued |
+| Sprint 6 | Phase 4 Billing (Razorpay) + Phase 5 Notifications (FCM) | 🔲 Queued |
+| Sprint 7 | ML quality improvements (Phase 6 Tier 3) | 🔲 Queued |
+| Sprint 8 | Phase 7 Production Deploy (GCP, Cloud Run, CI/CD) | 🔲 Queued |
+
+### Sprint 3 Prerequisites (before starting Doctor Dashboard)
+- [ ] Add `Set-Cookie` (HttpOnly) for refresh_token on `/auth/doctor/login` endpoint
+- [ ] Add `CORS_ORIGINS` entry for `http://localhost:3001` in `.env`
+- [ ] Scaffold monorepo: `pnpm init`, `turbo.json`, `apps/doctor/` with Next.js 15
+- [ ] Generate TypeScript API client from `GET /openapi.json` using `openapi-typescript`

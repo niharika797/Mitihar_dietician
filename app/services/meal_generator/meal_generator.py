@@ -293,6 +293,17 @@ class MealGenerator:
                 days_taken.add(d)
             logger.info(f"Non-veg budget: {nonveg_budget}, assigned slots: {nonveg_assigned}")
 
+        # ── Allergy filtering: build lowercase set from patient's food_allergies ──
+        raw_allergies: list = user_data.get("food_allergies") or []
+        # Normalise: skip "none" / "None" — means patient has no allergies
+        allergies: frozenset[str] = frozenset(
+            a.strip().lower()
+            for a in raw_allergies
+            if a.strip().lower() not in ("", "none")
+        )
+        if allergies:
+            logger.info(f"Allergy filter active for patient {user_data.get('id')}: {allergies}")
+
         for day_offset in range(7):
             current_date = start_date + timedelta(days=day_offset)
             date_str = current_date.strftime("%Y-%m-%d")
@@ -373,6 +384,7 @@ class MealGenerator:
                             session, slot_type, query_diet, region, db_meal_time, plan_type,
                             daily_used_ids, weekly_used_ids, target_cal,
                             user_diet=diet_type,   # original user diet for breakfast-egg exception
+                            allergies=allergies,
                         )
                         if not food_item:
                             if required:
@@ -464,7 +476,8 @@ class MealGenerator:
         daily_used_ids: set,
         weekly_used_ids: set,
         target_cal: float = 0,
-        user_diet: str = None,   # original user diet — used for breakfast-egg fallback
+        user_diet: str = None,       # original user diet — used for breakfast-egg fallback
+        allergies: frozenset = frozenset(),  # lowercase allergen strings to exclude
     ) -> Optional[FoodItem]:
         """
         4-level waterfall wrapped with a diet-type fallback chain.
@@ -484,6 +497,7 @@ class MealGenerator:
             result = await self._find_food_item_single_diet(
                 session, slot_type, try_diet, region, meal_time, plan_type,
                 daily_used_ids, weekly_used_ids, target_cal,
+                allergies=allergies,
             )
             if result is not None:
                 return result
@@ -501,6 +515,7 @@ class MealGenerator:
         daily_used_ids: set,
         weekly_used_ids: set,
         target_cal: float = 0,
+        allergies: frozenset = frozenset(),
     ) -> Optional[FoodItem]:
         """Run the 4-level waterfall for a single diet_type."""
         from sqlalchemy import func as sa_func
@@ -524,13 +539,25 @@ class MealGenerator:
                 s = s.where(FoodItem.id.notin_(daily_used_ids))
             return s.order_by(_order_clause()).limit(5)
 
+        def _is_allergenic(item: FoodItem) -> bool:
+            """Return True if any ingredient in this item triggers a patient allergy."""
+            if not allergies:
+                return False
+            for ing in (item.ingredients or []):
+                ing_name = str(ing.get("name") or "").lower()
+                if any(allergen in ing_name for allergen in allergies):
+                    return True
+            return False
+
         def _pick(items: list) -> Optional[FoodItem]:
-            """Upgrade 4: apply blocklist filtering for protected slots."""
+            """Apply blocklist + allergy filtering. Return first valid candidate."""
             for item in items:
                 if slot_type in PROTECTED_SLOTS:
                     name_lower = item.recipe_name.lower()
                     if any(pat in name_lower for pat in BLOCKLIST_PATTERNS):
                         continue
+                if _is_allergenic(item):
+                    continue
                 return item
             return None
 

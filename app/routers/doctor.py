@@ -159,6 +159,7 @@ async def override_patient_plan(
         rec.doctor_notes = body.doctor_notes
     rec.generated_by = "doctor"
     await session.flush()
+    await session.refresh(rec)
     return rec
 
 
@@ -671,6 +672,186 @@ async def assign_recipe(
         "updated_count": updated_count,
         "failed_patient_ids": failed_ids,
     }
+
+
+# ─── POST /api/v1/doctor/recipes/estimate ────────────────────────────────────
+
+from pydantic import BaseModel as PydanticBaseModel
+
+class RecipeEstimateRequest(PydanticBaseModel):
+    dish_name: str
+
+# ── Local nutrition lookup — 60 common Indian dishes ─────────────────────────
+# Values are per standard single serving. Source: ICMR / NIN food composition tables.
+_INDIAN_NUTRITION_DB: list[dict] = [
+    # Breakfast
+    {"dish_name": "Idli", "aliases": ["idli", "idly"], "calories": 39, "protein": 2, "carbs": 8, "fat": 0, "cuisine": "South Indian", "serving_description": "1 piece (40g)"},
+    {"dish_name": "Dosa", "aliases": ["dosa", "dosai", "plain dosa"], "calories": 168, "protein": 4, "carbs": 30, "fat": 4, "cuisine": "South Indian", "serving_description": "1 piece"},
+    {"dish_name": "Masala Dosa", "aliases": ["masala dosa"], "calories": 230, "protein": 5, "carbs": 38, "fat": 7, "cuisine": "South Indian", "serving_description": "1 piece"},
+    {"dish_name": "Ragi Dosa", "aliases": ["ragi dosa", "finger millet dosa"], "calories": 210, "protein": 9, "carbs": 38, "fat": 4, "cuisine": "South Indian", "serving_description": "2 pieces"},
+    {"dish_name": "Uttapam", "aliases": ["uttapam", "uttappa"], "calories": 175, "protein": 5, "carbs": 28, "fat": 5, "cuisine": "South Indian", "serving_description": "1 piece"},
+    {"dish_name": "Poha", "aliases": ["poha", "aval", "beaten rice", "pohe"], "calories": 195, "protein": 4, "carbs": 36, "fat": 4, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Upma", "aliases": ["upma", "uppuma", "rava upma", "vegetable upma"], "calories": 200, "protein": 6, "carbs": 34, "fat": 5, "cuisine": "South Indian", "serving_description": "1 cup"},
+    {"dish_name": "Oats Upma", "aliases": ["oats upma", "oat upma"], "calories": 210, "protein": 8, "carbs": 35, "fat": 5, "cuisine": "Fusion", "serving_description": "1 cup"},
+    {"dish_name": "Moong Dal Cheela", "aliases": ["moong dal cheela", "moong cheela", "green gram pancake"], "calories": 185, "protein": 12, "carbs": 24, "fat": 5, "cuisine": "North Indian", "serving_description": "2 pieces"},
+    {"dish_name": "Besan Cheela", "aliases": ["besan cheela", "gram flour pancake", "chickpea pancake"], "calories": 170, "protein": 9, "carbs": 22, "fat": 5, "cuisine": "North Indian", "serving_description": "2 pieces"},
+    {"dish_name": "Stuffed Paratha", "aliases": ["stuffed paratha", "aloo paratha", "gobi paratha", "paneer paratha"], "calories": 280, "protein": 8, "carbs": 40, "fat": 10, "cuisine": "North Indian", "serving_description": "1 paratha"},
+    {"dish_name": "Plain Paratha", "aliases": ["paratha", "plain paratha", "wheat paratha"], "calories": 200, "protein": 5, "carbs": 30, "fat": 7, "cuisine": "North Indian", "serving_description": "1 paratha"},
+    {"dish_name": "Methi Paratha", "aliases": ["methi paratha", "fenugreek paratha"], "calories": 210, "protein": 6, "carbs": 30, "fat": 7, "cuisine": "North Indian", "serving_description": "1 paratha"},
+    {"dish_name": "Methi Thepla", "aliases": ["methi thepla", "thepla"], "calories": 145, "protein": 5, "carbs": 22, "fat": 4, "cuisine": "Gujarati", "serving_description": "2 pieces"},
+    {"dish_name": "Dhokla", "aliases": ["dhokla", "khaman dhokla", "khaman"], "calories": 160, "protein": 7, "carbs": 25, "fat": 4, "cuisine": "Gujarati", "serving_description": "4 pieces"},
+    {"dish_name": "Rava Idli", "aliases": ["rava idli", "semolina idli"], "calories": 170, "protein": 5, "carbs": 28, "fat": 5, "cuisine": "South Indian", "serving_description": "2 pieces"},
+    # Rice dishes
+    {"dish_name": "Steamed Rice", "aliases": ["rice", "plain rice", "white rice", "steamed rice"], "calories": 130, "protein": 3, "carbs": 28, "fat": 0, "cuisine": "Generic", "serving_description": "1 cup cooked (150g)"},
+    {"dish_name": "Brown Rice", "aliases": ["brown rice"], "calories": 120, "protein": 3, "carbs": 25, "fat": 1, "cuisine": "Generic", "serving_description": "1 cup cooked (150g)"},
+    {"dish_name": "Jeera Rice", "aliases": ["jeera rice", "cumin rice"], "calories": 200, "protein": 4, "carbs": 36, "fat": 5, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Biryani", "aliases": ["biryani", "chicken biryani", "veg biryani", "hyderabadi biryani"], "calories": 350, "protein": 14, "carbs": 55, "fat": 10, "cuisine": "Hyderabadi", "serving_description": "1 plate (250g)"},
+    {"dish_name": "Pulao", "aliases": ["pulao", "pilaf", "veg pulao"], "calories": 250, "protein": 6, "carbs": 42, "fat": 6, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Khichdi", "aliases": ["khichdi", "khichri", "dal khichdi"], "calories": 185, "protein": 7, "carbs": 32, "fat": 4, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Curd Rice", "aliases": ["curd rice", "thayir sadam", "dahi rice"], "calories": 180, "protein": 6, "carbs": 28, "fat": 5, "cuisine": "South Indian", "serving_description": "1 cup"},
+    # Dal / Lentils
+    {"dish_name": "Dal Tadka", "aliases": ["dal tadka", "tarka dal", "yellow dal"], "calories": 180, "protein": 10, "carbs": 28, "fat": 5, "cuisine": "North Indian", "serving_description": "1 bowl (200ml)"},
+    {"dish_name": "Dal Makhani", "aliases": ["dal makhani", "makhani dal", "black dal"], "calories": 230, "protein": 11, "carbs": 25, "fat": 10, "cuisine": "Punjabi", "serving_description": "1 bowl (200ml)"},
+    {"dish_name": "Rajma", "aliases": ["rajma", "kidney bean curry", "rajma masala"], "calories": 210, "protein": 13, "carbs": 32, "fat": 4, "cuisine": "Punjabi", "serving_description": "1 bowl (200ml)"},
+    {"dish_name": "Chana Masala", "aliases": ["chana masala", "chole", "chickpea curry"], "calories": 220, "protein": 11, "carbs": 32, "fat": 6, "cuisine": "North Indian", "serving_description": "1 bowl (200ml)"},
+    {"dish_name": "Sambar", "aliases": ["sambar", "sambhar"], "calories": 95, "protein": 5, "carbs": 14, "fat": 3, "cuisine": "South Indian", "serving_description": "1 bowl (200ml)"},
+    {"dish_name": "Rasam", "aliases": ["rasam", "pepper rasam", "tomato rasam"], "calories": 45, "protein": 2, "carbs": 8, "fat": 1, "cuisine": "South Indian", "serving_description": "1 bowl (200ml)"},
+    # Sabzi / Vegetables
+    {"dish_name": "Palak Paneer", "aliases": ["palak paneer", "spinach paneer"], "calories": 220, "protein": 16, "carbs": 12, "fat": 12, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Paneer Butter Masala", "aliases": ["paneer butter masala", "paneer makhani"], "calories": 290, "protein": 14, "carbs": 16, "fat": 18, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Aloo Gobi", "aliases": ["aloo gobi", "potato cauliflower"], "calories": 150, "protein": 4, "carbs": 22, "fat": 5, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Baingan Bharta", "aliases": ["baingan bharta", "eggplant bharta", "brinjal bharta"], "calories": 120, "protein": 3, "carbs": 15, "fat": 6, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Bhindi Masala", "aliases": ["bhindi", "okra masala", "bhindi masala", "ladies finger"], "calories": 100, "protein": 3, "carbs": 12, "fat": 5, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Lauki Sabzi", "aliases": ["lauki", "bottle gourd", "lauki sabzi", "dudhi"], "calories": 75, "protein": 2, "carbs": 10, "fat": 3, "cuisine": "North Indian", "serving_description": "1 cup"},
+    {"dish_name": "Paneer Bhurji", "aliases": ["paneer bhurji", "scrambled paneer"], "calories": 250, "protein": 18, "carbs": 8, "fat": 17, "cuisine": "North Indian", "serving_description": "1 cup"},
+    # Breads
+    {"dish_name": "Roti", "aliases": ["roti", "chapati", "phulka", "wheat roti"], "calories": 80, "protein": 3, "carbs": 15, "fat": 1, "cuisine": "Generic", "serving_description": "1 roti"},
+    {"dish_name": "Multigrain Roti", "aliases": ["multigrain roti", "multigrain chapati"], "calories": 85, "protein": 4, "carbs": 14, "fat": 2, "cuisine": "Generic", "serving_description": "1 roti"},
+    {"dish_name": "Naan", "aliases": ["naan", "plain naan", "butter naan"], "calories": 262, "protein": 9, "carbs": 45, "fat": 5, "cuisine": "North Indian", "serving_description": "1 piece"},
+    {"dish_name": "Puri", "aliases": ["puri", "poori"], "calories": 150, "protein": 3, "carbs": 18, "fat": 8, "cuisine": "North Indian", "serving_description": "2 pieces"},
+    {"dish_name": "Bhature", "aliases": ["bhatura", "bhature"], "calories": 230, "protein": 6, "carbs": 34, "fat": 8, "cuisine": "Punjabi", "serving_description": "1 piece"},
+    # Snacks
+    {"dish_name": "Makhana", "aliases": ["makhana", "fox nuts", "roasted makhana", "lotus seeds"], "calories": 120, "protein": 4, "carbs": 20, "fat": 1, "cuisine": "Generic", "serving_description": "1 cup"},
+    {"dish_name": "Roasted Chana", "aliases": ["roasted chana", "chana", "roasted chickpeas", "bhuna chana"], "calories": 115, "protein": 7, "carbs": 18, "fat": 2, "cuisine": "Generic", "serving_description": "30g"},
+    {"dish_name": "Sprout Chaat", "aliases": ["sprout chaat", "sprouted moong", "sprouts salad"], "calories": 130, "protein": 9, "carbs": 20, "fat": 2, "cuisine": "Generic", "serving_description": "1 bowl"},
+    {"dish_name": "Samosa", "aliases": ["samosa"], "calories": 250, "protein": 5, "carbs": 30, "fat": 13, "cuisine": "North Indian", "serving_description": "2 pieces"},
+    {"dish_name": "Vada", "aliases": ["vada", "medu vada", "urad vada"], "calories": 175, "protein": 6, "carbs": 22, "fat": 8, "cuisine": "South Indian", "serving_description": "2 pieces"},
+    # Non-veg
+    {"dish_name": "Chicken Curry", "aliases": ["chicken curry", "murgh curry"], "calories": 250, "protein": 28, "carbs": 8, "fat": 13, "cuisine": "North Indian", "serving_description": "1 bowl (200ml)"},
+    {"dish_name": "Chicken Tikka", "aliases": ["chicken tikka", "tandoori chicken"], "calories": 190, "protein": 30, "carbs": 5, "fat": 6, "cuisine": "Punjabi", "serving_description": "4 pieces"},
+    {"dish_name": "Egg Bhurji", "aliases": ["egg bhurji", "scrambled eggs", "anda bhurji"], "calories": 180, "protein": 13, "carbs": 4, "fat": 13, "cuisine": "Generic", "serving_description": "2 eggs"},
+    {"dish_name": "Fish Curry", "aliases": ["fish curry", "meen curry"], "calories": 200, "protein": 25, "carbs": 6, "fat": 9, "cuisine": "South Indian", "serving_description": "1 bowl"},
+    # Sweets / Desserts
+    {"dish_name": "Kheer", "aliases": ["kheer", "rice pudding", "payasam"], "calories": 180, "protein": 5, "carbs": 30, "fat": 5, "cuisine": "Generic", "serving_description": "1 small bowl"},
+    {"dish_name": "Halwa", "aliases": ["halwa", "sooji halwa", "gajar halwa", "carrot halwa"], "calories": 280, "protein": 4, "carbs": 40, "fat": 12, "cuisine": "North Indian", "serving_description": "1 small bowl"},
+    {"dish_name": "Raita", "aliases": ["raita", "dahi raita", "cucumber raita", "boondi raita"], "calories": 80, "protein": 4, "carbs": 9, "fat": 3, "cuisine": "Generic", "serving_description": "1 bowl (150ml)"},
+    {"dish_name": "Lassi", "aliases": ["lassi", "sweet lassi", "plain lassi"], "calories": 150, "protein": 5, "carbs": 20, "fat": 5, "cuisine": "Punjabi", "serving_description": "1 glass (250ml)"},
+    {"dish_name": "Buttermilk", "aliases": ["buttermilk", "chaas", "chaach", "mattha"], "calories": 50, "protein": 3, "carbs": 6, "fat": 1, "cuisine": "Generic", "serving_description": "1 glass (250ml)"},
+]
+
+
+def _find_dish(dish_name: str) -> dict | None:
+    """Fuzzy-match dish_name against the local DB. Returns best match or None."""
+    query = dish_name.strip().lower()
+    best: dict | None = None
+    best_score = 0
+
+    for entry in _INDIAN_NUTRITION_DB:
+        for alias in entry["aliases"]:
+            # Exact match wins immediately
+            if query == alias:
+                return entry
+            # Partial match scoring
+            if alias in query or query in alias:
+                score = len(set(alias.split()) & set(query.split()))  # word overlap
+                if score > best_score:
+                    best_score = score
+                    best = entry
+
+    return best if best_score > 0 else None
+
+
+@router.post("/recipes/estimate")
+async def estimate_recipe_nutrition(
+    body: RecipeEstimateRequest,
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    """
+    Estimate nutrition for a dish name.
+    Strategy: local Indian dish lookup table first (instant, offline).
+    Falls back to Gemini API if a key is configured and dish not found locally.
+    The doctor reviews and edits before saving.
+    """
+    # ── Step 1: Try local lookup first (fast, free, reliable) ──────────────
+    match = _find_dish(body.dish_name)
+    if match:
+        return {
+            "ai_estimated": True,
+            "source": "local_db",
+            "dish_name": match["dish_name"],
+            "calories": match["calories"],
+            "protein": match["protein"],
+            "carbs": match["carbs"],
+            "fat": match["fat"],
+            "cuisine": match["cuisine"],
+            "serving_description": match["serving_description"],
+        }
+
+    # ── Step 2: Fall back to Gemini if key is available ─────────────────────
+    import httpx
+    from ..core.config import settings
+
+    api_key = settings.GEMINI_API_KEY_1
+    if not api_key:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dish '{body.dish_name}' not found in local database. Add a Gemini API key to enable AI estimation.",
+        )
+
+    prompt = f"""You are a nutritionist AI specializing in Indian cuisine.
+
+For the dish \"{body.dish_name}\", provide nutritional estimates per standard single serving.
+
+Respond ONLY with a valid JSON object — no markdown, no explanation, no backticks.
+
+Required format:
+{{
+  "dish_name": "<canonical dish name>",
+  "calories": <integer kcal>,
+  "protein": <integer grams>,
+  "carbs": <integer grams>,
+  "fat": <integer grams>,
+  "cuisine": "<cuisine type e.g. South Indian, North Indian, Gujarati>",
+  "serving_description": "<e.g. 2 pieces, 1 bowl 200ml, 1 cup>"
+}}"""
+
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.0-flash:generateContent?key={api_key}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 512},
+    }
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        try:
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=502, detail=f"Gemini API error: {e.response.status_code}")
+        except httpx.RequestError:
+            raise HTTPException(status_code=502, detail="Could not reach Gemini API")
+
+    import json as _json
+    try:
+        raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        clean = raw_text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        nutrition = _json.loads(clean)
+    except (KeyError, _json.JSONDecodeError) as e:
+        raise HTTPException(status_code=502, detail=f"Failed to parse AI response: {e}")
+
+    return {"ai_estimated": True, "source": "gemini", **nutrition}
 
 
 # ─── GET /api/v1/doctor/dashboard ─────────────────────────────────────────

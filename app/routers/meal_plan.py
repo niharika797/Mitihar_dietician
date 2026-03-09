@@ -89,6 +89,7 @@ async def adjust_meal_plan(
             "health_condition": current_user.health_condition or "Healthy",
             "region": current_user.region or "North",
             "target_calories": target_calories,
+            "food_allergies": current_user.food_allergies or [],
             "age": age,
         }
         

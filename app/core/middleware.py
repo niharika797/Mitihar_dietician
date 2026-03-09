@@ -140,6 +140,69 @@ class DoctorIsolationMiddleware(BaseHTTPMiddleware):
 
 
 # ---------------------------------------------------------------------------
+# Security headers middleware (outermost — wraps all responses)
+# ---------------------------------------------------------------------------
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Adds browser-enforced security headers to every response.
+    Must be registered as the outermost middleware (added LAST via add_middleware)
+    so it can annotate responses from all inner layers including CORS.
+
+    Headers applied:
+      X-Content-Type-Options   — prevents MIME sniffing attacks
+      X-Frame-Options          — blocks clickjacking via <iframe>
+      X-XSS-Protection         — legacy XSS filter for older browsers
+      Referrer-Policy          — limits referrer leakage to same origin
+      Content-Security-Policy  — whitelists allowed content sources
+      Permissions-Policy       — disables browser APIs doctors don't need
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Prevent browsers from guessing content types (e.g. treating a JSON
+        # response as executable HTML)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+
+        # Block the entire site from being embedded in an <iframe>.
+        # Prevents clickjacking — attacker overlays a transparent iframe over
+        # the login button to steal credentials.
+        response.headers["X-Frame-Options"] = "DENY"
+
+        # Legacy XSS filter — modern browsers use CSP, but this covers older ones
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+
+        # Only send the origin (no path) in the Referer header when navigating
+        # cross-origin. Prevents patient data from leaking into third-party logs.
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Content-Security-Policy — whitelist every source the app legitimately
+        # needs. Anything not listed is blocked by the browser before it runs.
+        # Tighten 'unsafe-inline' on script-src once inline scripts are removed.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
+            "font-src 'self' fonts.gstatic.com data:; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' http://localhost:8000 http://localhost:5173; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'"
+        )
+
+        # Disable browser APIs that the clinical dashboard has no business using.
+        # Prevents a compromised dependency from silently accessing camera/mic/GPS.
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), "
+            "payment=(), usb=(), magnetometer=(), accelerometer=()"
+        )
+
+        return response
+
+
+# ---------------------------------------------------------------------------
 # Admin IP-whitelist middleware (DB query only on /admin routes)
 # ---------------------------------------------------------------------------
 

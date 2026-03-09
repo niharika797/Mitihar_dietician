@@ -62,10 +62,10 @@ Patients are the core users. They can be standalone or connected to a doctor via
 Doctors manage patients and their own clinic profiles.
 
 **Step 1: Doctor Login**
-- **Route**: `POST /api/v1/auth/token`
+- **Route**: `POST /api/v1/auth/doctor/login`
 - Use the seeded doctor credentials (or create a new doctor).
-  - *Seeded Email*: `doctor1@mityahar.com` (Check DB for exact seed records).
-  - *Password*: `password123`
+  - *Seeded Email*: `testdoctor@mityahar.com` (Check DB for exact seed records).
+  - *Password*: `doctor1234`
 
 **Step 2: Generate Subscription Codes**
 - **Route**: `POST /api/v1/doctor/subscription-codes`
@@ -89,10 +89,10 @@ Admins oversee billing metrics, audit logs, and compliance. Admins are secured v
 - You must either add your IP address `127.0.0.1` to the `admins.allowed_ips` column in the database or disable IP checking in `.env` (if applicable) prior to calling these routes. The `AdminIPWhitelistMiddleware` enforces this.
 
 **Step 2: Login**
-- **Route**: `POST /api/v1/auth/token`
+- **Route**: `POST /api/v1/auth/admin/login`
 - Use the seeded admin credentials.
   - *Email*: `admin@mityahar.com`
-  - *Password*: `admin123`
+  - *Password*: `admin1234`
 
 **Step 3: Admin Actions**
 - **Route**: `GET /api/v1/admin/audit-logs`

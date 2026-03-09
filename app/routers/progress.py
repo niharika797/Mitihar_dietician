@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.limiter import limiter
 from ..services.user_service import get_current_user
 from ..services.progress_service import (
     log_meal, log_water, log_steps, log_weight, log_activity,
@@ -22,7 +23,9 @@ router = APIRouter()
 
 
 @router.post("/log/meal")
+@limiter.limit("60/minute")
 async def post_log_meal(
+    request: Request,
     meal: MealLogCreate,
     current_user: Patient = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -47,7 +50,9 @@ async def post_log_meal(
 
 
 @router.post("/log/water")
+@limiter.limit("30/minute")
 async def post_log_water(
+    request: Request,
     water: WaterLogCreate,
     current_user: Patient = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -58,7 +63,9 @@ async def post_log_water(
 
 
 @router.post("/log/steps")
+@limiter.limit("30/minute")
 async def post_log_steps(
+    request: Request,
     steps: StepsLogCreate,
     current_user: Patient = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -69,7 +76,9 @@ async def post_log_steps(
 
 
 @router.post("/log/weight")
+@limiter.limit("30/minute")
 async def post_log_weight(
+    request: Request,
     weight: WeightLogCreate,
     current_user: Patient = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -80,7 +89,9 @@ async def post_log_weight(
 
 
 @router.post("/log/activity")
+@limiter.limit("30/minute")
 async def post_log_activity(
+    request: Request,
     activity: ActivityLogCreate,
     current_user: Patient = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),

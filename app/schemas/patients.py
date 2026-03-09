@@ -6,7 +6,7 @@ class OnboardingRequest(BaseModel):
     date_of_birth: date
     health_goals: list[str] = Field(default_factory=list)
     medical_conditions: list[str] = Field(default_factory=list)
-    food_allergies: list[str] = Field(default_factory=list, min_length=1)
+    food_allergies: list[str] = Field(..., min_length=1)
     # mandatory — patient must list at least one allergy or "None"
     target_weight_kg: float = Field(..., gt=0)
     meals_per_day: Literal[3, 5]

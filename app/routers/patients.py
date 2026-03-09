@@ -99,6 +99,7 @@ async def onboard_patient(
                 "health_condition": updated.health_condition or "Healthy",
                 "region": updated.region or "North",
                 "nonveg_meals_per_week": updated.nonveg_meals_per_week or 3,
+                "food_allergies": updated.food_allergies or [],
                 "age": age,
             }
             diet_plan = await diet_service.generate_diet_plan(user_data, session)
@@ -182,6 +183,9 @@ async def request_doctor(
     if doc_result.scalars().first() is None:
         raise HTTPException(status_code=404, detail="Doctor not found")
 
+    if patient.doctor_id == body.doctor_id:
+        raise HTTPException(status_code=409, detail="Already connected to this doctor")
+
     # Prevent duplicate pending request
     existing = await session.execute(
         select(PatientRequest).where(
@@ -200,9 +204,11 @@ async def request_doctor(
         patient_id=patient.id,
         doctor_id=body.doctor_id,
         status="pending",
+        requested_at=datetime.now(timezone.utc)
     )
     session.add(req)
     await session.flush()
+    await session.refresh(req)
     return {"message": "Request submitted successfully", "request_id": req.id}
 
 

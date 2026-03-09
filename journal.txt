@@ -92,17 +92,132 @@ KNOWN TECH DEBT:
   - ~20 dirty food_items rows pending Ollama clean pass
 
 ================================================================================
-PHASE 1 — PLANNED (not started, new chat)
+PHASE 1 + 2 — COMPLETE (built in previous chats, details in docs/)
 ================================================================================
 
-Features (in order):
-  F1 — Patient onboarding (POST /api/v1/patients/onboarding) — FIRST
-  F2 — Subscription activation (POST /api/v1/patients/activate)
-  F3 — Doctor dashboard (/api/v1/doctor/* routes)
-  F4 — Patient-Doctor connection request
-  F5 — Day N+1 calorie adjustment (writes ProgressLog.calorie_adjustment)
-  F6 — Admin panel (POST/GET /api/v1/admin/*)
-  F7 — Google OAuth (patient login)
+All features built and 95/95 tests passing as of 2026-03-08.
+See docs/PHASE_1_HANDOFF_ARCHIVED.md and docs/PHASE_2_HANDOFF_ARCHIVED.md for detail.
 
-See PHASE_1_HANDOFF.md for full specs.
+Key deliverables:
+  - Full three-role auth (patient/doctor/admin) with JWT
+  - Patient onboarding, subscription, meal plan, progress tracking
+  - Doctor dashboard (25 endpoints, DoctorIsolation enforced)
+  - Admin panel (23/23 complete: stats, doctors, codes, food, audit, DPDP erasure)
+  - Meal generator: 2,116 food items, allergy filtering, non-veg budget, plan versioning
+  - Google OAuth for patients
+
+================================================================================
+SPRINT 2 — BACKEND SECURITY + COMPLETION — COMPLETE (2026-03-08)
+================================================================================
+
+All 5 Sprint 2 items completed. 95/95 tests still passing.
+
+ITEM 1 — food_allergies validation fix (schemas/patients.py)
+  CHANGED: Field(default_factory=list, min_length=1) → Field(..., min_length=1)
+  REASON: Pydantic v2 skips min_length when default_factory is set; making field
+    required fixes silent bypass that allowed empty allergies list through onboarding.
+
+ITEM 2 — POST /admin/billing/{doctor_id}/mark-paid
+  NEW ENDPOINT in admin.py. Audit-log backed (no new DB table). Validates doctor
+    exists, calls log_action() with action="mark_paid", returns confirmation dict.
+  NEW IMPORT: pydantic BaseModel + Field added to admin.py imports.
+  CLASS: BillingMarkPaidRequest(amount, notes, period) — inline in router.
+
+ITEM 3 — Rate limits on missing endpoints
+  ADDED: @limiter.limit("10/minute") on POST /auth/register
+  ADDED: @limiter.limit("60/minute") on POST /progress/log/meal
+  ADDED: @limiter.limit("30/minute") on POST /progress/log/water, steps, weight, activity
+  All 5 endpoints also got `request: Request` param injected (required by slowapi)
+  ADDED: pyotp to requirements.txt
+
+ITEM 4 — MFA (TOTP) for doctor + admin
+  NEW FILE: app/services/mfa_service.py
+    generate_mfa_secret() — pyotp.random_base32()
+    get_totp_uri(secret, email) — provisioning_uri for QR code
+    verify_totp(secret, code) — valid_window=1 (±30s clock drift tolerance)
+  NEW ENDPOINTS in auth.py:
+    POST /auth/doctor/login    — mfa_enabled=False → full JWT (unchanged behaviour)
+                                  mfa_enabled=True  → partial 5-min token
+    POST /auth/doctor/mfa-login    — partial token + TOTP → full JWT
+    POST /auth/doctor/mfa-setup    — generate secret, return otpauth:// URI
+    POST /auth/doctor/mfa-confirm  — verify live code, set mfa_enabled=True
+    POST /auth/doctor/mfa-disable  — requires valid TOTP, clears secret
+    POST /auth/admin/login     — same fork as doctor
+    POST /auth/admin/mfa-login     — same pattern
+    POST /auth/admin/mfa-setup     — same pattern
+    POST /auth/admin/mfa-confirm   — same pattern
+    POST /auth/admin/mfa-disable   — same pattern
+  BACKWARD COMPAT: all existing test accounts have mfa_enabled=False; 95 tests unaffected
+
+ITEM 5 — IP whitelisting middleware for admin
+  ALREADY DONE (was incorrectly listed as missing). AdminIPWhitelistMiddleware
+  fully implemented in middleware.py and mounted in main.py. DB query fires only
+  on authenticated /admin requests. allowed_ips=[] disables whitelisting.
+
+================================================================================
+SPRINT 2.5 — SPRINT 3 PREREQUISITES — COMPLETE (2026-03-08)
+================================================================================
+
+PREREQ 1 — HttpOnly cookie for refresh tokens (web frontend security)
+  CHANGED: auth.py — added `response: Response` to admin_login() and doctor_login()
+  BEHAVIOUR: After successful login (non-MFA path), backend ALSO sets:
+    Set-Cookie: refresh_token=<value>; HttpOnly; SameSite=Lax; Path=/api/v1/auth
+  SECURITY: access_token stays in JSON response body (web stores in Zustand memory)
+    refresh_token is in HttpOnly cookie (inaccessible to JS, XSS-safe)
+    Mobile clients continue to read refresh_token from JSON body (unchanged)
+  PRODUCTION NOTE: change secure=False to secure=True when deploying HTTPS
+
+PREREQ 2 — CORS origins for frontend dev ports
+  CHANGED: .env CORS_ORIGINS now includes localhost:3001 (doctor) and localhost:3002 (admin)
+  FULL LIST: http://localhost:3000, http://localhost:3001, http://localhost:3002, http://localhost:8000
+
+================================================================================
+ROOT DIRECTORY CLEANUP — COMPLETE (2026-03-08)
+================================================================================
+
+MOVED TO docs/ (historical, not deleted — may be useful for reference):
+  PHASE_1_HANDOFF_ARCHIVED.md
+  PHASE_2_HANDOFF_ARCHIVED.md    (was PHASE_2_HANDOFF.md)
+  MITYAHAR_TESTING_GUIDE.md      (manual testing guide — still valid but verbose)
+  api_testing_report.md
+  Meal Plan Adjustment Fixes.md
+  testing_script_changes_report.md
+  TESTING_PROMPT_FOR_ANTIGRAVITY.md  (obsolete — Antigravity currently broken)
+  RUNNING_GUIDE.md               (outdated — references wrong port 8001)
+  test_results1-5.txt → docs/test_results_archive/
+
+CREATED:
+  SPRINT_3_HANDOFF.md            ← use this to start Sprint 3 frontend chat
+  docs/                          ← archive folder for historical docs
+
+ROOT NOW CONTAINS (clean):
+  .env, .env.example, .gitignore, alembic.ini, requirements.txt, README.md
+  docker-compose.yml, setup.bat, seed_admin.py
+  Task_List.md, SPRINT_3_HANDOFF.md, journal.txt
+  test_results_latest.txt        ← 95/95 passing, last run 2026-03-08
+  uvicorn_error.log              ← server log
+
+================================================================================
+CURRENT STATE (2026-03-08 — end of Sprint 2)
+================================================================================
+
+BACKEND STATUS: PRODUCTION-GRADE
+  Phase 0: 27/28  (Redis deferred to Phase 7)
+  Phase 1 Backend: 40/42  (FCM + slot-linking deferred)
+  Phase 2 Backend: 25/26  (Edamam optional, deferred)
+  Phase 3 Backend: 23/23  ✅ COMPLETE
+  Security: 8/12   (KMS, prod CORS, headers, DPDP cron deferred)
+  Phase 6 (ETL+ML): 8/13  (5 ML improvements deferred)
+  Tests: 95/95 ✅
+
+NEXT: Sprint 3 — Doctor Dashboard (Next.js 15)
+  See SPRINT_3_HANDOFF.md for full spec and first steps.
+  Frontend monorepo at: C:\Users\Lenovo\Desktop\Code\2026\Nutria\mityahar-frontend\
+
+KNOWN TECH DEBT (do not fix unless blocking):
+  - slowapi in-memory (not Redis) — resets on server restart, breaks multi-worker
+  - ~20 dirty food_items rows — minor data quality
+  - auth.py Set-Cookie secure=False — change to True before HTTPS/production deploy
+  - ProgressLog.total_calories_consumed never written — unused column
+  - MealLog.food_id / custom_food_name rarely populated — partial feature
 ================================================================================

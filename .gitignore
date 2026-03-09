@@ -1,4 +1,4 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
@@ -8,34 +8,44 @@ __pycache__/
 dist/
 build/
 
-# Virtual Environment
+# ── Virtual Environment ───────────────────────────────────────────────────────
 venv/
 .venv/
 env/
 
-# Environment Variables
+# ── Environment Variables ─────────────────────────────────────────────────────
 .env
 
-# IDEs
+# ── IDEs ──────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 
-# Testing & Coverage
+# ── Testing & Coverage ────────────────────────────────────────────────────────
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# MongoDB
-*.bson
-
-# Secret Keys & Configs
+# ── Secret Keys ───────────────────────────────────────────────────────────────
 client_secret_*.json
-*.json
+
+# ── Frontend — Node / pnpm ────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+*.pnpm-debug.log*
+mitihar-frontend/.pnpm-store/
+
+# ── Frontend — Build outputs ──────────────────────────────────────────────────
+mitihar-frontend/apps/dist/
+mitihar-frontend/apps/.vite/
+mitihar-frontend/apps/build/
+
+# ── Frontend — Type cache ─────────────────────────────────────────────────────
+mitihar-frontend/apps/tsconfig.tsbuildinfo

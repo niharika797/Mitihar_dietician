@@ -1,6 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -543,3 +544,55 @@ async def erase_patient_data(
         detail={"compliance": "DPDP_Act"},
     )
     return {"message": f"Patient {patient_id} data erased (DPDP compliance)"}
+
+
+# ─── POST /api/v1/admin/billing/{doctor_id}/mark-paid ─────────────────────────
+
+class BillingMarkPaidRequest(BaseModel):
+    amount: Optional[float] = Field(default=None, ge=0)
+    notes: Optional[str] = Field(default=None, max_length=500)
+    period: Optional[str] = Field(default=None, description="e.g. '2026-03'")
+
+
+@router.post("/billing/{doctor_id}/mark-paid")
+async def mark_doctor_paid(
+    doctor_id: int,
+    body: BillingMarkPaidRequest,
+    request: Request,
+    admin: Admin = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Record that a doctor has paid their invoice.
+    Stored as an audit log entry — no billing table yet (Phase 4 Razorpay will replace this).
+    """
+    doctor_result = await session.execute(
+        select(Doctor).where(Doctor.id == doctor_id)
+    )
+    doctor = doctor_result.scalars().first()
+    if doctor is None:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    await log_action(
+        session,
+        actor_id=admin.id,
+        actor_role="admin",
+        action="mark_paid",
+        entity_type="doctor",
+        entity_id=doctor_id,
+        ip_address=request.client.host if request.client else None,
+        detail={
+            "amount": body.amount,
+            "notes": body.notes,
+            "period": body.period,
+            "doctor_name": doctor.name,
+            "doctor_email": doctor.email,
+        },
+    )
+    return {
+        "message": f"Payment recorded for Dr. {doctor.name}",
+        "doctor_id": doctor_id,
+        "amount": body.amount,
+        "period": body.period,
+        "recorded_by_admin_id": admin.id,
+    }
