@@ -85,3 +85,23 @@ class FoodAdminView(BaseModel):
     cal_per_serving: float
     created_at: datetime
     model_config = {"from_attributes": True}
+
+
+class AdminPatientView(BaseModel):
+    id: int
+    name: str
+    email: str
+    gender: str
+    subscription_status: str
+    user_type: str
+    doctor_id: Optional[int]
+    bmi: Optional[float]
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class PaginatedAdminPatients(BaseModel):
+    patients: list[AdminPatientView]
+    total: int
+    page: int
+    page_size: int

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { doctorApi, MealEntry } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
 import {
   MoreHorizontal, StickyNote, Flame, Beef, Wheat, Droplets,
-  Plus, X, Loader2, AlertCircle, CalendarDays,
+  Plus, X, Loader2, AlertCircle, CalendarDays, Pencil, Save,
 } from 'lucide-react';
 
 interface PlanTabProps {
@@ -122,10 +123,24 @@ function MealCard({ meal }: { meal: MealEntry }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function PlanTab({ patientId, patientTdee, patientName }: PlanTabProps) {
+  const queryClient = useQueryClient();
   const [activeDateIdx, setActiveDateIdx] = useState(0);
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState<CustomMealForm>(EMPTY_FORM);
   const [addSuccess, setAddSuccess] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState('');
+
+  const overrideMutation = useMutation({
+    mutationFn: (notes: string) =>
+      doctorApi.overridePlan(patientId, { doctor_notes: notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.patientPlan(patientId) });
+      setEditingNotes(false);
+      toast.success('Plan notes saved');
+    },
+    onError: () => toast.error('Failed to save notes'),
+  });
 
   const { data: plan, isLoading, isError } = useQuery({
     queryKey: qk.patientPlan(patientId),
@@ -205,8 +220,46 @@ export function PlanTab({ patientId, patientTdee, patientName }: PlanTabProps) {
       {/* Doctor notes banner */}
       {plan.doctor_notes && (
         <div className="mb-5 px-4 py-3 bg-[#F0FDF4] border border-[#DCFCE7] rounded-lg">
-          <p className="text-xs font-medium text-[#15803d] mb-0.5">Doctor Notes</p>
-          <p className="text-sm text-[#374151]">{plan.doctor_notes}</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-medium text-[#15803d]">Doctor Notes</p>
+            {!editingNotes && (
+              <button
+                onClick={() => { setNotesValue(plan.doctor_notes ?? ''); setEditingNotes(true); }}
+                className="flex items-center gap-1 text-xs text-[#1E7C45] hover:underline"
+              >
+                <Pencil size={11} /> Edit
+              </button>
+            )}
+          </div>
+          {editingNotes ? (
+            <div>
+              <textarea
+                value={notesValue}
+                onChange={e => setNotesValue(e.target.value)}
+                rows={3}
+                autoFocus
+                className="w-full resize-none bg-white border border-[#DCFCE7] rounded px-2 py-1.5 text-sm text-[#374151] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => overrideMutation.mutate(notesValue)}
+                  disabled={overrideMutation.isPending}
+                  className="flex items-center gap-1.5 h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50"
+                >
+                  {overrideMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                  Save
+                </button>
+                <button
+                  onClick={() => setEditingNotes(false)}
+                  className="h-7 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151] hover:bg-[#F9FAFB]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-[#374151]">{plan.doctor_notes}</p>
+          )}
         </div>
       )}
 
@@ -269,6 +322,40 @@ export function PlanTab({ patientId, patientTdee, patientName }: PlanTabProps) {
           <MealCard key={i} meal={meal} />
         ))}
       </div>
+
+      {/* Add / edit doctor notes when plan has none */}
+      {!plan.doctor_notes && !editingNotes && (
+        <button
+          onClick={() => { setNotesValue(''); setEditingNotes(true); }}
+          className="flex items-center gap-2 h-8 px-3 mb-4 rounded-md border border-dashed border-[#D1D5DB] text-xs text-[#6B7280] hover:border-[#1E7C45] hover:text-[#1E7C45] transition-colors"
+        >
+          <Pencil size={12} /> Add doctor notes to this plan
+        </button>
+      )}
+      {!plan.doctor_notes && editingNotes && (
+        <div className="mb-4 px-4 py-3 bg-[#F0FDF4] border border-[#DCFCE7] rounded-lg">
+          <p className="text-xs font-medium text-[#15803d] mb-1">Doctor Notes</p>
+          <textarea
+            value={notesValue}
+            onChange={e => setNotesValue(e.target.value)}
+            rows={3}
+            autoFocus
+            className="w-full resize-none bg-white border border-[#DCFCE7] rounded px-2 py-1.5 text-sm text-[#374151] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+            placeholder="Add notes visible to the patient on their plan…"
+          />
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={() => overrideMutation.mutate(notesValue)}
+              disabled={overrideMutation.isPending}
+              className="flex items-center gap-1.5 h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50"
+            >
+              {overrideMutation.isPending ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+              Save
+            </button>
+            <button onClick={() => setEditingNotes(false)} className="h-7 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151] hover:bg-[#F9FAFB]">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* Add Custom Meal */}
       {!showAddForm ? (

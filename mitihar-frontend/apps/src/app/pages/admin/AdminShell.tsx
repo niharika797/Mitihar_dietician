@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { TopBar } from '../../components/layout/TopBar';
 import { CommandPalette } from '../../components/layout/CommandPalette';
-import { currentAdmin, adminNotifications, foodDatabase } from '../../data/mockData';
+import { useAuthStore } from '../../../stores/authStore';
+import { adminApi } from '../../../lib/adminApi';
+import { aqk } from '../../../lib/queryKeys';
 
 function getBreadcrumbs(pathname: string) {
   const map: Record<string, { label: string }[]> = {
@@ -21,8 +24,15 @@ function getBreadcrumbs(pathname: string) {
 export function AdminShell() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const location = useLocation();
+  const { user_name } = useAuthStore();
 
-  const pendingFoodCount = foodDatabase.filter(f => f.status === 'pending').length;
+  // Pending food badge — count doctor-submitted unverified items
+  const { data: pendingFoodItems = [] } = useQuery({
+    queryKey: aqk.pendingFood(),
+    queryFn: () => adminApi.listFood({ source: 'doctor', is_verified: false, page_size: 100 }),
+    staleTime: 3 * 60 * 1000,
+  });
+  const pendingFoodCount = pendingFoodItems.length;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -35,20 +45,23 @@ export function AdminShell() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  const adminName  = user_name ?? 'Admin';
+  const adminRole  = 'admin';
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#F9FAFB]">
       <Sidebar
         role="admin"
-        userName={currentAdmin.name}
-        userRole={currentAdmin.role}
+        userName={adminName}
+        userRole={adminRole}
         pendingFoodCount={pendingFoodCount}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar
           breadcrumbs={getBreadcrumbs(location.pathname)}
-          notifications={adminNotifications}
-          userName={currentAdmin.name}
-          userRole={currentAdmin.role}
+          notifications={[]}
+          userName={adminName}
+          userRole={adminRole}
           onSearchOpen={() => setCmdOpen(true)}
         />
         <main className="flex-1 overflow-y-auto">

@@ -4,6 +4,19 @@
  * Keep all cache keys here so invalidation is always consistent.
  */
 
+// ── Admin query keys ─────────────────────────────────────────────────────────
+export const aqk = {
+  stats:          () => ['admin', 'stats'] as const,
+  doctors:        () => ['admin', 'doctors'] as const,
+  patients:       (page: number, search: string) => ['admin', 'patients', page, search] as const,
+  food:           (params: object) => ['admin', 'food', params] as const,
+  pendingFood:    () => ['admin', 'food', 'pending'] as const,
+  billing:        () => ['admin', 'billing'] as const,
+  codes:          (doctorId?: number) => ['admin', 'codes', doctorId ?? 'all'] as const,
+  auditLogs:      (params: object) => ['admin', 'audit-logs', params] as const,
+};
+
+// ── Doctor query keys ─────────────────────────────────────────────────────────
 export const qk = {
   dashboard:    () => ['doctor', 'dashboard'] as const,
   patients:     (page: number, search: string) => ['doctor', 'patients', page, search] as const,

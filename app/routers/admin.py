@@ -13,6 +13,7 @@ from ..schemas.admin import (
     CreateDoctorRequest, DoctorAdminView, PlatformStats,
     DoctorDetailView, AuditLogEntry, PaginatedAuditLogs,
     GenerateCodesAdminRequest, CodeAdminView, FoodAdminView,
+    AdminPatientView, PaginatedAdminPatients,
 )
 from ..services.audit_service import log_action
 
@@ -92,6 +93,34 @@ async def get_stats(
         total_doctors=total_doctors,
         total_plans_generated=total_plans,
     )
+
+
+# ─── GET /api/v1/admin/patients ──────────────────────────────────────────
+
+@router.get("/patients", response_model=PaginatedAdminPatients)
+async def list_patients(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    search: Optional[str] = Query(default=None),
+    admin: Admin = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """Platform-wide patient list with optional name/email search and pagination."""
+    from sqlalchemy import or_
+    stmt = select(Patient)
+    count_stmt = select(func.count(Patient.id))
+    if search:
+        pattern = f"%{search.strip()}%"
+        filt = or_(Patient.name.ilike(pattern), Patient.email.ilike(pattern))
+        stmt = stmt.where(filt)
+        count_stmt = count_stmt.where(filt)
+    total = (await session.execute(count_stmt)).scalar() or 0
+    offset = (page - 1) * page_size
+    result = await session.execute(
+        stmt.order_by(Patient.created_at.desc()).offset(offset).limit(page_size)
+    )
+    patients = result.scalars().all()
+    return PaginatedAdminPatients(patients=patients, total=total, page=page, page_size=page_size)
 
 
 # ─── PATCH /api/v1/admin/doctors/{id}/deactivate ──────────────────────────

@@ -1,10 +1,198 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Key, User, Shield, Copy, RefreshCw, Check, Loader2, AlertCircle } from 'lucide-react';
+import { Key, User, Shield, Copy, RefreshCw, Check, Loader2, AlertCircle, QrCode, ShieldCheck, ShieldOff } from 'lucide-react';
 import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
 import { useAuthStore } from '../../../stores/authStore';
+
+// ── MFA state machine ────────────────────────────────────────────────────────
+type MfaState = 'idle' | 'setting_up' | 'confirming' | 'disabling';
+
+function MfaSetupPanel() {
+  const [mfaState, setMfaState] = useState<MfaState>('idle');
+  const [totpUri, setTotpUri]   = useState('');
+  const [code, setCode]         = useState('');
+  const [enabled, setEnabled]   = useState(false);
+
+  const setupMutation = useMutation({
+    mutationFn: doctorApi.mfaSetup,
+    onSuccess: (data) => {
+      setTotpUri(data.totp_uri);
+      setMfaState('confirming');
+    },
+    onError: () => toast.error('Failed to start MFA setup'),
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: () => doctorApi.mfaConfirm(code),
+    onSuccess: () => {
+      setEnabled(true);
+      setMfaState('idle');
+      setCode('');
+      toast.success('MFA enabled — your account is now protected with TOTP');
+    },
+    onError: () => { toast.error('Invalid TOTP code — try again'); setCode(''); },
+  });
+
+  const disableMutation = useMutation({
+    mutationFn: () => doctorApi.mfaDisable(code),
+    onSuccess: () => {
+      setEnabled(false);
+      setMfaState('idle');
+      setCode('');
+      toast.success('MFA disabled');
+    },
+    onError: () => { toast.error('Invalid TOTP code — try again'); setCode(''); },
+  });
+
+  const qrUrl = totpUri
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(totpUri)}`
+    : '';
+
+  // ── Idle state ──────────────────────────────────────────────────────────────
+  if (mfaState === 'idle') {
+    return (
+      <div className="pt-4 border-t border-[#E5E7EB]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-[#111827]">
+              Two-Factor Authentication
+            </p>
+            <p className="text-xs text-[#6B7280] mt-0.5">
+              {enabled
+                ? 'Your account is protected with TOTP (Google Authenticator / Authy).'
+                : 'Add an extra layer of security with TOTP authentication.'}
+            </p>
+          </div>
+          {enabled ? (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="flex items-center gap-1 text-xs text-[#15803d] font-medium">
+                <ShieldCheck size={13} /> Enabled
+              </span>
+              <button
+                onClick={() => { setCode(''); setMfaState('disabling'); }}
+                className="h-8 px-3 rounded border border-[#FECACA] text-xs text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
+              >
+                Disable
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setupMutation.mutate()}
+              disabled={setupMutation.isPending}
+              className="flex items-center gap-1.5 h-8 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151] hover:bg-[#F9FAFB] transition-colors disabled:opacity-50 flex-shrink-0"
+            >
+              {setupMutation.isPending
+                ? <Loader2 size={12} className="animate-spin" />
+                : <QrCode size={12} />}
+              Enable MFA
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── QR + confirm state ──────────────────────────────────────────────────────
+  if (mfaState === 'confirming') {
+    return (
+      <div className="pt-4 border-t border-[#E5E7EB]">
+        <p className="text-sm font-medium text-[#111827] mb-3">Scan with Authenticator App</p>
+        <div className="flex gap-5 items-start flex-wrap">
+          <div className="flex-shrink-0">
+            <img
+              src={qrUrl}
+              alt="MFA QR code"
+              width={180}
+              height={180}
+              className="rounded border border-[#E5E7EB] p-1 bg-white"
+            />
+            <p className="text-[10px] text-[#9CA3AF] mt-1 text-center">Scan with Google Authenticator</p>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-xs text-[#6B7280] mb-3 leading-relaxed">
+              1. Open Google Authenticator or Authy.<br />
+              2. Scan the QR code on the left.<br />
+              3. Enter the 6-digit code below to confirm.
+            </p>
+            <label className="block text-xs font-medium text-[#374151] mb-1.5">
+              Verification Code
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              className="w-36 h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-base font-mono text-center text-[#111827] tracking-[0.3em] placeholder:text-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+            />
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => confirmMutation.mutate()}
+                disabled={code.length !== 6 || confirmMutation.isPending}
+                className="flex items-center gap-1.5 h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors disabled:opacity-50"
+              >
+                {confirmMutation.isPending
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : <ShieldCheck size={14} />}
+                Confirm & Enable
+              </button>
+              <button
+                onClick={() => { setMfaState('idle'); setTotpUri(''); setCode(''); }}
+                className="h-9 px-3 rounded border border-[#D1D5DB] text-sm text-[#374151] hover:bg-[#F9FAFB]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Disable state ───────────────────────────────────────────────────────────
+  return (
+    <div className="pt-4 border-t border-[#E5E7EB]">
+      <div className="flex items-center gap-2 mb-3">
+        <ShieldOff size={16} className="text-[#DC2626]" />
+        <p className="text-sm font-medium text-[#111827]">Disable Two-Factor Authentication</p>
+      </div>
+      <p className="text-xs text-[#6B7280] mb-3">
+        Enter your current authenticator code to confirm.
+      </p>
+      <div className="flex items-end gap-2">
+        <div>
+          <label className="block text-xs font-medium text-[#374151] mb-1.5">Verification Code</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={code}
+            onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="000000"
+            className="w-36 h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-base font-mono text-center text-[#111827] tracking-[0.3em] placeholder:text-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+          />
+        </div>
+        <button
+          onClick={() => disableMutation.mutate()}
+          disabled={code.length !== 6 || disableMutation.isPending}
+          className="h-10 px-4 rounded-md bg-[#DC2626] text-white text-sm hover:bg-[#B91C1C] transition-colors disabled:opacity-50 flex items-center gap-1.5"
+        >
+          {disableMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <ShieldOff size={14} />}
+          Disable MFA
+        </button>
+        <button
+          onClick={() => { setMfaState('idle'); setCode(''); }}
+          className="h-10 px-3 rounded border border-[#D1D5DB] text-sm text-[#374151] hover:bg-[#F9FAFB]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type SettingsTab = 'profile' | 'codes' | 'security';
 
@@ -274,20 +462,7 @@ export function DoctorSettings() {
                   Update Password
                 </button>
 
-                <div className="pt-4 border-t border-[#E5E7EB]">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-[#111827]">Two-Factor Authentication</p>
-                      <p className="text-xs text-[#6B7280]">Add an extra layer of security with TOTP</p>
-                    </div>
-                    <button
-                      onClick={() => toast.info('MFA setup coming soon')}
-                      className="h-8 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151] hover:bg-[#F9FAFB] transition-colors"
-                    >
-                      Enable MFA
-                    </button>
-                  </div>
-                </div>
+                <MfaSetupPanel />
               </div>
             </div>
           )}

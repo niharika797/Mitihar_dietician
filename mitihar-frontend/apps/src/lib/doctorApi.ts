@@ -234,6 +234,38 @@ export const doctorApi = {
       })
       .then(r => r.data),
 
+  // Plan override
+  overridePlan: (id: number, body: { meals?: unknown[]; doctor_notes?: string }) =>
+    apiClient.put<RecommendationDetail>(`/doctor/patients/${id}/plan`, body).then(r => r.data),
+
+  // Recipe assign
+  assignRecipe: (
+    recipeId: number,
+    body: { patient_ids: number[]; meal_type: string; meal_date: string; note?: string },
+  ) => apiClient.post(`/doctor/recipes/${recipeId}/assign`, body).then(r => r.data),
+
+  // MFA setup flow (auth endpoints, not doctor endpoints)
+  mfaSetup: () =>
+    apiClient
+      .post<{ message: string; totp_uri: string }>('/auth/doctor/mfa-setup')
+      .then(r => r.data),
+
+  mfaConfirm: (totp_code: string) =>
+    apiClient
+      .post<{ message: string }>('/auth/doctor/mfa-confirm', { totp_code })
+      .then(r => r.data),
+
+  mfaDisable: (totp_code: string) =>
+    apiClient
+      .post<{ message: string }>('/auth/doctor/mfa-disable', { totp_code })
+      .then(r => r.data),
+
+  // Fetch all patients (for assign modal — page_size=100)
+  listAllPatients: () =>
+    apiClient
+      .get<PaginatedPatients>('/doctor/patients', { params: { page: 1, page_size: 100 } })
+      .then(r => r.data.patients),
+
   // Recipes
   browseRecipes: (params: { search?: string; meal_time?: string; page?: number }) =>
     apiClient

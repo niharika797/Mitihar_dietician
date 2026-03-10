@@ -443,6 +443,13 @@ def run_tests():
     res = requests.get(f"{BASE_URL}/admin/billing", headers=admin_auth)
     print_result("Step 83", "Billing Overview", res.status_code == 200, res)
 
+    res = requests.get(f"{BASE_URL}/admin/patients?page=1&page_size=10", headers=admin_auth)
+    print_result("Step 84", "List Admin Patients", res.status_code == 200 and "patients" in res.json() and "total" in res.json(), res)
+
+    # Search filter test
+    res2 = requests.get(f"{BASE_URL}/admin/patients?search=test&page=1&page_size=5", headers=admin_auth)
+    print_result("Step 84b", "List Admin Patients (search filter)", res2.status_code == 200, res2)
+
     pat_del_email = f"pat_del_{ts}@gmail.com"
     r = requests.post(f"{BASE_URL}/auth/register", json={
         "email": pat_del_email, "password": "Patient@123", "name": "To Delete", "age": 28, "gender": "Male", 
