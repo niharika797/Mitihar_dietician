@@ -49,3 +49,6 @@ mitihar-frontend/apps/build/
 
 # ── Frontend — Type cache ─────────────────────────────────────────────────────
 mitihar-frontend/apps/tsconfig.tsbuildinfo
+
+# ── Design / Screens ──────────────────────────────────────────────────────────
+Phone screens/
