@@ -140,6 +140,7 @@ class FoodItemSummary(BaseModel):
     source: str
     is_verified: bool
     image_url: Optional[str]
+    doctor_id: Optional[int] = None
     model_config = {"from_attributes": True}
 
 
@@ -157,6 +158,7 @@ class RecipeCreateRequest(BaseModel):
     ingredients: list[dict] = Field(default_factory=list)
     # [{"name": "Onion", "amount_g": 50}]
     region_tags: list[str] = Field(default_factory=list)
+    save_to_library: bool = Field(default=True, description="True = save to food_items pending approval. False = not yet supported.")
 
 
 class RecipeAssignRequest(BaseModel):

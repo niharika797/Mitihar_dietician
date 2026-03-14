@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, Literal
 from datetime import date
 
@@ -68,3 +68,20 @@ class PatientProfileResponse(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class PublicDoctorResponse(BaseModel):
+    """Public-safe doctor profile returned to patients browsing the directory."""
+    id: int
+    name: str
+    specialization: Optional[str] = None
+    clinic_name: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    experience_years: Optional[int] = 0
+    fee_per_month: Optional[int] = 0
+    rating: Optional[float] = 0.0
+    review_count: Optional[int] = 0
+    is_accepting: bool = True
+
+    model_config = ConfigDict(from_attributes=True)

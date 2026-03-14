@@ -221,3 +221,46 @@ KNOWN TECH DEBT (do not fix unless blocking):
   - ProgressLog.total_calories_consumed never written — unused column
   - MealLog.food_id / custom_food_name rarely populated — partial feature
 ================================================================================
+
+================================================================================
+SPRINT 3 — ADMIN DASHBOARD API WIRING — COMPLETE (2026-03-10)
+================================================================================
+
+Items 13-18 complete. All admin pages migrated from mockData to real API.
+  NEW BACKEND: GET /admin/patients endpoint added to admin.py
+  NEW SCHEMAS: AdminPatientView + PaginatedAdminPatients in schemas/admin.py
+  NEW FRONTEND: adminApi.ts — all admin API functions + types
+  UPDATED: queryKeys.ts — aqk (admin query keys) added alongside qk (doctor)
+  UPDATED: AdminShell.tsx — live pending food badge, real admin name from authStore
+  PAGES WIRED: AdminOverview, AdminDoctors, AdminPatients, FoodDatabase, Billing, AuditLogs
+  TEST SUITE: 97/97 passing (was 95/95 before Sprint 3 additions)
+  GITHUB: feature/api-remediation-v0.2, commit 66fe95e
+
+================================================================================
+SPRINT 4 PREP — BACKEND AUDIT (2026-03-10)
+================================================================================
+
+Audited all 4 originally-listed backend pending fixes (B1-B4):
+
+  B1 (Google OAuth migration) — ALREADY DONE
+    alembic current = a1b2c3d4e5f6 (head)
+    google_id confirmed in patients table columns
+
+  B2 (save_to_library flag on POST /doctor/recipes) — TODO
+    RecipeCreateRequest has no save_to_library field
+    Requires B3 as prerequisite (doctor_id FK on food_items)
+
+  B3 (doctor_id nullable FK on food_items) — TODO
+    Confirmed: doctor_id NOT in FoodItem.__table__.columns
+    Needs: Alembic migration b2c3d4e5f6a7 + db_models.py edit
+
+  B4 (refresh token rotation) — ALREADY DONE
+    /auth/refresh calls _issue_tokens() → new access+refresh pair
+    Sets new HttpOnly cookie for doctor/admin paths
+
+SPRINT_4_HANDOFF.md written with exact implementation plan for B2+B3,
+verification checklist, full patient app API reference (36 screens), and
+Expo SDK 54 stack decisions.
+
+================================================================================
+

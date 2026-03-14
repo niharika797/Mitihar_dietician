@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Numeric, Boolean, DateTime, Date,
-    Text, Index, UniqueConstraint, ForeignKey,
+    Text, Index, UniqueConstraint, ForeignKey, text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
@@ -33,13 +33,19 @@ class FoodItem(Base):
     is_verified         = Column(Boolean, nullable=False, default=False)
     image_url           = Column(String(500), nullable=True)
     # URL to food image — populated by ETL script in Phase 6
+    doctor_id           = Column(Integer, ForeignKey("doctors.id"), nullable=True)
+    # Tracks which doctor submitted this item. NULL for system/ETL food items.
     created_at          = Column(DateTime(timezone=True), server_default=func.now())
     updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # relationships
+    doctor              = relationship("Doctor")
 
 
 Index("idx_fi_slot",       FoodItem.slot_type)
 Index("idx_fi_diet",       FoodItem.diet_type)
 Index("idx_fi_verified",   FoodItem.is_verified)
+Index("idx_fi_doctor",     FoodItem.doctor_id)
 # GIN indexes for ARRAY columns — declared here so Alembic stops flagging them as drift
 Index("idx_fi_regions",    FoodItem.region_tags,   postgresql_using="gin")
 Index("idx_fi_meal_times", FoodItem.meal_time_tags, postgresql_using="gin")
@@ -85,6 +91,12 @@ class Doctor(Base):
     clinic_name       = Column(String, nullable=True)
     clinic_address    = Column(Text, nullable=True)
     city              = Column(String, nullable=True)
+    state             = Column(String, nullable=True)
+    experience_years  = Column(Integer, nullable=True, default=0)
+    fee_per_month     = Column(Integer, nullable=True, default=0)   # in ₹
+    rating            = Column(Numeric(3, 2), nullable=True, default=0)
+    review_count      = Column(Integer, nullable=True, default=0)
+    is_accepting      = Column(Boolean, default=True)               # false = not taking new patients
     mfa_secret        = Column(String, nullable=True)
     mfa_enabled       = Column(Boolean, default=False)
     is_active         = Column(Boolean, default=True)
@@ -177,6 +189,15 @@ class Patient(Base):
     meal_logs             = relationship("MealLog", back_populates="patient")
     progress_logs         = relationship("ProgressLog", back_populates="patient")
     patient_requests      = relationship("PatientRequest", back_populates="patient")
+
+
+# Partial unique index on google_id — declared here so Alembic autogenerate doesn't flag it as drift
+Index(
+    "idx_patients_google_id",
+    Patient.google_id,
+    unique=True,
+    postgresql_where=text("google_id IS NOT NULL"),
+)
 
 
 # ---------------------------------------------------------------------------

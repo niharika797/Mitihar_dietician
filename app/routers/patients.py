@@ -8,7 +8,7 @@ from ..core.security import get_current_patient
 from ..models.db_models import Patient, SubscriptionCode, Doctor, PatientRequest
 from ..schemas.patients import (
     OnboardingRequest, ActivationRequest,
-    DoctorRequestBody, PatientProfileResponse,
+    DoctorRequestBody, PatientProfileResponse, PublicDoctorResponse,
 )
 from ..services.meal_generator.calculations import (
     calculate_bmr, calculate_tdee, calculate_bmi,
@@ -241,6 +241,35 @@ async def get_request_status(
         "requested_at": req.requested_at.isoformat(),
         "responded_at": req.responded_at.isoformat() if req.responded_at else None,
     }
+
+
+# ─── GET /api/v1/patients/doctors ─────────────────────────────────────────
+
+@router.get("/doctors", response_model=list[PublicDoctorResponse])
+async def list_doctors(
+    search: str | None = None,
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Public doctor directory for patients. Returns all active doctors.
+    Supports optional `search` query param (name / specialization / city).
+    Sorted by rating descending (highest first), then by id.
+    """
+    stmt = select(Doctor).where(Doctor.is_active == True)
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        stmt = stmt.where(
+            Doctor.name.ilike(term) |
+            Doctor.specialization.ilike(term) |
+            Doctor.city.ilike(term)
+        )
+    stmt = stmt.order_by(
+        Doctor.rating.desc().nulls_last(),
+        Doctor.id.asc(),
+    )
+    result = await session.execute(stmt)
+    return result.scalars().all()
 
 
 # ─── POST /api/v1/patients/disclaimer ─────────────────────────────────────

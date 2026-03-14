@@ -575,6 +575,13 @@ async def add_recipe(
     Saved with source='doctor', is_verified=False (pending admin approval).
     Once admin approves it (PATCH /admin/food/{id}/approve), it becomes available to all patients.
     """
+    # Guard: save_to_library=False not yet implemented
+    if not body.save_to_library:
+        raise HTTPException(
+            status_code=501,
+            detail="save_to_library=False is not yet implemented. Use True to submit for admin approval.",
+        )
+
     food = FoodItem(
         recipe_name=body.recipe_name,
         slot_type=body.slot_type,
@@ -588,6 +595,7 @@ async def add_recipe(
         plan_type_tags=body.plan_type_tags,
         ingredients=body.ingredients,
         region_tags=body.region_tags,
+        doctor_id=doctor.id,
         source="doctor",
         is_verified=False,
     )
