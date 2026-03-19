@@ -14,11 +14,15 @@ interface OnboardingShellProps {
   continueDisabled?: boolean;
   continueLabel?: string;
   onBack?: () => void;
+  /** Set false to replace the ScrollView body with a plain flex View (for screens
+   *  that manage their own scrolling, e.g. the disclaimer with an inner ScrollView) */
+  scrollable?: boolean;
 }
 
 export function OnboardingShell({
   step, totalSteps, title, subtitle, children,
   onContinue, onSkip, continueDisabled, continueLabel = "Continue →", onBack,
+  scrollable = true,
 }: OnboardingShellProps) {
   const router = useRouter();
   const progress = (step / totalSteps) * 100;
@@ -53,15 +57,21 @@ export function OnboardingShell({
         {subtitle ? <Text style={s.subtitle}>{subtitle}</Text> : null}
       </View>
 
-      {/* ── Scrollable body ── */}
-      <ScrollView
-        style={s.body}
-        contentContainerStyle={s.bodyContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {children}
-      </ScrollView>
+      {/* ── Body — scrollable (default) or fixed flex View (for screens with inner scrolling) ── */}
+      {scrollable ? (
+        <ScrollView
+          style={s.body}
+          contentContainerStyle={s.bodyContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {children}
+        </ScrollView>
+      ) : (
+        <View style={[s.body, s.bodyContent]}>
+          {children}
+        </View>
+      )}
 
       {/* ── Footer CTA ── */}
       <View style={s.footer}>

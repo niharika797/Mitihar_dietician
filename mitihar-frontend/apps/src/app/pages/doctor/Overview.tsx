@@ -108,21 +108,9 @@ export function DoctorOverview() {
       {/* Top row: stat cards + quick actions */}
       <div className="grid grid-cols-12 gap-5 mb-6">
         <div className="col-span-12 lg:col-span-8 grid grid-cols-3 gap-4">
-          <StatCard
-            icon={<Users size={18} className="text-[#1E7C45]" />}
-            value={dash.active_patients}
-            label="Active Patients"
-          />
-          <StatCard
-            icon={<Bell size={18} className="text-[#2563EB]" />}
-            value={dash.pending_requests}
-            label="Pending Requests"
-          />
-          <StatCard
-            icon={<BarChart2 size={18} className="text-[#F59E0B]" />}
-            value={dash.plans_generated_this_week}
-            label="Plans This Week"
-          />
+          <StatCard icon={<Users size={18} className="text-[#1E7C45]" />} value={dash.active_patients} label="Active Patients" />
+          <StatCard icon={<Bell size={18} className="text-[#2563EB]" />} value={dash.pending_requests} label="Pending Requests" />
+          <StatCard icon={<BarChart2 size={18} className="text-[#F59E0B]" />} value={dash.plans_generated_this_week} label="Plans This Week" />
         </div>
 
         {/* Quick Actions */}
@@ -137,7 +125,7 @@ export function DoctorOverview() {
               Accept Patient Request
             </button>
             <button
-              onClick={() => navigate('/doctor/settings')}
+              onClick={() => navigate('/doctor/settings?tab=codes')}
               className="flex items-center gap-2.5 h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-[#374151] text-sm hover:bg-[#F9FAFB] transition-colors"
             >
               <Key size={15} />

@@ -16,7 +16,9 @@ import axios, {
 } from 'axios';
 import { useAuthStore } from '../stores/authStore';
 
-const BASE_URL = 'http://localhost:8000/api/v1';
+// Base URL is read from VITE_API_URL env var (set in mitihar-frontend/apps/.env).
+// Falls back to localhost for local dev. Never hardcode a production URL here.
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,

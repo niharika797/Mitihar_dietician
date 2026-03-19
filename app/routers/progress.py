@@ -15,6 +15,7 @@ from ..schemas.progress import (
     MealLogCreate, WaterLogCreate, StepsLogCreate,
     WeightLogCreate, ActivityLogCreate,
     MealLogUpdate, MealLogResponse, WeeklyReportResponse,
+    MealRateRequest, MealRatingResponse,
 )
 from ..core.database import get_db
 from ..models.db_models import Patient
@@ -75,6 +76,63 @@ async def post_log_steps(
     return {"message": "Steps logged successfully"}
 
 
+async def _handle_weight_change(session: AsyncSession, current_user: Patient, new_weight: float):
+    from sqlalchemy import update as sa_update
+    from ..models.db_models import Patient as PatientModel
+    from ..services.meal_generator.calculations import calculate_bmr, calculate_tdee, calculate_bmi
+    from ..services.diet_plan_service import DietPlanService
+    from ..services.user_service import get_patient_by_id
+
+    if current_user.date_of_birth:
+        from datetime import date as _date
+        dob = current_user.date_of_birth
+        today = _date.today()
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    else:
+        age = 30
+        
+    height = float(current_user.height_cm) if current_user.height_cm else 170.0
+    activity = getattr(current_user, "activity_level", "Lightly Active")
+    
+    new_bmr = calculate_bmr(current_user.gender, float(new_weight), height, age)
+    new_tdee = calculate_tdee(new_bmr, activity)
+    new_bmi = calculate_bmi(height, float(new_weight))
+
+    await session.execute(
+        sa_update(PatientModel)
+        .where(PatientModel.id == current_user.id)
+        .values(
+            weight_kg=new_weight,
+            bmi=round(new_bmi, 2),
+            bmr=round(new_bmr, 2),
+            tdee=round(new_tdee, 2),
+        )
+    )
+    await session.flush()
+    updated = await get_patient_by_id(session, current_user.id)
+
+    diet_service = DietPlanService()
+    user_data = {
+        "id": updated.id,
+        "age": age,
+        "gender": updated.gender,
+        "weight": float(new_weight),
+        "height": height,
+        "diet": updated.diet_type or "Anything",
+        "health_state": updated.health_condition or "Healthy",
+        "region": updated.region or "none",
+        "target_weight": float(updated.target_weight_kg) if getattr(updated, "target_weight_kg", None) else None,
+        "activity_level": activity,
+        "tdee": float(updated.tdee) if getattr(updated, "tdee", None) else 2000.0,
+    }
+    try:
+        new_plan = await diet_service.generate_diet_plan(user_data, session)
+        await diet_service.store_diet_plan(new_plan, session)
+        print("Auto-regenerated diet plan upon weight update")
+    except Exception as e:
+        print(f"Failed to auto-generate diet plan: {e}")
+
+
 @router.post("/log/weight")
 @limiter.limit("30/minute")
 async def post_log_weight(
@@ -85,6 +143,7 @@ async def post_log_weight(
 ):
     """Log current weight."""
     await log_weight(session, current_user.id, weight.weight)
+    await _handle_weight_change(session, current_user, weight.weight)
     return {"message": "Weight logged successfully"}
 
 
@@ -244,6 +303,7 @@ async def update_weight_log(
     row = await _get_or_create_progress(session, current_user.id, _date.today())
     row.weight_kg = Decimal(str(weight.weight))
     await session.flush()
+    await _handle_weight_change(session, current_user, weight.weight)
     return {"message": "Weight log updated", "weight_kg": weight.weight}
 
 
@@ -277,6 +337,83 @@ async def delete_steps_log(
     row.steps = 0
     await session.flush()
     return {"message": "Steps log reset"}
+
+
+# ─── POST /api/v1/progress/meal/rate ─────────────────────────────────────
+# Phase 8 Tier 0 — patient rates a meal 👍 or 👎
+
+@router.post("/meal/rate", response_model=MealRatingResponse, status_code=201)
+@limiter.limit("120/minute")
+async def rate_meal(
+    request: Request,
+    body: MealRateRequest,
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Patient rates a meal serving +1 (liked) or -1 (disliked).
+    One rating per (patient × food_item × recommendation).
+    If the patient already rated this serving, the rating is updated.
+
+    IDOR protection: if recommendation_id is provided, it is verified to
+    belong to the current patient before the rating is written.
+    This prevents a patient from anchoring their rating to another patient's
+    recommendation row and poisoning the RL reward signal.
+    """
+    from ..models.db_models import MealRating, Recommendation
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    # ── Ownership check on recommendation_id ─────────────────────────────
+    if body.recommendation_id is not None:
+        rec_check = await session.execute(
+            select(Recommendation.id).where(
+                Recommendation.id == body.recommendation_id,
+                Recommendation.patient_id == current_user.id,
+            )
+        )
+        if rec_check.scalars().first() is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Recommendation does not belong to the current patient",
+            )
+
+    # Upsert: update rating if already exists for this (patient, food_item, recommendation)
+    stmt = pg_insert(MealRating).values(
+        patient_id=current_user.id,
+        food_item_id=body.food_item_id,
+        recommendation_id=body.recommendation_id,
+        rating=body.rating,
+    ).on_conflict_do_update(
+        constraint="uq_meal_rating",
+        set_={"rating": body.rating},
+    ).returning(MealRating)
+
+    result = await session.execute(stmt)
+    await session.flush()
+    row = result.scalars().first()
+    return row
+
+
+# ─── GET /api/v1/progress/meal/ratings ───────────────────────────────────
+
+@router.get("/meal/ratings", response_model=list[MealRatingResponse])
+async def get_my_ratings(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Return all meal ratings for the current patient.
+    Used by the patient app to restore 👍/👎 button state on load.
+    """
+    from ..models.db_models import MealRating
+    from sqlalchemy import select
+    result = await session.execute(
+        select(MealRating)
+        .where(MealRating.patient_id == current_user.id)
+        .order_by(MealRating.rated_at.desc())
+        .limit(500)
+    )
+    return result.scalars().all()
 
 
 # ─── GET /api/v1/progress/weight-history ─────────────────────────────────

@@ -22,6 +22,7 @@ const DEFAULT_STATE: OnboardingWizardState = {
   nonveg_meals_per_week: 0,
   eating_habits: [],
   dietary_preferences: [],
+  health_condition: "Healthy",
   disclaimer_accepted: false,
 };
 
@@ -49,16 +50,23 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   toPayload: (): OnboardingPayload => {
     const d = get().data;
     const dob = `${d.dob_year}-${d.dob_month.padStart(2, "0")}-${d.dob_day.padStart(2, "0")}`;
+    const parsedHeight = parseFloat(d.height_cm);
+    const parsedWeight = parseFloat(d.weight_kg);
+    const parsedTarget = parseFloat(d.target_weight_kg);
+
+    if (!isFinite(parsedHeight) || parsedHeight <= 0) throw new Error("Invalid height value");
+    if (!isFinite(parsedWeight) || parsedWeight <= 0) throw new Error("Invalid weight value");
+
     return {
       date_of_birth:         dob,
       gender:                d.gender as Gender,
-      height_cm:             parseFloat(d.height_cm),
-      weight_kg:             parseFloat(d.weight_kg),
+      height_cm:             parsedHeight,
+      weight_kg:             parsedWeight,
       activity_level:        ACTIVITY_MAP[d.activity_level] ?? "LA",
       diet_type:             d.diet_type as DietType,
       region:                d.region as Region,
-      health_condition:      "Healthy",
-      target_weight_kg:      parseFloat(d.target_weight_kg),
+      health_condition:      d.health_condition,
+      target_weight_kg:      isFinite(parsedTarget) ? parsedTarget : undefined,
       health_goals:          d.health_goals,
       medical_conditions:    d.medical_conditions,
       food_allergies:        d.food_allergies,

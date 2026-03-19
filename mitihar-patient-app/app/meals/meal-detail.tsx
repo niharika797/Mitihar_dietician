@@ -3,13 +3,13 @@ import {
   View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft, ThumbsUp, ThumbsDown } from "lucide-react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getWeeklyPlan } from "../../services/meals";
-import { logMeal } from "../../services/progress";
+import { logMeal, rateMeal, getMyRatings } from "../../services/progress";
 import { MacroRow, useToast } from "../../components/shared";
-import type { Meal } from "../../types";
+import type { Meal, MealRating } from "../../types";
 
 export default function MealDetailScreen() {
   const router = useRouter();
@@ -41,6 +41,43 @@ export default function MealDetailScreen() {
     },
     onError: () => showToast("Failed to log meal", "error"),
   });
+
+  // ── Rating state (Phase 8 Tier 0) ──────────────────────────────────────
+  const { data: allRatings = [] } = useQuery<MealRating[]>({
+    queryKey: QUERY_KEYS.MY_RATINGS,
+    queryFn: getMyRatings,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Current rating for this specific food_item (null = not yet rated)
+  const foodId = meal?.food_id ?? null;
+  const existingRating = foodId
+    ? (allRatings.find(r => r.food_item_id === foodId)?.rating ?? null)
+    : null;
+
+  const rateMut = useMutation({
+    mutationFn: (rating: 1 | -1) =>
+      rateMeal(foodId!, rating, meal?.recommendation_id ?? null),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.MY_RATINGS });
+      showToast("Feedback saved 👍", "success");
+    },
+    onError: () => showToast("Could not save feedback", "error"),
+  });
+
+  // Rating buttons visible only after the meal time has passed today,
+  // OR if the meal date is a past day.
+  const mealDate = (meal as any)?.Date ?? date ?? "";
+  const today = new Date().toISOString().slice(0, 10);
+  const isPastDay = mealDate < today;
+  const MEAL_HOUR: Record<string, number> = {
+    "Breakfast": 10, "MorningSnacks": 11,
+    "Lunch": 14, "EveningSnacks": 17, "Dinner": 21,
+  };
+  const mealType = meal?.["Meal Type"] ?? "";
+  const nowHour = new Date().getHours();
+  const mealPassedToday = mealDate === today && nowHour >= (MEAL_HOUR[mealType] ?? 0);
+  const showRating = foodId != null && (isPastDay || mealPassedToday);
 
   if (isLoading) return <View style={s.loader}><ActivityIndicator size="large" color="#1E7C45" /></View>;
   if (!meal)    return (
@@ -136,6 +173,38 @@ export default function MealDetailScreen() {
 
       {/* Bottom CTA */}
       <View style={s.footer}>
+        {/* Rating row — visible after meal time has passed */}
+        {showRating && (
+          <View style={s.ratingRow}>
+            <Text style={s.ratingLabel}>How was it?</Text>
+            <View style={s.ratingBtns}>
+              <Pressable
+                onPress={() => rateMut.mutate(1)}
+                disabled={rateMut.isPending}
+                style={[s.ratingBtn, existingRating === 1 && s.ratingBtnLiked]}
+              >
+                <ThumbsUp
+                  size={18}
+                  color={existingRating === 1 ? "#fff" : "#1E7C45"}
+                  strokeWidth={2}
+                />
+              </Pressable>
+              <Pressable
+                onPress={() => rateMut.mutate(-1)}
+                disabled={rateMut.isPending}
+                style={[s.ratingBtn, existingRating === -1 && s.ratingBtnDisliked]}
+              >
+                <ThumbsDown
+                  size={18}
+                  color={existingRating === -1 ? "#fff" : "#DC2626"}
+                  strokeWidth={2}
+                />
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* Log button */}
         {logged ? (
           <View style={s.loggedBanner}>
             <Text style={s.loggedText}>✅ Logged</Text>
@@ -143,7 +212,9 @@ export default function MealDetailScreen() {
         ) : (
           <View style={s.footerRow}>
             <Pressable style={s.primaryBtn} onPress={() => logMut.mutate()} disabled={logMut.isPending}>
-              {logMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryBtnText}>✅ I Had This</Text>}
+              {logMut.isPending
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={s.primaryBtnText}>✅ I Had This</Text>}
             </Pressable>
           </View>
         )}
@@ -180,10 +251,17 @@ const s = StyleSheet.create({
   noteCard:    { backgroundColor: "#F0FDF4", borderRadius: 12, borderWidth: 1, borderColor: "#DCFCE7", padding: 14, marginBottom: 20 },
   noteLabel:   { fontSize: 12, fontWeight: "600", color: "#166534", marginBottom: 4 },
   noteText:    { fontSize: 13, color: "#374151", lineHeight: 20, fontStyle: "italic" },
-  footer:      { padding: 16, paddingBottom: 28, borderTopWidth: 1, borderTopColor: "#F3F4F6", backgroundColor: "#fff" },
-  footerRow:   { flexDirection: "row", gap: 12 },
-  primaryBtn:  { flex: 1, height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  primaryBtnText:{ fontSize: 16, fontWeight: "600", color: "#fff" },
-  loggedBanner:{ height: 52, borderRadius: 26, backgroundColor: "#F0FDF4", alignItems: "center", justifyContent: "center" },
-  loggedText:  { fontSize: 16, fontWeight: "600", color: "#166534" },
+  footer:         { padding: 16, paddingBottom: 28, borderTopWidth: 1, borderTopColor: "#F3F4F6", backgroundColor: "#fff" },
+  footerRow:      { flexDirection: "row", gap: 12 },
+  primaryBtn:     { flex: 1, height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
+  primaryBtnText: { fontSize: 16, fontWeight: "600", color: "#fff" },
+  loggedBanner:   { height: 52, borderRadius: 26, backgroundColor: "#F0FDF4", alignItems: "center", justifyContent: "center" },
+  loggedText:     { fontSize: 16, fontWeight: "600", color: "#166534" },
+  // Rating row
+  ratingRow:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingHorizontal: 4 },
+  ratingLabel:    { fontSize: 13, fontWeight: "500", color: "#374151" },
+  ratingBtns:     { flexDirection: "row", gap: 10 },
+  ratingBtn:      { width: 42, height: 42, borderRadius: 21, borderWidth: 1.5, borderColor: "#E5E7EB", backgroundColor: "#F9FAFB", alignItems: "center", justifyContent: "center" },
+  ratingBtnLiked: { backgroundColor: "#1E7C45", borderColor: "#1E7C45" },
+  ratingBtnDisliked: { backgroundColor: "#DC2626", borderColor: "#DC2626" },
 });

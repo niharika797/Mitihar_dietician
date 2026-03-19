@@ -176,10 +176,28 @@ class Patient(Base):
     is_active             = Column(Boolean, default=True)
     google_id             = Column(String(128), unique=True, nullable=True)
     # Stable Google 'sub' claim — set on first Google Sign-In, never changes
+    is_email_verified     = Column(Boolean, default=False)
+    # True once the patient clicks the verification link in their welcome email.
+    # Google-authenticated patients are auto-verified (Google already confirmed the email).
     pace_preference       = Column(String(20), nullable=True)
     # valid values: "slow" | "moderate" | "fast" — patient's preferred weight-loss pace
     eating_habits         = Column(JSONB, default=[])
     # e.g. ["skips_breakfast", "late_night_eating", "irregular_meals"]
+
+    # ── Token 1 — permanent meal plan identity ────────────────────────────
+    token_1               = Column(String(20), unique=True, nullable=True)
+    # e.g. TKN1-PAT-00142 — generated once at onboarding, never changes
+    token_1_active        = Column(Boolean, default=False)
+    # True = meal plan active, False = inactive (expired or not yet onboarded)
+    token_1_expiry        = Column(DateTime(timezone=True), nullable=True)
+    # 30-day rolling window — reset on each renewal
+
+    # ── Renewal flags ─────────────────────────────────────────────────────
+    renewal_requested     = Column(Boolean, default=False)
+    renewal_requested_at  = Column(DateTime(timezone=True), nullable=True)
+    expiring_soon         = Column(Boolean, default=False)
+    # set True by daily cron when ≤4 days left on token_1_expiry
+
     created_at            = Column(DateTime(timezone=True), server_default=func.now())
     updated_at            = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -189,6 +207,7 @@ class Patient(Base):
     meal_logs             = relationship("MealLog", back_populates="patient")
     progress_logs         = relationship("ProgressLog", back_populates="patient")
     patient_requests      = relationship("PatientRequest", back_populates="patient")
+    patient_visits        = relationship("PatientVisit", back_populates="patient", order_by="PatientVisit.created_at.desc()")
 
 
 # Partial unique index on google_id — declared here so Alembic autogenerate doesn't flag it as drift
@@ -213,6 +232,8 @@ class Recommendation(Base):
     week_number          = Column(Integer)
     meals                = Column(JSONB, nullable=False, default=[])
     ingredient_checklist = Column(JSONB, default=[])
+    used_food_ids        = Column(JSONB, default=[])
+    # List of food_item IDs used in this plan — enables cross-week variety
     is_active            = Column(Boolean, default=True)
     generated_by         = Column(String(20), default="system")   # system | doctor
     doctor_notes         = Column(Text, nullable=True)
@@ -379,4 +400,202 @@ class AuditLog(Base):
     __table_args__ = (
         Index("idx_al_actor", "actor_id", "actor_role"),
         Index("idx_al_created", "created_at"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# PatientVisit  (Token 2 — visit billing tracker)
+# ---------------------------------------------------------------------------
+
+class PatientVisit(Base):
+    __tablename__ = "patient_visits"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id       = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    doctor_id        = Column(Integer, ForeignKey("doctors.id"), nullable=False)
+    token_2          = Column(String(24), nullable=False)
+    # e.g. TKN2-XK9-20260301 — freshly generated every 30-day cycle
+    cycle_start      = Column(DateTime(timezone=True), nullable=False)
+    cycle_expiry     = Column(DateTime(timezone=True), nullable=False)
+    # cycle_expiry = cycle_start + 30 days
+    last_charged_at  = Column(DateTime(timezone=True), nullable=True)
+    # timestamp of most recent chargeable visit (>15 days since previous)
+    visit_counter    = Column(Integer, default=0, nullable=False)
+    # increments only on chargeable visits (>15-day gap)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at       = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # relationships
+    patient          = relationship("Patient", back_populates="patient_visits")
+    doctor           = relationship("Doctor")
+
+    __table_args__ = (
+        Index("idx_pv_patient", "patient_id"),
+        Index("idx_pv_doctor", "doctor_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# DoctorMealOverride  (Phase 8 Tier 0 — RL signal collection)
+# ---------------------------------------------------------------------------
+
+class DoctorMealOverride(Base):
+    """
+    Records every time a doctor replaces an AI-suggested meal in a patient's plan.
+    This is the highest-quality training signal for the future recommendation engine.
+    One row per swapped meal slot.  Never purge — permanent training corpus.
+    """
+    __tablename__ = "doctor_meal_overrides"
+
+    id                       = Column(Integer, primary_key=True, autoincrement=True)
+    doctor_id                = Column(Integer, ForeignKey("doctors.id"), nullable=False)
+    patient_id               = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    override_date            = Column(Date, nullable=False)
+    slot_type                = Column(String(50), nullable=True)   # grain / main_dish / snack_item etc.
+    meal_type                = Column(String(30), nullable=False)   # Breakfast / Lunch etc.
+    rejected_food_id         = Column(Integer, ForeignKey("food_items.id"), nullable=True)
+    # NULL if original meal was a custom (non-DB) meal
+    chosen_food_id           = Column(Integer, ForeignKey("food_items.id"), nullable=True)
+    # NULL if doctor replaced with a free-text custom meal
+    # ── Patient context snapshot at time of override ──────────────────────
+    patient_health_condition = Column(String(30), nullable=True)   # "Healthy" / "Diabetic-Friendly" etc.
+    patient_medical_conditions = Column(JSONB, default=[])         # ["PCOS/PCOD"] etc.
+    patient_region           = Column(String(10), nullable=True)   # "North" / "South" etc.
+    patient_diet_type        = Column(String(30), nullable=True)   # "Vegetarian" etc.
+    patient_age_bucket       = Column(String(10), nullable=True)   # "18-25" / "26-35" etc.
+    patient_bmi_bucket       = Column(String(15), nullable=True)   # "normal" / "overweight" etc.
+    created_at               = Column(DateTime(timezone=True), server_default=func.now())
+
+    # relationships
+    doctor                   = relationship("Doctor")
+    patient                  = relationship("Patient")
+    rejected_food            = relationship("FoodItem", foreign_keys=[rejected_food_id])
+    chosen_food              = relationship("FoodItem", foreign_keys=[chosen_food_id])
+
+    __table_args__ = (
+        Index("idx_dmo_doctor",  "doctor_id"),
+        Index("idx_dmo_patient", "patient_id"),
+        Index("idx_dmo_date",    "override_date"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# MealRating  (Phase 8 Tier 0 — RL signal collection)
+# ---------------------------------------------------------------------------
+
+class MealRating(Base):
+    """
+    Patient thumbs-up / thumbs-down on a specific meal serving.
+    One row per (patient × food_item × recommendation).
+    Captures personal food preferences for the bandit personalisation layer.
+    """
+    __tablename__ = "meal_ratings"
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id        = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    food_item_id      = Column(Integer, ForeignKey("food_items.id"), nullable=False)
+    recommendation_id = Column(Integer, ForeignKey("recommendations.id"), nullable=True)
+    rating            = Column(Integer, nullable=False)   # +1 (liked) or -1 (disliked)
+    rated_at          = Column(DateTime(timezone=True), server_default=func.now())
+
+    # relationships
+    patient           = relationship("Patient")
+    food_item         = relationship("FoodItem")
+    recommendation    = relationship("Recommendation")
+
+    __table_args__ = (
+        UniqueConstraint("patient_id", "food_item_id", "recommendation_id",
+                         name="uq_meal_rating"),
+        Index("idx_mr_patient", "patient_id"),
+        Index("idx_mr_food",    "food_item_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# EmailVerificationToken  (security — one-time tokens for email confirmation)
+# ---------------------------------------------------------------------------
+
+class EmailVerificationToken(Base):
+    """
+    Single-use token emailed to a patient on registration.
+    Expires after 24 hours. Consumed on first use (deleted after verification).
+    """
+    __tablename__ = "email_verification_tokens"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, unique=True)
+    token      = Column(String(64), unique=True, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    patient    = relationship("Patient")
+
+    __table_args__ = (
+        Index("idx_evt_token",   "token"),
+        Index("idx_evt_patient", "patient_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# PasswordResetToken  (security — expiring tokens for password recovery)
+# ---------------------------------------------------------------------------
+
+class PasswordResetToken(Base):
+    """
+    Single-use token emailed on forgot-password request.
+    Expires after RESET_TOKEN_EXPIRE_MINUTES (default 30 min).
+    Consumed on first use (deleted after successful reset).
+    Only one active reset token per patient at a time (previous ones replaced).
+    """
+    __tablename__ = "password_reset_tokens"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, unique=True)
+    token      = Column(String(64), unique=True, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    patient    = relationship("Patient")
+
+    __table_args__ = (
+        Index("idx_prt_token",   "token"),
+        Index("idx_prt_patient", "patient_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# PendingVisitApproval  (visit fraud prevention — patient must confirm)
+# ---------------------------------------------------------------------------
+
+class PendingVisitApproval(Base):
+    """
+    Created when a doctor flags a visit for a patient who forgot their phone.
+    The patient must approve it from their app before the visit is recorded
+    and charges applied. This prevents doctors from fraudulently recording
+    visits that never happened.
+
+    Status transitions:
+      pending → approved  (patient confirms they visited)
+      pending → rejected  (patient denies the visit)
+    """
+    __tablename__ = "pending_visit_approvals"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id      = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    doctor_id       = Column(Integer, ForeignKey("doctors.id", ondelete="CASCADE"), nullable=False)
+    patient_visit_id= Column(Integer, ForeignKey("patient_visits.id"), nullable=True)
+    # Linked to the PatientVisit cycle (set on creation, may be None if no cycle yet)
+    status          = Column(String(10), nullable=False, default="pending")
+    # "pending" | "approved" | "rejected"
+    visit_date      = Column(DateTime(timezone=True), nullable=False)
+    doctor_note     = Column(Text, nullable=True)
+    responded_at    = Column(DateTime(timezone=True), nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    patient         = relationship("Patient")
+    doctor          = relationship("Doctor")
+
+    __table_args__ = (
+        Index("idx_pva_patient", "patient_id"),
+        Index("idx_pva_status",  "status"),
     )

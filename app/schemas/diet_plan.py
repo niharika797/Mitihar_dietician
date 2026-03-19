@@ -12,5 +12,7 @@ class DietPlanResponse(BaseModel):
     meals: list[dict] = []
     ingredient_checklist: list[dict] = []
     version: int = 1
+    used_food_ids: list[int] = []
+    # IDs of every food_item used in this plan — persisted for cross-week variety
 
     model_config = {"from_attributes": False}

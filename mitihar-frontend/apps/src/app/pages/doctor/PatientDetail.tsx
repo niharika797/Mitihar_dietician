@@ -9,8 +9,9 @@ import { ProfileTab } from './patient-tabs/ProfileTab';
 import { PlanTab } from './patient-tabs/PlanTab';
 import { ActivityTab } from './patient-tabs/ActivityTab';
 import { NotesTab } from './patient-tabs/NotesTab';
+import { VisitsTab } from './patient-tabs/VisitsTab';
 
-type Tab = 'profile' | 'plan' | 'activity' | 'notes';
+type Tab = 'profile' | 'plan' | 'activity' | 'notes' | 'visits';
 
 function subStatusToStatus(s: string): 'active' | 'inactive' | 'expired' | 'pending' {
   if (s === 'active') return 'active';
@@ -59,6 +60,7 @@ export function PatientDetail() {
     { id: 'plan',     label: 'Plan'      },
     { id: 'activity', label: 'Activity'  },
     { id: 'notes',    label: 'Notes'     },
+    { id: 'visits',   label: 'Visits'    },
   ];
 
   return (
@@ -127,9 +129,10 @@ export function PatientDetail() {
       {/* Tab content */}
       <div className="p-6">
         {activeTab === 'profile'  && <ProfileTab  patient={patient} />}
-        {activeTab === 'plan'     && <PlanTab     patientId={patientId} patientTdee={patient.tdee ?? 2000} patientName={patient.name} />}
+        {activeTab === 'plan'     && <PlanTab     patientId={patientId} patientTdee={patient.tdee ?? 2000} patientName={patient.name} patientDietType={patient.diet_type ?? 'Vegetarian'} />}
         {activeTab === 'activity' && <ActivityTab patientId={patientId} patientName={patient.name} />}
         {activeTab === 'notes'    && <NotesTab    patientId={patientId} patientName={patient.name} />}
+        {activeTab === 'visits'   && <VisitsTab   patientId={patientId} patientName={patient.name} />}
       </div>
     </div>
   );

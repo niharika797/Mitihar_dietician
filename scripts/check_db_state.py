@@ -5,10 +5,16 @@ Quick read-only audit of food_items and meal_templates tables.
 Tells us exactly what data is in the DB right now.
 """
 import sys
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 from sqlalchemy import create_engine, text
 
-DATABASE_URL = "postgresql+psycopg2://admin:mityahar_dev@localhost:5432/mityahar_db"
+_url = os.getenv("DATABASE_URL")
+if not _url:
+    raise RuntimeError("DATABASE_URL is not set. Add it to your .env file.")
+DATABASE_URL = _url.replace("+asyncpg", "+psycopg2")
 engine = create_engine(DATABASE_URL)
 
 with engine.connect() as conn:

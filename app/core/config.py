@@ -9,23 +9,28 @@ load_dotenv()
 class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Diet Plan API"
-    
-    # Security settings
+
+    # ── JWT / session ─────────────────────────────────────────────────────
     SECRET_KEY: str = "change-me-in-production"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15      # Short-lived — Axios interceptor handles silent refresh
-    REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days — lives in HttpOnly cookie only
-    
-    # CORS settings
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15       # Short-lived — Axios interceptor handles silent refresh
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080   # 7 days — lives in HttpOnly cookie only
+    RESET_TOKEN_EXPIRE_MINUTES: int = 30        # Password-reset link valid for 30 minutes only
+
+    # ── Cookie security ───────────────────────────────────────────────────
+    # Set COOKIE_SECURE=True in production (.env). False only for local HTTP dev.
+    COOKIE_SECURE: bool = False
+
+    # ── Password policy ───────────────────────────────────────────────────
+    PASSWORD_MIN_LENGTH: int = 8
+
+    # ── CORS ──────────────────────────────────────────────────────────────
     CORS_ORIGINS: Union[str, List[str]] = ["http://localhost:3000"]
 
-    # Gemini API (for AI nutrition estimation)
+    # ── External APIs ─────────────────────────────────────────────────────
     GEMINI_API_KEY_1: Optional[str] = None
-
-    # Google OAuth (client-side ID token flow)
-    # Get these from https://console.cloud.google.com → APIs & Services → Credentials
     GOOGLE_CLIENT_ID: Optional[str] = None
-    GOOGLE_CLIENT_SECRET: Optional[str] = None   # kept for future server-side flow
-    GOOGLE_REDIRECT_URI: Optional[str] = None    # kept for future server-side flow
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: Optional[str] = None
 
     @field_validator("SECRET_KEY")
     @classmethod

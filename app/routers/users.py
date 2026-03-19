@@ -3,15 +3,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..services.user_service import get_current_user, update_patient, get_patient_by_id
 from ..models.db_models import Patient
-from ..schemas.user import UserUpdate, UserResponse
+from ..schemas.user import UserUpdate
+from ..schemas.patients import PatientProfileResponse
 from ..core.database import get_db
 
 router = APIRouter()
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=PatientProfileResponse)
 async def get_user_profile(current_user: Patient = Depends(get_current_user)):
-    """Get current user profile."""
+    """Get current user full profile — includes subscription, token, disclaimer status."""
     return current_user
 
 
@@ -25,7 +26,7 @@ async def get_user_bmi(current_user: Patient = Depends(get_current_user)):
     return {"bmi": round(bmi, 2)}
 
 
-@router.put("/me", response_model=UserResponse)
+@router.put("/me", response_model=PatientProfileResponse)
 async def update_user_profile(
     update_data: UserUpdate,
     current_user: Patient = Depends(get_current_user),
@@ -52,6 +53,8 @@ async def update_user_profile(
 
     # Auto-recalculate BMI/BMR/TDEE if any body metric changed
     recalc_triggers = {"height_cm", "weight_kg", "activity_level"}
+    diet_triggers = {"height_cm", "weight_kg", "activity_level", "diet_type", "health_condition", "region", "target_weight_kg", "diabetes_status", "gym_goal"}
+    
     if recalc_triggers.intersection(mapped.keys()):
         if updated.date_of_birth:
             from datetime import date as _date
@@ -87,5 +90,39 @@ async def update_user_profile(
         )
         await session.flush()
         updated = await get_patient_by_id(session, updated.id)
+
+    if diet_triggers.intersection(mapped.keys()):
+        from ..services.diet_plan_service import DietPlanService
+        
+        diet_service = DietPlanService()
+        
+        if updated.date_of_birth:
+            from datetime import date as _date
+            dob = updated.date_of_birth
+            today = _date.today()
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        else:
+            age = 30
+            
+        user_data = {
+            "id": updated.id,
+            "age": age,
+            "gender": updated.gender,
+            "weight": float(updated.weight_kg) if updated.weight_kg else 70.0,
+            "height": float(updated.height_cm) if updated.height_cm else 170.0,
+            "diet": updated.diet_type or "Anything",
+            "health_state": updated.health_condition or "Healthy",
+            "region": updated.region or "none",
+            "target_weight": float(updated.target_weight_kg) if getattr(updated, "target_weight_kg", None) else None,
+            "activity_level": getattr(updated, "activity_level", "Lightly Active"),
+            "tdee": float(updated.tdee) if getattr(updated, "tdee", None) else 2000.0,
+        }
+        
+        try:
+            new_plan = await diet_service.generate_diet_plan(user_data, session)
+            await diet_service.store_diet_plan(new_plan, session)
+            print("Auto-regenerated diet plan upon profile update")
+        except Exception as e:
+            print(f"Failed to auto-generate diet plan: {e}")
 
     return updated

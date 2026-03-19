@@ -18,6 +18,19 @@ import os
 import sys
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Load DATABASE_URL from .env — never rely on the placeholder in alembic.ini
+from dotenv import load_dotenv
+load_dotenv()
+
+_db_url = os.getenv("DATABASE_URL")
+if not _db_url:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Add it to your .env file before running migrations.\n"
+        "Example: DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/mityahar_db"
+    )
+# Override whatever placeholder is in alembic.ini
+config.set_main_option("sqlalchemy.url", _db_url)
+
 from app.core.database import Base
 import app.models.db_models  # noqa
 

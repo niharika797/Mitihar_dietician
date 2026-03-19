@@ -1,11 +1,13 @@
-import React from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
+import React, { useRef, useEffect } from "react";
+import { View, Text, Pressable, StyleSheet, ScrollView, Animated, Clipboard } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
-import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, Copy, CheckCircle2 } from "lucide-react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../../lib/queryKeys";
-import { getRequestStatus } from "../../services/profile";
+import { getRequestStatus, getMyVisit } from "../../services/profile";
 import { useAuthStore } from "../../store/useAuthStore";
+import { getMyProfile } from "../../services/profile";
+import { useToast } from "../../components/shared";
 
 type SubStatus = "active" | "pending" | "none";
 
@@ -22,8 +24,8 @@ const CONFIG: Record<SubStatus, {
   },
   pending: {
     emoji: "⏳", title: "Request Sent", color: "#D97706", bg: "#FFFBEB", border: "#FDE68A",
-    subtitle: (name) => `Waiting for ${name ?? "your doctor"} to accept`,
-    body: "Your doctor will review your profile and accept your request shortly.",
+    subtitle: () => "Waiting for your doctor to accept",
+    body: "Your doctor will review your profile and accept your request shortly. This page updates automatically.",
     badge: { text: "Pending", bg: "#FEF3C7", color: "#92400E" },
   },
   none: {
@@ -36,20 +38,69 @@ const CONFIG: Record<SubStatus, {
 
 export default function ConnectionStatusScreen() {
   const router = useRouter();
-  const profile = useAuthStore(s => s.profile);
+  const { showToast } = useToast();
+  const { profile, setProfile } = useAuthStore();
+  const qc = useQueryClient();
+  const prevStatus = useRef<string | null>(null);
+  const celebrateAnim = useRef(new Animated.Value(0)).current;
 
+  // ── Poll request status every 30s until accepted ──────────────────────
   const { data: reqStatus } = useQuery({
     queryKey: QUERY_KEYS.REQUEST_STATUS,
     queryFn: getRequestStatus,
     enabled: !!profile,
+    refetchInterval: (data) =>
+      // Stop polling once accepted (doctor side) or if subscription is active
+      (data?.status === "accepted" || profile?.subscription_status === "active") ? false : 30_000,
+    refetchIntervalInBackground: false,
   });
 
+  // ── When request is accepted, refresh the profile so JWT sub_status syncs
+  useEffect(() => {
+    const current = reqStatus?.status;
+    if (prevStatus.current === "pending" && current === "accepted") {
+      // Trigger celebratory animation
+      Animated.spring(celebrateAnim, {
+        toValue: 1, useNativeDriver: true, friction: 6,
+      }).start();
+      // Refresh profile from backend to get updated subscription_status
+      getMyProfile().then((p) => {
+        setProfile(p);
+        qc.invalidateQueries({ queryKey: QUERY_KEYS.ME });
+        showToast("Your doctor accepted you! 🎉", "success");
+      }).catch(() => {});
+    }
+    prevStatus.current = current ?? null;
+  }, [reqStatus?.status]);
+
+  // ── Fetch Token 2 / visit info when active ─────────────────────────────
   const subStatus: SubStatus =
     profile?.subscription_status === "active" ? "active" :
     reqStatus?.status === "pending"            ? "pending" : "none";
 
+  const { data: visitData } = useQuery({
+    queryKey: QUERY_KEYS.MY_VISIT,
+    queryFn: getMyVisit,
+    enabled: subStatus === "active",
+    staleTime: 60_000,
+  });
+
   const cfg = CONFIG[subStatus];
   const doctorName = (profile as any)?.doctor_name ?? undefined;
+
+  // Copy token 2 to clipboard
+  const copyToken2 = () => {
+    if (visitData?.token_2) {
+      Clipboard.setString(visitData.token_2);
+      showToast("Token 2 copied!", "success");
+    }
+  };
+
+  // Celebration scale for newly-accepted state
+  const cardScale = celebrateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.03],
+  });
 
   return (
     <View style={s.root}>
@@ -62,29 +113,42 @@ export default function ConnectionStatusScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        {/* Status card */}
-        <View style={[s.statusCard, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
-          <Text style={s.statusEmoji}>{cfg.emoji}</Text>
-          <Text style={[s.statusTitle, { color: cfg.color }]}>{cfg.title}</Text>
-          <Text style={s.statusSub}>{cfg.subtitle(doctorName)}</Text>
-          {cfg.badge && (
-            <View style={[s.badge, { backgroundColor: cfg.badge.bg }]}>
-              <Text style={[s.badgeText, { color: cfg.badge.color }]}>{cfg.badge.text}</Text>
-            </View>
-          )}
-        </View>
+
+        {/* Status card — animates on accept */}
+        <Animated.View style={{ width: "100%", transform: [{ scale: cardScale }] }}>
+          <View style={[s.statusCard, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
+            <Text style={s.statusEmoji}>{cfg.emoji}</Text>
+            <Text style={[s.statusTitle, { color: cfg.color }]}>{cfg.title}</Text>
+            <Text style={s.statusSub}>{cfg.subtitle(doctorName)}</Text>
+            {cfg.badge && (
+              <View style={[s.badge, { backgroundColor: cfg.badge.bg }]}>
+                <Text style={[s.badgeText, { color: cfg.badge.color }]}>{cfg.badge.text}</Text>
+              </View>
+            )}
+          </View>
+        </Animated.View>
 
         {/* Info body */}
         <View style={s.infoCard}>
           <Text style={s.infoText}>{cfg.body}</Text>
         </View>
 
-        {/* Active — connection details */}
+        {/* ── Active — subscription details ───────────────────────────── */}
         {subStatus === "active" && profile && (
           <View style={s.detailCard}>
             {[
-              { label: "Status",    value: "Active ✅"                                         },
-              { label: "Expires",   value: profile.subscription_end_date?.slice(0, 10) ?? "—" },
+              { label: "Status", value: "Active ✅" },
+              {
+                label: "Expires",
+                value: (() => {
+                  // Use subscription_end_date if set, otherwise fall back to token_1_expiry
+                  const raw = profile.subscription_end_date ?? profile.token_1_expiry;
+                  if (!raw) return "—";
+                  return new Date(raw).toLocaleDateString("en-IN", {
+                    day: "numeric", month: "short", year: "numeric"
+                  });
+                })(),
+              },
             ].map((row, i, arr) => (
               <View key={row.label} style={[s.detailRow, i < arr.length - 1 && s.detailBorder]}>
                 <Text style={s.detailLabel}>{row.label}</Text>
@@ -94,7 +158,51 @@ export default function ConnectionStatusScreen() {
           </View>
         )}
 
-        {/* CTAs */}
+        {/* ── Token 2 / visit cycle card (active patients only) ──────── */}
+        {subStatus === "active" && visitData?.has_visit && (
+          <View style={s.visitCard}>
+            <Text style={s.visitCardTitle}>Visit Cycle (Token 2)</Text>
+            <Text style={s.visitHint}>Share this code with your doctor at your clinic visit</Text>
+
+            {/* Token 2 display with copy button */}
+            <View style={s.tokenRow}>
+              <Text style={s.token2Text}>{visitData.token_2}</Text>
+              <Pressable onPress={copyToken2} style={s.copyBtn} hitSlop={8}>
+                <Copy size={15} color="#1E7C45" />
+              </Pressable>
+            </View>
+
+            {/* Cycle stats */}
+            <View style={s.visitStats}>
+              {[
+                { label: "Visits this cycle", value: String(visitData.visit_counter) },
+                {
+                  label: "Cycle expiry",
+                  value: visitData.cycle_expiry
+                    ? new Date(visitData.cycle_expiry).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                    : "—"
+                },
+              ].map((item, i, arr) => (
+                <View key={item.label} style={[s.visitStatItem, i < arr.length - 1 && s.visitStatBorder]}>
+                  <Text style={s.visitStatLabel}>{item.label}</Text>
+                  <Text style={s.visitStatValue}>{item.value}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ── Active with no visit cycle yet ──────────────────────────── */}
+        {subStatus === "active" && visitData && !visitData.has_visit && (
+          <View style={[s.visitCard, { alignItems: "center", paddingVertical: 20 }]}>
+            <CheckCircle2 size={28} color="#9CA3AF" />
+            <Text style={[s.visitHint, { textAlign: "center", marginTop: 8 }]}>
+              Token 2 will appear here after your first clinic visit is recorded by your doctor.
+            </Text>
+          </View>
+        )}
+
+        {/* ── CTAs ─────────────────────────────────────────────────────── */}
         {subStatus === "active" && (
           <Pressable style={s.primaryBtn} onPress={() => router.replace("/(tabs)")}>
             <Text style={s.primaryBtnText}>View My Meal Plan</Text>
@@ -121,27 +229,40 @@ export default function ConnectionStatusScreen() {
 }
 
 const s = StyleSheet.create({
-  root:          { flex: 1, backgroundColor: "#F9FAFB" },
-  header:        { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
-  backBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
-  title:         { fontSize: 18, fontWeight: "600", color: "#111827" },
-  scroll:        { alignItems: "center", padding: 24, gap: 16 },
-  statusCard:    { width: "100%", borderWidth: 1.5, borderRadius: 20, padding: 28, alignItems: "center", gap: 8 },
-  statusEmoji:   { fontSize: 52 },
-  statusTitle:   { fontSize: 22, fontWeight: "700" },
-  statusSub:     { fontSize: 14, color: "#374151", textAlign: "center" },
-  badge:         { borderRadius: 99, paddingHorizontal: 14, paddingVertical: 4 },
-  badgeText:     { fontSize: 12, fontWeight: "600" },
-  infoCard:      { width: "100%", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 16 },
-  infoText:      { fontSize: 14, color: "#374151", lineHeight: 22 },
-  detailCard:    { width: "100%", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden" },
-  detailRow:     { flexDirection: "row", justifyContent: "space-between", padding: 14 },
-  detailBorder:  { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
-  detailLabel:   { fontSize: 13, color: "#6B7280" },
-  detailValue:   { fontSize: 13, fontWeight: "600", color: "#111827" },
-  ctaStack:      { width: "100%", gap: 10 },
-  primaryBtn:    { width: "100%", height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  primaryBtnText:{ fontSize: 16, fontWeight: "600", color: "#fff" },
-  secondaryBtn:  { width: "100%", height: 52, borderRadius: 26, backgroundColor: "#fff", borderWidth: 1.5, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
-  secondaryBtnText:{ fontSize: 15, fontWeight: "500", color: "#374151" },
+  root:             { flex: 1, backgroundColor: "#F9FAFB" },
+  header:           { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
+  backBtn:          { width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
+  title:            { fontSize: 18, fontWeight: "600", color: "#111827" },
+  scroll:           { alignItems: "center", padding: 24, gap: 16 },
+  statusCard:       { width: "100%", borderWidth: 1.5, borderRadius: 20, padding: 28, alignItems: "center", gap: 8 },
+  statusEmoji:      { fontSize: 52 },
+  statusTitle:      { fontSize: 22, fontWeight: "700" },
+  statusSub:        { fontSize: 14, color: "#374151", textAlign: "center" },
+  badge:            { borderRadius: 99, paddingHorizontal: 14, paddingVertical: 4 },
+  badgeText:        { fontSize: 12, fontWeight: "600" },
+  infoCard:         { width: "100%", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 16 },
+  infoText:         { fontSize: 14, color: "#374151", lineHeight: 22 },
+  detailCard:       { width: "100%", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden" },
+  detailRow:        { flexDirection: "row", justifyContent: "space-between", padding: 14 },
+  detailBorder:     { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  detailLabel:      { fontSize: 13, color: "#6B7280" },
+  detailValue:      { fontSize: 13, fontWeight: "600", color: "#111827" },
+  // Visit / Token 2 card
+  visitCard:        { width: "100%", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1.5, borderColor: "#DCFCE7", padding: 16, gap: 8 },
+  visitCardTitle:   { fontSize: 14, fontWeight: "700", color: "#111827" },
+  visitHint:        { fontSize: 12, color: "#6B7280", lineHeight: 18 },
+  tokenRow:         { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#F0FDF4", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, marginTop: 4 },
+  token2Text:       { fontSize: 16, fontWeight: "700", color: "#1E7C45", fontFamily: "monospace", letterSpacing: 1 },
+  copyBtn:          { padding: 6, borderRadius: 8, backgroundColor: "#DCFCE7" },
+  visitStats:       { borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, overflow: "hidden", marginTop: 4 },
+  visitStatItem:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12 },
+  visitStatBorder:  { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  visitStatLabel:   { fontSize: 12, color: "#6B7280" },
+  visitStatValue:   { fontSize: 13, fontWeight: "600", color: "#111827" },
+  // CTAs
+  ctaStack:         { width: "100%", gap: 10 },
+  primaryBtn:       { width: "100%", height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
+  primaryBtnText:   { fontSize: 16, fontWeight: "600", color: "#fff" },
+  secondaryBtn:     { width: "100%", height: 52, borderRadius: 26, backgroundColor: "#fff", borderWidth: 1.5, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
+  secondaryBtnText: { fontSize: 15, fontWeight: "500", color: "#374151" },
 });

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
 from ..core.security import get_current_admin, get_password_hash
-from ..models.db_models import Admin, Doctor, Patient, Recommendation, SubscriptionCode, AuditLog, FoodItem
+from ..models.db_models import Admin, Doctor, Patient, Recommendation, SubscriptionCode, AuditLog, FoodItem, PatientVisit
 from ..schemas.admin import (
     CreateDoctorRequest, DoctorAdminView, PlatformStats,
     DoctorDetailView, AuditLogEntry, PaginatedAuditLogs,
@@ -87,11 +87,30 @@ async def get_stats(
         )
     )).scalar()
 
+    expiring_soon_count = (await session.execute(
+        select(func.count(Patient.id)).where(Patient.expiring_soon == True)
+    )).scalar()
+
+    pending_renewals_count = (await session.execute(
+        select(func.count(Patient.id)).where(Patient.renewal_requested == True)
+    )).scalar()
+
+    from datetime import datetime, timezone
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    total_consultations_this_month = (await session.execute(
+        select(func.sum(PatientVisit.visit_counter)).where(
+            PatientVisit.cycle_start >= month_start
+        )
+    )).scalar() or 0
+
     return PlatformStats(
         total_patients=total_patients,
         active_subscriptions=active_subs,
         total_doctors=total_doctors,
         total_plans_generated=total_plans,
+        expiring_soon_count=expiring_soon_count,
+        pending_renewals_count=pending_renewals_count,
+        total_consultations_this_month=int(total_consultations_this_month),
     )
 
 
@@ -625,3 +644,182 @@ async def mark_doctor_paid(
         "period": body.period,
         "recorded_by_admin_id": admin.id,
     }
+
+
+# ─── GET /api/v1/admin/consultations ─────────────────────────────────────
+
+@router.get("/consultations")
+async def get_consultations(
+    admin=Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Platform-wide consultation stats.
+    Per-doctor: patient count, visits this month, revenue (×₹1200), royalty (×6%).
+    """
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    doctors_result = await session.execute(
+        select(Doctor).where(Doctor.is_active == True)
+    )
+    doctors = doctors_result.scalars().all()
+
+    per_doctor = []
+    total_consultations = 0
+
+    for doc in doctors:
+        pat_count_result = await session.execute(
+            select(func.count(Patient.id)).where(Patient.doctor_id == doc.id)
+        )
+        patient_count = pat_count_result.scalar() or 0
+
+        visits_result = await session.execute(
+            select(func.sum(PatientVisit.visit_counter)).where(
+                PatientVisit.doctor_id == doc.id,
+                PatientVisit.cycle_start >= month_start,
+            )
+        )
+        consultations_this_month = int(visits_result.scalar() or 0)
+        total_consultations += consultations_this_month
+
+        revenue = consultations_this_month * 1200
+        royalty = round(revenue * 0.06, 2)
+
+        per_doctor.append({
+            "doctor_id": doc.id,
+            "doctor_name": doc.name,
+            "doctor_email": doc.email,
+            "patient_count": patient_count,
+            "consultations_this_month": consultations_this_month,
+            "revenue_generated": revenue,
+            "platform_royalty": royalty,
+        })
+
+    return {
+        "month": month_start.strftime("%B %Y"),
+        "total_consultations_this_month": total_consultations,
+        "total_revenue": total_consultations * 1200,
+        "total_royalty": round(total_consultations * 1200 * 0.06, 2),
+        "per_doctor": per_doctor,
+    }
+
+
+# ─── GET /api/v1/admin/consultations/annual ──────────────────────────────
+
+@router.get("/consultations/annual")
+async def get_annual_consultations(
+    admin=Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """Year-to-date totals and royalty split (2% × 3 team members)."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    result = await session.execute(
+        select(func.sum(PatientVisit.visit_counter)).where(
+            PatientVisit.cycle_start >= year_start
+        )
+    )
+    ytd_consultations = int(result.scalar() or 0)
+    ytd_revenue = ytd_consultations * 1200
+    ytd_royalty_pool = round(ytd_revenue * 0.06, 2)
+
+    return {
+        "year": now.year,
+        "ytd_consultations": ytd_consultations,
+        "ytd_revenue": ytd_revenue,
+        "royalty_pool_6pct": ytd_royalty_pool,
+        "royalty_per_member_2pct": round(ytd_royalty_pool / 3, 2),
+        "team_members": 3,
+    }
+
+
+# ─── GET /api/v1/admin/renewals ──────────────────────────────────────────
+
+@router.get("/renewals")
+async def get_pending_renewals(
+    admin=Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """Platform-wide list of all patients with pending renewal requests."""
+    result = await session.execute(
+        select(Patient, Doctor.name.label("doctor_name")).join(
+            Doctor, Patient.doctor_id == Doctor.id, isouter=True
+        ).where(Patient.renewal_requested == True)
+        .order_by(Patient.renewal_requested_at.asc())
+    )
+    rows = result.all()
+    return [
+        {
+            "patient_id": p.Patient.id,
+            "patient_name": p.Patient.name,
+            "patient_email": p.Patient.email,
+            "doctor_name": p.doctor_name,
+            "token_1": p.Patient.token_1,
+            "token_1_expiry": p.Patient.token_1_expiry.isoformat() if p.Patient.token_1_expiry else None,
+            "renewal_requested_at": p.Patient.renewal_requested_at.isoformat() if p.Patient.renewal_requested_at else None,
+        }
+        for p in rows
+    ]
+
+
+# ─── POST /api/v1/admin/renewals/{patient_id}/override-approve ───────────
+
+@router.post("/renewals/{patient_id}/override-approve")
+async def admin_override_approve_renewal(
+    patient_id: int,
+    request: Request,
+    admin=Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """Admin manually approves a renewal if doctor is unresponsive."""
+    from ..services.token_service import generate_token_2, token_1_expiry_from_now
+    from datetime import datetime, timezone, timedelta
+    from ..services.audit_service import log_action
+
+    pat_result = await session.execute(select(Patient).where(Patient.id == patient_id))
+    patient = pat_result.scalars().first()
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    now = datetime.now(timezone.utc)
+    new_expiry = token_1_expiry_from_now()
+
+    await session.execute(
+        update(Patient).where(Patient.id == patient_id).values(
+            token_1_active=True,
+            token_1_expiry=new_expiry,
+            renewal_requested=False,
+            renewal_requested_at=None,
+            expiring_soon=False,
+            subscription_status="active",
+        )
+    )
+
+    if patient.doctor_id:
+        pv = PatientVisit(
+            patient_id=patient_id,
+            doctor_id=patient.doctor_id,
+            token_2=generate_token_2(),
+            cycle_start=now,
+            cycle_expiry=now + timedelta(days=30),
+            visit_counter=0,
+        )
+        session.add(pv)
+
+    await session.flush()
+    await log_action(
+        session, actor_id=admin.id, actor_role="admin",
+        action="admin_override_renewal", entity_type="patient", entity_id=patient_id,
+        ip_address=request.client.host if request.client else None,
+    )
+    return {"message": f"Renewal approved by admin for patient {patient.name}."}
+
+
+# ─── Extend GET /api/v1/admin/stats with token fields ────────────────────
+# Note: stats endpoint already exists — we patch it at runtime via the
+# existing route. The expiring_soon_count + pending_renewals_count are
+# appended by the updated get_stats function below (replaces old one).

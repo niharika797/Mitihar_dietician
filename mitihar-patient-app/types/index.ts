@@ -58,6 +58,12 @@ export interface PatientProfile {
   nonveg_meals_per_week: number;
   pace_preference?: PacePreference;
   eating_habits: string[];
+  // Token 1 fields
+  token_1?: string | null;
+  token_1_active?: boolean;
+  token_1_expiry?: string | null;
+  renewal_requested?: boolean;
+  expiring_soon?: boolean;
 }
 
 // ── Onboarding ────────────────────────────────────────────────────────────
@@ -70,7 +76,7 @@ export interface OnboardingPayload {
   diet_type: DietType;
   region: Region;
   health_condition: string;
-  target_weight_kg: number;
+  target_weight_kg?: number;
   health_goals: string[];
   medical_conditions: string[];
   food_allergies: string[];
@@ -113,6 +119,7 @@ export interface OnboardingWizardState {
   nonveg_meals_per_week: number;
   eating_habits: string[];
   dietary_preferences: string[];
+  health_condition: string;
   disclaimer_accepted: boolean;
 }
 
@@ -128,7 +135,18 @@ export interface Meal {
   "Total Fat": number;
   "Total Fiber": number;
   doctor_note?: string;
-  food_id?: number;
+  food_id?: number | null;
+  recommendation_id?: number | null;
+}
+
+// ── Meal Ratings (Phase 8 Tier 0) ─────────────────────────────────────────
+export interface MealRating {
+  id: number;
+  patient_id: number;
+  food_item_id: number;
+  recommendation_id: number | null;
+  rating: 1 | -1;
+  rated_at: string;
 }
 
 export interface WeeklyPlan {
@@ -205,6 +223,8 @@ export interface RequestStatusResponse {
 export interface ActivateResponse {
   message: string;
   doctor_name?: string;
+  access_token?: string;
+  token_type?: string;
 }
 
 // ── Notifications (local only — FCM Phase 5) ──────────────────────────────

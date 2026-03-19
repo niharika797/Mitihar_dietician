@@ -21,7 +21,8 @@ export default function PersonalInfoScreen() {
   const [weight, setWeight] = useState(data.weight_kg);
   const [target, setTarget] = useState(data.target_weight_kg);
 
-  const canContinue = !!(day && month && year && gender && height && weight && target);
+  const canContinue = !!(day && month && year && gender && height && weight);
+  // target_weight_kg is optional — patient may not have a goal weight
 
   const handleContinue = () => {
     update({ dob_day: day, dob_month: month, dob_year: year, gender, height_cm: height, weight_kg: weight, target_weight_kg: target });

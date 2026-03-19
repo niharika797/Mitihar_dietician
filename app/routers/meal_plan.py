@@ -114,13 +114,14 @@ async def get_week_plan(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Returns the active meal plan organised as a 7-day dict keyed by date string.
-    Each key maps to a list of meal objects for that day.
-    Returns 404 if no active plan exists.
+    Returns the active meal plan as a flat date-keyed dict.
+    { "2026-03-18": [ {...meal}, ... ], "2026-03-19": [...] }
+    Returns {} (empty dict) if no active plan exists — frontend handles gracefully.
     """
     diet_service = DietPlanService()
     plan = await diet_service.get_diet_plan(str(current_user.id), session=session)
     if plan is None:
+        return {}
         raise HTTPException(status_code=404, detail="No active meal plan found")
 
     # Group meals by Date field
@@ -130,11 +131,9 @@ async def get_week_plan(
         if day:
             week.setdefault(day, []).append(meal)
 
-    return {
-        "plan_created_at": plan.created_at.isoformat() if plan.created_at else None,
-        "days": week,
-        "total_days": len(week),
-    }
+    # Return the flat date-keyed dict directly — matches the frontend WeeklyPlan type.
+    # { "2026-03-18": [ {...meal}, ... ], "2026-03-19": [...], ... }
+    return week
 
 
 # ─── GET /api/v1/meal-plan/history ───────────────────────────────────────

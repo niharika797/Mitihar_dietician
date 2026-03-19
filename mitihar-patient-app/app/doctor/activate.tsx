@@ -15,7 +15,7 @@ export default function ActivateScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const { setProfile } = useAuthStore();
+  const { setProfile, updateAccessToken } = useAuthStore();
   const [code, setCode] = useState(["","","","","",""]);
   const refs = useRef<(TextInput | null)[]>([]);
 
@@ -41,7 +41,10 @@ export default function ActivateScreen() {
 
   const activateMut = useMutation({
     mutationFn: async () => {
-      await activateSubscription(codeStr);
+      const resp = await activateSubscription(codeStr);
+      if (resp.access_token) {
+        await updateAccessToken(resp.access_token);
+      }
       return getMyProfile();
     },
     onSuccess: (profile) => {

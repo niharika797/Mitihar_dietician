@@ -6,8 +6,9 @@ import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, ChevronRight, Droplets, Footprints } from "lucide-react-native";
 import { QUERY_KEYS } from "../../lib/queryKeys";
-import { getTodaySummary, logWater, logSteps, logMeal } from "../../services/progress";
+import { getTodaySummary, logWater, logSteps, logMeal, rateMeal, getMyRatings, MealRating } from "../../services/progress";
 import { getWeeklyPlan } from "../../services/meals";
+import { getRequestStatus, getMyProfile } from "../../services/profile";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore, selectWater, selectSteps } from "../../store/useProgressStore";
 import { ProgressRing, MacroRow, BottomSheet, useToast } from "../../components/shared";
@@ -35,7 +36,36 @@ export default function HomeScreen() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const profile = useAuthStore(s => s.profile);
+  const { setProfile } = useAuthStore();
   const { hydrateSummary, setLocalWater, setLocalSteps } = useProgressStore();
+
+  // ── Poll for doctor approval while subscription is inactive ─────────────
+  // Runs silently in the background so patients don't need to watch
+  // the connection-status screen. When the doctor accepts, the profile
+  // refreshes automatically and the subscription banner appears.
+  const isPending = profile?.subscription_status !== "active" && !!profile;
+  const { data: reqStatus } = useQuery({
+    queryKey: QUERY_KEYS.REQUEST_STATUS,
+    queryFn: getRequestStatus,
+    enabled: isPending,
+    refetchInterval: isPending ? 30_000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+  // When status becomes 'accepted', refresh the full profile
+  const prevReqStatus = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const current = reqStatus?.status;
+    if (prevReqStatus.current === "pending" && current === "accepted") {
+      getMyProfile().then((p) => {
+        setProfile(p);
+        qc.invalidateQueries({ queryKey: QUERY_KEYS.ME });
+        qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN });
+        showToast("Your doctor accepted your request! 🎉", "success");
+      }).catch(() => {});
+    }
+    prevReqStatus.current = current ?? null;
+  }, [reqStatus?.status]);
 
   const [logSheet, setLogSheet] = useState<string | null>(null);
   const [waterSheet, setWaterSheet] = useState(false);
@@ -43,6 +73,8 @@ export default function HomeScreen() {
   const [tempWater, setTempWater] = useState(0);
   const [tempSteps, setTempSteps] = useState("0");
   const [loggedMeals, setLoggedMeals] = useState<Record<string, boolean>>({});
+  // rating state: key = food_item_id string, value = 1 | -1
+  const [localRatings, setLocalRatings] = useState<Record<string, 1 | -1>>({});
 
   // ── Server data ──────────────────────────────────────────────────────────
   const { data: today, isLoading: todayLoading } = useQuery({
@@ -224,14 +256,34 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          {/* ── Doctor note ── */}
-          {profile?.doctor_id && (
+          {/* ── Doctor / subscription banners ── */}
+          {profile?.subscription_status === "active" && profile?.doctor_id && (
             <Pressable style={s.doctorBanner} onPress={() => router.push("/doctor/connection-status")}>
               <View style={{ flex: 1 }}>
                 <Text style={s.doctorLabel}>📋 Doctor connected</Text>
                 <Text style={s.doctorSub}>Tap to view your plan details</Text>
               </View>
               <Text style={s.doctorLink}>View</Text>
+            </Pressable>
+          )}
+          {/* Pending approval banner — visible while doctor hasn't accepted yet */}
+          {profile?.subscription_status !== "active" && reqStatus?.status === "pending" && (
+            <Pressable style={s.pendingBanner} onPress={() => router.push("/doctor/connection-status")}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.pendingLabel}>⏳ Approval pending</Text>
+                <Text style={s.pendingSub}>Waiting for your doctor to accept. You'll be notified automatically.</Text>
+              </View>
+              <Text style={s.pendingLink}>View</Text>
+            </Pressable>
+          )}
+          {/* Not connected nudge */}
+          {profile?.subscription_status !== "active" && !reqStatus && (
+            <Pressable style={s.findBanner} onPress={() => router.push("/doctor/find-doctor")}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.findLabel}>🩺 Connect with a doctor</Text>
+                <Text style={s.findSub}>Get a personalised meal plan from a certified dietician.</Text>
+              </View>
+              <Text style={s.findLink}>Find →</Text>
             </Pressable>
           )}
         </View>
@@ -356,10 +408,18 @@ const s = StyleSheet.create({
   quickCard:   { flex: 1, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 14 },
   quickVal:    { fontSize: 16, fontWeight: "700", color: "#111827", marginTop: 6 },
   quickSub:    { fontSize: 11, color: "#6B7280" },
-  doctorBanner:{ flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#DCFCE7", borderRadius: 12, padding: 14, marginBottom: 8 },
-  doctorLabel: { fontSize: 12, fontWeight: "500", color: "#166534" },
-  doctorSub:   { fontSize: 12, color: "#374151", marginTop: 2 },
-  doctorLink:  { fontSize: 12, fontWeight: "500", color: "#1E7C45" },
+  doctorBanner:  { flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#DCFCE7", borderRadius: 12, padding: 14, marginBottom: 8 },
+  doctorLabel:   { fontSize: 12, fontWeight: "500", color: "#166534" },
+  doctorSub:     { fontSize: 12, color: "#374151", marginTop: 2 },
+  doctorLink:    { fontSize: 12, fontWeight: "500", color: "#1E7C45" },
+  pendingBanner: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFBEB", borderWidth: 1, borderColor: "#FDE68A", borderRadius: 12, padding: 14, marginBottom: 8 },
+  pendingLabel:  { fontSize: 12, fontWeight: "500", color: "#92400E" },
+  pendingSub:    { fontSize: 12, color: "#374151", marginTop: 2 },
+  pendingLink:   { fontSize: 12, fontWeight: "500", color: "#D97706" },
+  findBanner:    { flexDirection: "row", alignItems: "center", backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", borderRadius: 12, padding: 14, marginBottom: 8 },
+  findLabel:     { fontSize: 12, fontWeight: "500", color: "#1E40AF" },
+  findSub:       { fontSize: 12, color: "#374151", marginTop: 2 },
+  findLink:      { fontSize: 12, fontWeight: "500", color: "#2563EB" },
 });
 
 const sh = StyleSheet.create({

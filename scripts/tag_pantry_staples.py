@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql+psycopg2://admin:mityahar_dev@localhost:5432/mityahar_db",
-)
+).replace("+asyncpg", "+psycopg2")
 
 # ── Pantry-staple names (case-insensitive match) ─────────────────────────────
 PANTRY_STAPLES = {

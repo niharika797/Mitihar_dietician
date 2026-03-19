@@ -28,6 +28,9 @@ class PlatformStats(BaseModel):
     active_subscriptions: int
     total_doctors: int
     total_plans_generated: int
+    expiring_soon_count: int = 0
+    pending_renewals_count: int = 0
+    total_consultations_this_month: int = 0
 
 
 class DoctorDetailView(DoctorAdminView):

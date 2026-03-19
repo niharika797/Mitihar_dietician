@@ -1,9 +1,12 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/useAuthStore";
 import { computeHealthStats } from "../../utils/calculations";
+import { generatePlan } from "../../services/meals";
+import { QUERY_KEYS } from "../../lib/queryKeys";
 
 function CheckCircle() {
   return (
@@ -17,7 +20,16 @@ function CheckCircle() {
 
 export default function CompleteScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const profile = useAuthStore(s => s.profile);
+
+  // Ensure a diet plan exists — re-trigger generation if onboarding
+  // completed but the backend silent-failed during plan auto-gen.
+  useEffect(() => {
+    generatePlan()
+      .then(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN }))
+      .catch(() => {}); // soft-fail — user can retry from Meals tab
+  }, []);
 
   // Compute stats from stored profile or show fallback zeroes
   const stats = profile
@@ -27,15 +39,23 @@ export default function CompleteScreen() {
         date_of_birth:   profile.date_of_birth ?? "1993-01-01",
         gender:          profile.gender,
         activity_level:  profile.activity_level,
+        pace_preference: profile.pace_preference,
       })
     : null;
+
+  const paceLabel: Record<string, string> = {
+    slow_and_steady: "for slow & steady pace",
+    moderate:        "for moderate pace",
+    fast:            "for fast pace",
+  };
+  const paceNote = paceLabel[profile?.pace_preference ?? "moderate"] ?? "for moderate pace";
 
   const rows = stats
     ? [
         { label: "BMI",                 value: `${stats.bmi}`,                       note: stats.bmiCategory, highlight: false },
         { label: "BMR (Base Rate)",     value: `${stats.bmr.toLocaleString()} kcal`, note: "",                highlight: false },
         { label: "TDEE (with activity)", value: `${stats.tdee.toLocaleString()} kcal`, note: "",             highlight: false },
-        { label: "Daily Target",        value: `${stats.dailyTarget.toLocaleString()} kcal`, note: "for moderate pace", highlight: true },
+        { label: "Daily Target",        value: `${stats.dailyTarget.toLocaleString()} kcal`, note: paceNote, highlight: true },
       ]
     : [];
 

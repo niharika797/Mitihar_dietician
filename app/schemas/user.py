@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, Field
 from typing import Optional
 from enum import Enum
 
+
 class ActivityLevel(str, Enum):
     SEDENTARY = "S"
     LIGHTLY_ACTIVE = "LA"
@@ -9,14 +10,18 @@ class ActivityLevel(str, Enum):
     VERY_ACTIVE = "VA"
     SUPER_ACTIVE = "SA"
 
+
 class DietType(str, Enum):
     VEGETARIAN = "Vegetarian"
     NON_VEGETARIAN = "Non-Vegetarian"
+    EGGETARIAN = "Eggetarian"
+
 
 class HealthCondition(str, Enum):
     HEALTHY = "Healthy"
     DIABETIC = "Diabetic-Friendly"
     GYM = "Gym-Friendly"
+
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -28,10 +33,9 @@ class UserBase(BaseModel):
     activity_level: ActivityLevel
     diet: DietType
     health_condition: HealthCondition
-    diabetes_status: Optional[str] = None  # Allow None
-    gym_goal: Optional[str] = None  # Allow None
+    diabetes_status: Optional[str] = None
+    gym_goal: Optional[str] = None
     region: Optional[str] = None
-
 
     @field_validator("diabetes_status", mode="before")
     @classmethod
@@ -40,6 +44,7 @@ class UserBase(BaseModel):
             if v not in ["controlled", "uncontrolled"]:
                 raise ValueError("If diabetic, diabetes_status must be 'controlled' or 'uncontrolled'")
         return v
+
     @field_validator("gym_goal", mode="before")
     @classmethod
     def check_gym_goal(cls, v, info):
@@ -48,11 +53,28 @@ class UserBase(BaseModel):
                 raise ValueError("If gym-friendly, gym_goal must be 'weight_loss', 'muscle_gain', or 'maintenance'")
         return v
 
+
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=8)
     doctor_code: Optional[str] = Field(default=None)
-    # If provided, patient connects to a doctor immediately on registration.
-    # The code must be a valid, unused SubscriptionCode.
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        """
+        Enforce minimum password security policy:
+        - At least 8 characters
+        - At least one letter
+        - At least one digit
+        This prevents trivially weak passwords like '12345678' or 'aaaaaaaa'.
+        """
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Password must contain at least one letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None

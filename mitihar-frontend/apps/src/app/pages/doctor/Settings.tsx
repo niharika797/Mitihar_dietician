@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Key, User, Shield, Copy, RefreshCw, Check, Loader2, AlertCircle, QrCode, ShieldCheck, ShieldOff } from 'lucide-react';
+import { useSearchParams } from 'react-router';
 import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
 import { useAuthStore } from '../../../stores/authStore';
@@ -199,7 +200,9 @@ type SettingsTab = 'profile' | 'codes' | 'security';
 export function DoctorSettings() {
   const queryClient = useQueryClient();
   const doctorName = useAuthStore(s => s.user_name) ?? '';
-  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
+  const [searchParams] = useSearchParams();
+  const initialTab = (searchParams.get('tab') as SettingsTab) ?? 'profile';
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
   const [copied, setCopied] = useState<string | null>(null);
   const [generateCount, setGenerateCount] = useState(5);
   const [expiresInDays, setExpiresInDays] = useState(30);

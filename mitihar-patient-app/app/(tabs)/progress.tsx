@@ -51,8 +51,8 @@ export default function ProgressScreen() {
   const stepsPct  = Math.min(100, Math.round((steps / 8000) * 100));
   const streak    = today?.streak ?? 0;
 
-  // chart data — last 7 weight entries
-  const chartData: BarData[] = weightHistory.slice(-7).map(e => ({
+  // chart data — last 7 weight entries (guard: weightHistory may be undefined on first load)
+  const chartData: BarData[] = (Array.isArray(weightHistory) ? weightHistory : []).slice(-7).map(e => ({
     value: e.weight_kg,
     label: e.date.slice(5), // MM-DD
     frontColor: "#1E7C45",

@@ -15,6 +15,14 @@ function subBadge(status: string) {
   return map[status] ?? 'bg-[#F3F4F6] text-[#6B7280]';
 }
 
+function daysLeftLabel(expiry: string | null | undefined): React.ReactNode {
+  if (!expiry) return <span className="text-[#9CA3AF]">—</span>;
+  const d = Math.ceil((new Date(expiry).getTime() - Date.now()) / 86_400_000);
+  if (d <= 0)  return <span className="text-xs font-semibold text-[#DC2626]">Expired</span>;
+  if (d <= 4)  return <span className="text-xs font-semibold text-[#B45309]">{d}d ⚠️</span>;
+  return <span className="text-xs text-[#15803d]">{d}d</span>;
+}
+
 export function AdminPatients() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -83,7 +91,7 @@ export function AdminPatients() {
           <table className="w-full">
             <thead>
               <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB]">
-                {['Patient', 'Gender', 'User Type', 'Doctor ID', 'BMI', 'Subscription', 'Joined'].map(h => (
+                {['Patient', 'Token 1', 'Days Left', 'User Type', 'Doctor ID', 'BMI', 'Subscription', 'Joined'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280] whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -104,7 +112,15 @@ export function AdminPatients() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-sm text-[#374151] capitalize">{p.gender || '—'}</td>
+                  <td className="px-4 py-4">
+                    <div>
+                      <p className="text-xs font-mono text-[#374151]">{(p as any).token_1 ?? '—'}</p>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${(p as any).token_1_active ? 'bg-[#DCFCE7] text-[#15803d]' : 'bg-[#F3F4F6] text-[#6B7280]'}`}>
+                        {(p as any).token_1_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">{daysLeftLabel((p as any).token_1_expiry)}</td>
                   <td className="px-4 py-4">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
                       p.user_type === 'doctor_assigned'

@@ -70,3 +70,24 @@ export async function listDoctors(search?: string): Promise<PublicDoctor[]> {
   });
   return data;
 }
+
+// ── POST /doctor/patients/{id}/request-renewal ────────────────────────────
+export async function requestRenewal(patientId: number) {
+  const { data } = await api.post(`/doctor/patients/${patientId}/request-renewal`);
+  return data;
+}
+
+// ── GET /patients/my-visit ─────────────────────────────────────────────────
+export interface MyVisitResponse {
+  has_visit: boolean;
+  token_2: string | null;
+  visit_counter: number;
+  cycle_start: string | null;
+  cycle_expiry: string | null;
+  last_charged_at: string | null;
+}
+
+export async function getMyVisit(): Promise<MyVisitResponse> {
+  const { data } = await api.get("/patients/my-visit");
+  return data;
+}

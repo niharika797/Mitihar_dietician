@@ -18,4 +18,10 @@ export const QUERY_KEYS = {
   WEEKLY_REPORT:  ["progress", "weekly-report"] as const,
   WEIGHT_HISTORY: (days: number) => ["progress", "weight-history", days] as const,
   STREAK:         ["progress", "streak"] as const,
+
+  // Phase 8 Tier 0 — meal ratings
+  MY_RATINGS:     ["progress", "meal-ratings"] as const,
+
+  // Doctor visit / Token 2
+  MY_VISIT:       ["my-visit"] as const,
 } as const;

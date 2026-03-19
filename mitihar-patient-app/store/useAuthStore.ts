@@ -11,6 +11,7 @@ interface AuthState {
 
   // ── Actions ────────────────────────────────────────────────────────────
   setTokens: (accessToken: string, refreshToken: string) => Promise<void>;
+  updateAccessToken: (accessToken: string) => Promise<void>;
   setProfile: (profile: PatientProfile) => void;
   logout: () => Promise<void>;
   bootstrap: () => Promise<void>;  // call once on app start
@@ -25,6 +26,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     await SecureStore.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, accessToken);
     await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
     set({ isAuthenticated: true });
+  },
+
+  updateAccessToken: async (accessToken) => {
+    await SecureStore.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, accessToken);
   },
 
   setProfile: (profile) => set({ profile }),

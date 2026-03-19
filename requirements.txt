@@ -22,3 +22,4 @@ asyncpg
 greenlet
 alembic
 psycopg2-binary
+apscheduler

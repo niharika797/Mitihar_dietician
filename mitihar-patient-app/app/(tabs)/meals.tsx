@@ -1,8 +1,11 @@
 import React from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView } from "react-native";
+import { useAuthStore } from "../../store/useAuthStore";
+import { generatePlan } from "../../services/meals";
+import { useToast } from "../../components/shared";
 import { ChevronRight } from "lucide-react-native";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getWeeklyPlan } from "../../services/meals";
@@ -13,8 +16,50 @@ const MEAL_ORDER = ["Breakfast", "Morning Snack", "Lunch", "Evening Snack", "Din
 
 function todayKey() { return new Date().toISOString().slice(0, 10); }
 
+function EmptyPlan({
+  isConnected, onFindDoctor, onGenerate
+}: { isConnected: boolean; onFindDoctor: () => void; onGenerate: () => Promise<void> }) {
+  const [generating, setGenerating] = React.useState(false);
+  const handleGenerate = async () => {
+    setGenerating(true);
+    await onGenerate();
+    setGenerating(false);
+  };
+  return (
+    <View style={s.empty}>
+      <Text style={s.emptyEmoji}>🍽️</Text>
+      {isConnected ? (
+        <>
+          <Text style={s.emptyTitle}>No meal plan yet</Text>
+          <Text style={s.emptySub}>
+            Your plan is being set up. If it doesn’t appear shortly, tap below to generate it now.
+          </Text>
+          <Pressable onPress={handleGenerate} style={s.emptyBtn} disabled={generating}>
+            {generating
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={s.emptyBtnText}>Generate My Plan</Text>}
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <Text style={s.emptyTitle}>No meal plan yet</Text>
+          <Text style={s.emptySub}>Connect with a dietician to get a personalised meal plan.</Text>
+          <Pressable onPress={onFindDoctor} style={s.emptyBtn}>
+            <Text style={s.emptyBtnText}>Find a Doctor</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
 export default function MealsScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
+  const { showToast } = useToast();
+  const profile = useAuthStore(s => s.profile);
+  const isConnected = !!(profile?.doctor_id || profile?.subscription_status === "active");
+
   const { data: plan, isLoading } = useQuery({
     queryKey: QUERY_KEYS.WEEK_PLAN,
     queryFn: getWeeklyPlan,
@@ -22,6 +67,22 @@ export default function MealsScreen() {
   });
 
   const todayMeals: Meal[] = plan?.[todayKey()] ?? [];
+
+  // Auto-generate once if patient is connected but has no plan yet.
+  // Only fires when: not loading, no meals today, connected, and never attempted yet.
+  // Uses a ref so it truly fires at most once per screen mount.
+  const autoAttempted = React.useRef(false);
+  React.useEffect(() => {
+    if (!isLoading && isConnected && !autoAttempted.current) {
+      const planIsEmpty = !plan || Object.keys(plan).length === 0;
+      if (planIsEmpty) {
+        autoAttempted.current = true;
+        generatePlan()
+          .then(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN }))
+          .catch(() => {}); // silently fail — user can tap button
+      }
+    }
+  }, [isLoading, plan, isConnected]);
 
   if (isLoading) return <View style={s.loader}><ActivityIndicator size="large" color="#1E7C45" /></View>;
 
@@ -41,14 +102,19 @@ export default function MealsScreen() {
         </Text>
 
         {todayMeals.length === 0 ? (
-          <View style={s.empty}>
-            <Text style={s.emptyEmoji}>🍽️</Text>
-            <Text style={s.emptyTitle}>No meal plan yet</Text>
-            <Text style={s.emptySub}>Your doctor hasn't created a plan. Connect with a dietician to get started.</Text>
-            <Pressable onPress={() => router.push("/doctor/find-doctor")} style={s.emptyBtn}>
-              <Text style={s.emptyBtnText}>Find a Doctor</Text>
-            </Pressable>
-          </View>
+          <EmptyPlan
+            isConnected={isConnected}
+            onFindDoctor={() => router.push("/doctor/find-doctor")}
+            onGenerate={async () => {
+              try {
+                await generatePlan();
+                qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN });
+                showToast("Meal plan generated! 🎉", "success");
+              } catch {
+                showToast("Plan generation failed. Please try again.", "error");
+              }
+            }}
+          />
         ) : (
           MEAL_ORDER
             .map(type => todayMeals.find(m => m["Meal Type"] === type))

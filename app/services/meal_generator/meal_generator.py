@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from pydantic import BaseModel
 
-from sqlalchemy import select
+from sqlalchemy import select, case as sa_case, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_models import MealTemplate, FoodItem
@@ -86,7 +86,15 @@ class MealGenerator:
         bmi = calculate_bmi(height, weight)
         bmr = calculate_bmr(gender, weight, height, age)
         tdee = calculate_tdee(bmr, activity_level)
-        protein, carbs, fiber, fat = calculate_macronutrients(tdee, meal_plan_purchased, health_condition)
+        # health_sub_goal: first health goal (e.g. 'weight_loss', 'muscle_gain') used to
+        # pick the correct macro split for Gym-Friendly and Diabetic-Friendly conditions.
+        raw_goals = user_data.get("health_goals") or []
+        health_sub_goal = raw_goals[0].lower().replace(" ", "_") if raw_goals else None
+        # medical_conditions: passed through for PCOS / Thyroid macro overrides
+        medical_conditions = user_data.get("medical_conditions") or []
+        protein, carbs, fiber, fat = calculate_macronutrients(
+            tdee, meal_plan_purchased, health_sub_goal, medical_conditions
+        )
 
         return {
             "bmi": bmi,
@@ -273,7 +281,9 @@ class MealGenerator:
         }
 
         daily_used_ids  = set()   # HARD block — cleared every day, no same dish twice per day
-        weekly_used_ids = set()   # SOFT preference — persists all 7 days, avoids repeats across week
+        weekly_used_ids = set(user_data.get("prior_used_food_ids") or [])
+        # Seeded from last 2 plans' used IDs for cross-week variety.
+        # Acts as SOFT preference — dropped at Level 2 if pool is exhausted.
 
         # ── Upgrade 1: Non-veg weekly budget pre-allocation ────────────────
         nonveg_assigned: set = set()   # (day_idx, db_meal_time) tuples
@@ -447,7 +457,10 @@ class MealGenerator:
 
         return convert_numpy({
             "meals": organized_meals,
-            "ingredient_checklist": checklist_records
+            "ingredient_checklist": checklist_records,
+            "used_food_ids": list(weekly_used_ids),
+            # weekly_used_ids accumulates all food_item IDs used this generation.
+            # Persisted by diet_plan_service so next generation can seed from here.
         })
 
     # ── Upgrade 2: Diet-type fallback chain ────────────────────────────────────
@@ -517,14 +530,24 @@ class MealGenerator:
         target_cal: float = 0,
         allergies: frozenset = frozenset(),
     ) -> Optional[FoodItem]:
-        """Run the 4-level waterfall for a single diet_type."""
-        from sqlalchemy import func as sa_func
+        """
+        2-level lookup with region as a sort-priority (not a hard filter).
 
-        # ── Upgrade 4: order by calorie proximity, take top 5 ─────────────
-        def _order_clause():
-            if target_cal > 0:
-                return sa_func.abs(FoodItem.cal_per_serving - target_cal)
-            return FoodItem.id  # stable fallback
+        Level 1 — full filters + weekly memory:
+          Candidates ordered: regional items first, then by calorie proximity.
+          weekly_used_ids excluded (soft preference — cross-week variety).
+
+        Level 2 — drop weekly memory:
+          Same ordering, weekly exclusion removed.
+          daily_used_ids hard block is NEVER dropped.
+
+        This replaces the old 4-level waterfall where region was a hard filter,
+        causing silent fallback to Level 4 (no region, no memory) for most queries
+        on the ~2k dataset.
+        """
+        # ── region-priority sort: regional items bubble to top ──────────────
+        region_sort = sa_case((FoodItem.region_tags.any(region), 0), else_=1)
+        cal_sort    = sa_func.abs(FoodItem.cal_per_serving - target_cal) if target_cal > 0 else FoodItem.id
 
         def base_stmt():
             s = select(FoodItem).where(
@@ -537,10 +560,9 @@ class MealGenerator:
                 s = s.where(FoodItem.cal_per_serving.between(target_cal / 3.0, target_cal / 0.5))
             if daily_used_ids:
                 s = s.where(FoodItem.id.notin_(daily_used_ids))
-            return s.order_by(_order_clause()).limit(5)
+            return s.order_by(region_sort, cal_sort).limit(10)
 
         def _is_allergenic(item: FoodItem) -> bool:
-            """Return True if any ingredient in this item triggers a patient allergy."""
             if not allergies:
                 return False
             for ing in (item.ingredients or []):
@@ -564,26 +586,14 @@ class MealGenerator:
         async def fetch(s) -> list:
             return (await session.execute(s)).scalars().all()
 
-        # Level 1 — region + weekly memory
-        s = base_stmt().where(FoodItem.region_tags.any(region))
-        if weekly_used_ids:
-            s = s.where(FoodItem.id.notin_(weekly_used_ids))
-        if (picked := _pick(await fetch(s))) is not None:
-            return picked
-
-        # Level 2 — no region, keep weekly memory
+        # Level 1 — exclude weekly memory (soft variety preference)
         s = base_stmt()
         if weekly_used_ids:
             s = s.where(FoodItem.id.notin_(weekly_used_ids))
         if (picked := _pick(await fetch(s))) is not None:
             return picked
 
-        # Level 3 — region, drop weekly memory
-        s = base_stmt().where(FoodItem.region_tags.any(region))
-        if (picked := _pick(await fetch(s))) is not None:
-            return picked
-
-        # Level 4 — no region, no weekly memory (BETWEEN still enforced)
+        # Level 2 — drop weekly memory (weekly exclusion exhausted)
         s = base_stmt()
         if (picked := _pick(await fetch(s))) is not None:
             return picked

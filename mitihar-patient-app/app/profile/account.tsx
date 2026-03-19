@@ -1,10 +1,11 @@
-import React, { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, Pressable, StyleSheet, Alert, Switch } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, Trash2, Shield, LogOut } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Trash2, Shield, LogOut, Fingerprint } from "lucide-react-native";
 import { useMutation } from "@tanstack/react-query";
 import { logoutPatient } from "../../services/auth";
 import { useAuthStore } from "../../store/useAuthStore";
+import { useBiometricStore } from "../../store/useBiometricStore";
 import { useToast } from "../../components/shared";
 
 export default function AccountScreen() {
@@ -12,6 +13,10 @@ export default function AccountScreen() {
   const { showToast } = useToast();
   const logout = useAuthStore(s => s.logout);
   const profile = useAuthStore(s => s.profile);
+  const { enabled, hardwareAvailable, enrolled, setEnabled, checkHardware } = useBiometricStore();
+
+  // Probe device capabilities on mount
+  useEffect(() => { checkHardware(); }, []);
 
   const logoutMut = useMutation({
     mutationFn: logoutPatient,
@@ -32,13 +37,14 @@ export default function AccountScreen() {
     );
   };
 
-  const ROWS = [
-    {
-      icon: <Shield size={16} color="#6B7280" />,
-      label: "Change Password",
-      onPress: () => showToast("Password reset email sent!", "success"),
-    },
-  ];
+  const handleBiometricToggle = async (val: boolean) => {
+    if (val && !enrolled) {
+      showToast("No biometrics enrolled on this device. Please add a fingerprint in Settings.", "error");
+      return;
+    }
+    await setEnabled(val);
+    showToast(val ? "Fingerprint unlock enabled 🔒" : "Fingerprint unlock disabled", val ? "success" : "info");
+  };
 
   return (
     <View style={s.root}>
@@ -59,17 +65,38 @@ export default function AccountScreen() {
         </View>
       </View>
 
-      {/* Actions */}
+      {/* Security settings */}
       <View style={s.actionsCard}>
-        {ROWS.map((row, i) => (
-          <Pressable key={row.label} style={[s.actionRow, i < ROWS.length - 1 && s.actionBorder]} onPress={row.onPress}>
+        {/* Change Password */}
+        <Pressable style={[s.actionRow, s.actionBorder]} onPress={() => showToast("Password reset email sent!", "success")}>
+          <View style={s.actionLeft}>
+            <Shield size={16} color="#6B7280" />
+            <Text style={s.actionLabel}>Change Password</Text>
+          </View>
+          <ChevronRight size={16} color="#9CA3AF" />
+        </Pressable>
+
+        {/* Biometric toggle — only shown if hardware exists */}
+        {hardwareAvailable && (
+          <View style={s.actionRow}>
             <View style={s.actionLeft}>
-              {row.icon}
-              <Text style={s.actionLabel}>{row.label}</Text>
+              <Fingerprint size={16} color="#1E7C45" />
+              <View>
+                <Text style={s.actionLabel}>Fingerprint Unlock</Text>
+                <Text style={s.actionSub}>
+                  {enrolled ? "Unlock app with biometrics" : "No fingerprint enrolled on device"}
+                </Text>
+              </View>
             </View>
-            <ChevronRight size={16} color="#9CA3AF" />
-          </Pressable>
-        ))}
+            <Switch
+              value={enabled}
+              onValueChange={handleBiometricToggle}
+              trackColor={{ false: "#E5E7EB", true: "#34B164" }}
+              thumbColor="#fff"
+              disabled={!enrolled}
+            />
+          </View>
+        )}
       </View>
 
       {/* Logout */}
@@ -104,8 +131,9 @@ const s = StyleSheet.create({
   actionsCard:    { backgroundColor: "#fff", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#E5E7EB", marginBottom: 12 },
   actionRow:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14 },
   actionBorder:   { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
-  actionLeft:     { flexDirection: "row", alignItems: "center", gap: 12 },
+  actionLeft:     { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
   actionLabel:    { fontSize: 14, color: "#374151" },
+  actionSub:      { fontSize: 11, color: "#9CA3AF", marginTop: 1 },
   logoutBtn:      { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#fff", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#E5E7EB", paddingVertical: 14, marginBottom: 24 },
   logoutText:     { fontSize: 15, fontWeight: "600", color: "#DC2626" },
   dangerCard:     { marginHorizontal: 20, backgroundColor: "#FFF5F5", borderRadius: 12, borderWidth: 1, borderColor: "#FECACA", padding: 16, gap: 10 },

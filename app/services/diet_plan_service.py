@@ -47,12 +47,33 @@ class DietPlanService:
 
     async def generate_diet_plan(self, user_data: Dict, session: AsyncSession) -> DietPlan:
         """Generate personalised diet plan using nutritional science principles."""
+        # ── Cross-week variety: load food IDs from last 2 plans ─────────────
+        try:
+            past_result = await session.execute(
+                select(Recommendation.used_food_ids)
+                .where(
+                    Recommendation.patient_id == int(user_data["id"]),
+                    Recommendation.used_food_ids.isnot(None),
+                )
+                .order_by(Recommendation.created_at.desc())
+                .limit(2)
+            )
+            prior_ids: set[int] = set()
+            for row in past_result.all():
+                if row[0]:
+                    prior_ids.update(int(x) for x in row[0])
+            if prior_ids:
+                user_data = {**user_data, "prior_used_food_ids": list(prior_ids)}
+        except Exception:
+            pass  # Non-fatal — generation proceeds without cross-week memory
+
         meal_plan = await meal_generator.generate_meal_plan(user_data, session)
         return DietPlan(
             user_id=str(user_data["id"]),
             created_at=datetime.now(),
             meals=meal_plan.get("meals", []),
             ingredient_checklist=meal_plan.get("ingredient_checklist", []),
+            used_food_ids=meal_plan.get("used_food_ids", []),
             version=1,
         )
 
@@ -89,6 +110,7 @@ class DietPlanService:
             week_start_date=date.today(),
             meals=diet_plan.meals,
             ingredient_checklist=diet_plan.ingredient_checklist,
+            used_food_ids=diet_plan.used_food_ids,
             is_active=True,
             version=next_version,
         )

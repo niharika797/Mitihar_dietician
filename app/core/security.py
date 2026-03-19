@@ -47,21 +47,35 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
-    Create a JWT.  Always embeds: sub, role, user_type, exp, iat, nbf.
+    Create a short-lived access JWT (token_type='access').
+    Always embeds: sub, role, user_type, token_type, exp, iat, nbf.
     """
     to_encode = data.copy()
     now = datetime.utcnow()
     expire = now + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
 
-    # Guarantee required claims are present
     to_encode.setdefault("role", "patient")
     to_encode.setdefault("user_type", "standalone")
+    to_encode.setdefault("token_type", "access")  # distinguishes from refresh tokens
 
-    to_encode.update({
-        "exp": expire,
-        "iat": now,
-        "nbf": now,
-    })
+    to_encode.update({"exp": expire, "iat": now, "nbf": now})
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
+
+
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Create a long-lived refresh JWT (token_type='refresh').
+    Structurally separate from access tokens — cannot be used as an access token.
+    Carries minimal claims: only sub, role, and identifiers needed for re-issuance.
+    """
+    to_encode = data.copy()
+    now = datetime.utcnow()
+    expire = now + (expires_delta or timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES))
+
+    to_encode.setdefault("role", "patient")
+    to_encode["token_type"] = "refresh"  # always override — never allow access payload as refresh
+
+    to_encode.update({"exp": expire, "iat": now, "nbf": now})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 
@@ -70,7 +84,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 # ---------------------------------------------------------------------------
 
 def _decode_jwt(token: str) -> dict:
-    """Decode a JWT and return its payload. Raises HTTPException on failure."""
+    """
+    Decode a JWT and return its payload. Raises HTTPException on failure.
+    Explicitly rejects refresh tokens — they must never be used as access tokens.
+    """
     try:
         payload = jwt.decode(
             token,
@@ -82,6 +99,13 @@ def _decode_jwt(token: str) -> dict:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token missing 'sub' claim",
+            )
+        # Prevent refresh tokens from being used as access tokens
+        if payload.get("token_type") == "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token cannot be used for API access",
+                headers={"WWW-Authenticate": "Bearer"},
             )
         return payload
     except JWTError:

@@ -149,6 +149,9 @@ async def generate_diet_plan(
         "health_condition": current_user.health_condition or "Healthy",
         "region": current_user.region or "North",
         "nonveg_meals_per_week": current_user.nonveg_meals_per_week or 3,
+        "health_goals": list(current_user.health_goals or []),
+        "medical_conditions": list(current_user.medical_conditions or []),
+        # medical_conditions drives PCOS/Thyroid macro overrides in calculations.py
         # Derive age from date_of_birth; fallback 30 if not set
         "age": (
             date.today().year - current_user.date_of_birth.year

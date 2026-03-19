@@ -143,7 +143,7 @@ interface CardProps {
 
 function DoctorCard({ doc, requested, loading, onRequest }: CardProps) {
   const unavailable = !doc.is_accepting;
-  const fee = doc.fee_per_month ? `₹${doc.fee_per_month}/mo` : null;
+  const fee = null; // Fee is an internal business detail — not shown to patients
   const exp = doc.experience_years ? `${doc.experience_years} yrs exp` : null;
   const location = [doc.city, doc.state].filter(Boolean).join(", ");
   const rating = doc.rating ? Number(doc.rating).toFixed(1) : null;

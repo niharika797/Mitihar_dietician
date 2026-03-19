@@ -44,9 +44,22 @@ export function calcTDEE(bmr: number, activityLevel: string): number {
   return Math.round(bmr * ACTIVITY_MULTIPLIERS[key]);
 }
 
-// Daily calorie target = TDEE - 400 kcal deficit (moderate weight loss)
-export function calcDailyTarget(tdee: number): number {
-  return tdee - 400;
+// Calorie deficit per pace:
+//   Slow & Steady → 250 kcal deficit  (~0.25 kg/week)
+//   Moderate      → 400 kcal deficit  (~0.4 kg/week)
+//   Fast          → 600 kcal deficit  (~0.6 kg/week)
+const PACE_DEFICIT: Record<string, number> = {
+  slow_and_steady: 250,
+  moderate:        400,
+  fast:            600,
+  // aliases the backend stores
+  slow:            250,
+  aggressive:      600,
+};
+
+export function calcDailyTarget(tdee: number, pace?: string): number {
+  const deficit = pace ? (PACE_DEFICIT[pace] ?? 400) : 400;
+  return Math.max(tdee - deficit, 1200); // floor at 1200 kcal — never go below safe minimum
 }
 
 export function calcAgeFromDOB(dob: string): number {
@@ -60,8 +73,9 @@ export function computeHealthStats(params: {
   date_of_birth: string;
   gender: Gender;
   activity_level: string;
+  pace_preference?: string;
 }): HealthStats {
-  const { weight_kg, height_cm, date_of_birth, gender, activity_level } = params;
+  const { weight_kg, height_cm, date_of_birth, gender, activity_level, pace_preference } = params;
   const age = calcAgeFromDOB(date_of_birth);
   const bmi = calcBMI(weight_kg, height_cm);
   const bmr = calcBMR(weight_kg, height_cm, age, gender);
@@ -71,6 +85,6 @@ export function computeHealthStats(params: {
     bmiCategory: bmiCategory(bmi),
     bmr,
     tdee,
-    dailyTarget: calcDailyTarget(tdee),
+    dailyTarget: calcDailyTarget(tdee, pace_preference),
   };
 }

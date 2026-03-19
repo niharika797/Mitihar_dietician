@@ -4,8 +4,13 @@ from urllib.parse import urlparse, quote_plus
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
+from dotenv import load_dotenv
+load_dotenv()
 
-DATABASE_URL = "postgresql+psycopg2://admin:mityahar_dev@localhost:5432/mityahar_db"
+_url = os.getenv("DATABASE_URL")
+if not _url:
+    raise RuntimeError("DATABASE_URL is not set. Add it to your .env file.")
+DATABASE_URL = _url.replace("+asyncpg", "+psycopg2")
 
 def main():
     parsed = urlparse(DATABASE_URL.replace("postgresql+psycopg2://", "postgresql://"))

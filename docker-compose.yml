@@ -1,14 +1,22 @@
 version: '3.8'
 
+# Secrets are read from the shell environment or a .env file in this directory.
+# Copy .env.example and fill in values — never hardcode credentials here.
+#
+# Required env vars:
+#   POSTGRES_USER     — DB username (default: admin)
+#   POSTGRES_PASSWORD — DB password (no default — must be set explicitly)
+#   POSTGRES_DB       — Database name (default: mityahar_db)
+
 services:
   postgres:
     image: postgres:15
     container_name: mityahar_postgres
     restart: always
     environment:
-      POSTGRES_DB: mityahar_db
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: mityahar_dev
+      POSTGRES_DB:       ${POSTGRES_DB:-mityahar_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in environment}
     ports:
       - "5432:5432"
     volumes:

@@ -56,7 +56,10 @@ export async function logWeight(weight_kg: number) {
 // ── GET /progress/weight-history ─────────────────────────────────────────
 export async function getWeightHistory(days = 30): Promise<WeightEntry[]> {
   const { data } = await api.get(`/progress/weight-history?days=${days}`);
-  return data;
+  // Backend returns { days: N, entries: [...] } — unwrap the array
+  if (data && Array.isArray(data.entries)) return data.entries;
+  if (Array.isArray(data)) return data;
+  return [];
 }
 
 // ── GET /progress/weekly-report ───────────────────────────────────────────
@@ -68,5 +71,33 @@ export async function getWeeklyReport(): Promise<WeeklyReport> {
 // ── GET /progress/streak ──────────────────────────────────────────────────
 export async function getStreak(): Promise<{ streak_days: number; last_logged: string }> {
   const { data } = await api.get("/progress/streak");
+  return data;
+}
+
+// ── Phase 8 Tier 0: meal ratings ─────────────────────────────────────────
+
+export interface MealRating {
+  id: number;
+  food_item_id: number;
+  recommendation_id: number | null;
+  rating: 1 | -1;
+  rated_at: string;
+}
+
+export async function rateMeal(
+  food_item_id: number,
+  rating: 1 | -1,
+  recommendation_id?: number | null,
+): Promise<MealRating> {
+  const { data } = await api.post("/progress/meal/rate", {
+    food_item_id,
+    rating,
+    recommendation_id: recommendation_id ?? null,
+  });
+  return data;
+}
+
+export async function getMyRatings(): Promise<MealRating[]> {
+  const { data } = await api.get("/progress/meal/ratings");
   return data;
 }

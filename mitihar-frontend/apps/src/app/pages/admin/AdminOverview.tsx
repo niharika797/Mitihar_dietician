@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   TrendingUp, ArrowRight, Users, Stethoscope,
-  ClipboardList, Activity, Loader2, AlertTriangle,
+  ClipboardList, Activity, Loader2, AlertTriangle, Clock, RefreshCw,
 } from 'lucide-react';
 import { adminApi, DoctorAdminView } from '../../../lib/adminApi';
 import { aqk } from '../../../lib/queryKeys';
@@ -54,7 +54,7 @@ export function AdminOverview() {
 
   const { data: pendingFood = [] } = useQuery({
     queryKey: aqk.pendingFood(),
-    queryFn: () => adminApi.listFood({ source: 'doctor', is_verified: false, page_size: 100 }),
+    queryFn: () => adminApi.listFood({ source: 'doctor_global', is_verified: false, page_size: 100 }),
     staleTime: 60_000,
   });
 
@@ -89,34 +89,28 @@ export function AdminOverview() {
           <Loader2 size={24} className="animate-spin text-[#1E7C45]" />
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard
-            label="Total Patients"
-            value={stats?.total_patients ?? 0}
-            sub={`${stats?.active_subscriptions ?? 0} active subscriptions`}
-            icon={<Users size={18} />}
-            accent
-          />
-          <StatCard
-            label="Total Doctors"
-            value={stats?.total_doctors ?? 0}
-            sub={`${doctors.filter(d => d.is_active).length} active`}
-            icon={<Stethoscope size={18} />}
-          />
-          <StatCard
-            label="Active Subscriptions"
-            value={stats?.active_subscriptions ?? 0}
-            sub="currently active"
-            icon={<Activity size={18} />}
-            accent
-          />
-          <StatCard
-            label="Active Plans"
-            value={stats?.total_plans_generated ?? 0}
-            sub="meal plans in use"
-            icon={<ClipboardList size={18} />}
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <StatCard label="Total Patients" value={stats?.total_patients ?? 0} sub={`${stats?.active_subscriptions ?? 0} active`} icon={<Users size={18} />} accent />
+            <StatCard label="Total Doctors" value={stats?.total_doctors ?? 0} sub={`${doctors.filter(d => d.is_active).length} active`} icon={<Stethoscope size={18} />} />
+            <StatCard label="Consultations (Month)" value={stats?.total_consultations_this_month ?? 0} sub="chargeable visits" icon={<Activity size={18} />} accent />
+            <StatCard label="Active Plans" value={stats?.total_plans_generated ?? 0} sub="meal plans in use" icon={<ClipboardList size={18} />} />
+          </div>
+
+          {/* Token status row */}
+          {((stats?.expiring_soon_count ?? 0) > 0 || (stats?.pending_renewals_count ?? 0) > 0) && (
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-[#FFFBEB] border border-[#FDE68A]">
+                <Clock size={15} className="text-[#B45309]" />
+                <p className="text-sm text-[#B45309] font-medium">{stats?.expiring_soon_count ?? 0} patients expiring within 4 days</p>
+              </div>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-[#EFF6FF] border border-[#BFDBFE]">
+                <RefreshCw size={15} className="text-[#2563EB]" />
+                <p className="text-sm text-[#2563EB] font-medium">{stats?.pending_renewals_count ?? 0} pending renewal requests</p>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Alerts */}

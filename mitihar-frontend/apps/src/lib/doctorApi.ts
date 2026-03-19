@@ -13,14 +13,72 @@ export interface PatientSummary {
   name: string;
   email: string;
   gender: string;
-  subscription_status: string;   // "active" | "inactive" | "expired"
-  user_type: string;             // "standalone" | "doctor_assigned"
-  date_of_birth: string | null;  // "YYYY-MM-DD"
+  subscription_status: string;
+  user_type: string;
+  date_of_birth: string | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  target_weight_kg: number | null;
   bmi: number | null;
   bmr: number | null;
   tdee: number | null;
+  activity_level: string | null;
+  diet_type: string | null;
+  health_condition: string | null;
+  health_goals: string[];
+  medical_conditions: string[];
+  food_allergies: string[];
   meals_per_day: number;
+  // Token 1 fields
+  token_1: string | null;
+  token_1_active: boolean;
+  token_1_expiry: string | null;
+  renewal_requested: boolean;
+  renewal_requested_at: string | null;
+  expiring_soon: boolean;
 }
+
+
+export interface PatientVisit {
+  id: number;
+  patient_id: number;
+  doctor_id: number;
+  token_2: string;
+  cycle_start: string;
+  cycle_expiry: string;
+  last_charged_at: string | null;
+  visit_counter: number;
+  created_at: string;
+}
+
+export interface RecordVisitResponse {
+  charged: boolean;
+  visit_counter: number;
+  last_charged_at: string | null;
+  message: string;
+}
+
+export interface RenewalApproveResponse {
+  message: string;
+  token_1: string;
+  token_2: string;
+  token_1_expiry: string;
+}
+
+export interface BulkRenewalResponse {
+  approved_count: number;
+  patient_ids: number[];
+}
+
+export interface PendingRenewalItem {
+  patient_id: number;
+  patient_name: string;
+  patient_email: string;
+  token_1: string | null;
+  renewal_requested_at: string | null;
+  token_1_expiry: string | null;
+}
+
 
 export interface PaginatedPatients {
   patients: PatientSummary[];
@@ -161,6 +219,7 @@ export interface RecipeCreateBody {
   plan_type_tags: string[];
   ingredients: { name: string; amount_g: number }[];
   region_tags: string[];
+  submit_to_global: boolean;  // false = library only, true = also pending admin approval for global
 }
 
 // ── API functions ─────────────────────────────────────────────────────────────
@@ -276,4 +335,38 @@ export const doctorApi = {
 
   addRecipe: (body: RecipeCreateBody) =>
     apiClient.post<FoodItemSummary>('/doctor/recipes', body).then(r => r.data),
+
+  // Browse doctor's personal recipe library (own unverified submissions)
+  browseMyLibrary: (params: { search?: string; meal_time?: string; page?: number }) =>
+    apiClient
+      .get<FoodItemSummary[]>('/doctor/recipes', {
+        params: { page_size: 50, page: 1, my_library: true, ...params },
+      })
+      .then(r => r.data),
+
+  // Add a note to a specific meal slot in a patient's active plan
+  addMealNote: (patientId: number, meal_date: string, meal_type: string, note: string) =>
+    apiClient
+      .post(`/doctor/patients/${patientId}/plan/notes`, { meal_date, meal_type, note })
+      .then(r => r.data),
+
+  // Visit recording
+  recordVisit: (patientId: number) =>
+    apiClient.post<RecordVisitResponse>(`/doctor/patients/${patientId}/record-visit`).then(r => r.data),
+
+  getPatientVisits: (patientId: number) =>
+    apiClient.get<PatientVisit[]>(`/doctor/patients/${patientId}/visits`).then(r => r.data),
+
+  // Renewals
+  requestRenewal: (patientId: number) =>
+    apiClient.post(`/doctor/patients/${patientId}/request-renewal`).then(r => r.data),
+
+  approveRenewal: (patientId: number) =>
+    apiClient.post<RenewalApproveResponse>(`/doctor/patients/${patientId}/approve-renewal`).then(r => r.data),
+
+  approveAllRenewals: () =>
+    apiClient.post<BulkRenewalResponse>('/doctor/patients/approve-all-renewals').then(r => r.data),
+
+  getPendingRenewals: () =>
+    apiClient.get<PendingRenewalItem[]>('/doctor/patients/pending-renewals').then(r => r.data),
 };

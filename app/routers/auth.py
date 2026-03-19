@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.database import get_db
 from ..core.limiter import limiter
-from ..core.security import create_access_token, get_current_doctor, get_current_admin, verify_password, get_password_hash
+from ..core.security import create_access_token, create_refresh_token, get_current_doctor, get_current_admin, verify_password, get_password_hash
 from ..models.db_models import Doctor, Patient
 from ..schemas.user import UserCreate
 from ..services.audit_service import log_action
@@ -69,13 +69,27 @@ def _admin_token_data(admin) -> dict:
 
 
 def _issue_tokens(data: dict) -> dict:
-    """Issue access + refresh token pair."""
+    """
+    Issue access + refresh token pair.
+    Access token: short-lived (15 min), token_type='access'.
+    Refresh token: long-lived (7 days), token_type='refresh', minimal claims only.
+    The two token types are structurally distinct — a refresh token is rejected
+    by _decode_jwt() so it cannot be used to access protected endpoints.
+    """
     access = create_access_token(
         data=data,
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-    refresh = create_access_token(
-        data=data,
+    # Refresh token carries only the minimum needed to re-issue: sub + role + ids
+    refresh_data = {
+        "sub":  data["sub"],
+        "role": data["role"],
+    }
+    for key in ("patient_id", "doctor_id", "admin_id"):
+        if key in data:
+            refresh_data[key] = data[key]
+    refresh = create_refresh_token(
+        data=refresh_data,
         expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
     )
     return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
@@ -84,8 +98,9 @@ def _issue_tokens(data: dict) -> dict:
 def _issue_partial_token(role_pending: str, user_id: int, email: str) -> str:
     """
     Issue a short-lived (5-minute) partial token for MFA step-2.
-    role is set to e.g. 'mfa_pending_doctor' — middleware/deps reject it for
-    all normal endpoints, so it can't be used to access protected resources.
+    Uses create_access_token with a non-standard role so middleware/deps reject
+    it for all normal endpoints — it can only be used for /mfa-login.
+    token_type stays 'access' so it isn't treated as a refresh token.
     """
     return create_access_token(
         data={"sub": email, "role": role_pending, "pending_id": user_id},
@@ -135,6 +150,15 @@ async def register(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Issue email verification token immediately after registration
+    verification_token = await _create_email_verification_token(session, patient_id)
+    # TODO (Phase 7): send real email — for now log the link for dev testing
+    import logging as _logging
+    _logging.getLogger(__name__).info(
+        f"[DEV] Email verification link for new patient: "
+        f"/api/v1/auth/verify-email?token={verification_token}"
+    )
+
     if doctor_code:
         now = datetime.now(_tz.utc)
         code_result = await session.execute(
@@ -149,7 +173,6 @@ async def register(
         if code_row is None:
             return {
                 "message": "Registered successfully. Doctor code was invalid or expired — activate manually via /patients/activate.",
-                "user_id": patient_id,
                 "doctor_connected": False,
             }
 
@@ -169,13 +192,11 @@ async def register(
         await session.flush()
         return {
             "message": "Registered and connected to doctor successfully.",
-            "user_id": patient_id,
             "doctor_connected": True,
         }
 
     return {
         "message": "User registered successfully",
-        "user_id": patient_id,
         "doctor_connected": False,
     }
 
@@ -240,7 +261,7 @@ async def admin_login(
         key="refresh_token",
         value=tokens["refresh_token"],
         httponly=True,
-        secure=False,   # set True in production (HTTPS only)
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         path="/api/v1/auth",
@@ -404,6 +425,9 @@ async def refresh_token(
         role: str = payload.get("role", "patient")
         if not email:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
+        # Reject access tokens being used as refresh tokens
+        if payload.get("token_type") != "refresh":
+            raise HTTPException(status_code=401, detail="Token is not a refresh token")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
@@ -418,7 +442,7 @@ async def refresh_token(
             key="refresh_token",
             value=tokens["refresh_token"],
             httponly=True,
-            secure=False,
+            secure=settings.COOKIE_SECURE,
             samesite="lax",
             max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
             path="/api/v1/auth",
@@ -436,7 +460,7 @@ async def refresh_token(
             key="refresh_token",
             value=tokens["refresh_token"],
             httponly=True,
-            secure=False,
+            secure=settings.COOKIE_SECURE,
             samesite="lax",
             max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
             path="/api/v1/auth",
@@ -517,7 +541,9 @@ async def google_verify(
         result = await session.execute(select(Patient).where(Patient.email == email))
         patient = result.scalars().first()
         if patient is not None:
+            # Existing email-password account being linked to Google for the first time
             patient.google_id = google_sub
+            patient.is_email_verified = True  # Google already verified this email
             await session.flush()
 
     if patient is None:
@@ -538,6 +564,7 @@ async def google_verify(
         result = await session.execute(select(Patient).where(Patient.id == new_patient_id))
         patient = result.scalars().first()
         patient.google_id = google_sub
+        patient.is_email_verified = True  # Google already verified this email
         await session.flush()
 
     tokens = _issue_tokens(_patient_token_data(patient))
@@ -583,7 +610,7 @@ async def doctor_login(
         key="refresh_token",
         value=tokens["refresh_token"],
         httponly=True,
-        secure=False,   # set True in production (HTTPS only)
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         path="/api/v1/auth",
@@ -783,3 +810,266 @@ async def logout(
         )
 
     return {"message": "Logged out successfully"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Email verification
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _make_secure_token() -> str:
+    """Generate a 64-character cryptographically secure URL-safe token."""
+    import secrets
+    return secrets.token_urlsafe(48)  # 48 bytes → 64-char base64url string
+
+
+async def _create_email_verification_token(session: AsyncSession, patient_id: int) -> str:
+    """
+    Create (or replace) an email verification token for a patient.
+    Returns the raw token string to be embedded in the verification link.
+    Expires in 24 hours.
+    """
+    from ..models.db_models import EmailVerificationToken
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import delete
+
+    token = _make_secure_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+
+    # Delete any existing token for this patient (only one active at a time)
+    await session.execute(
+        delete(EmailVerificationToken).where(
+            EmailVerificationToken.patient_id == patient_id
+        )
+    )
+    row = EmailVerificationToken(
+        patient_id=patient_id,
+        token=token,
+        expires_at=expires_at,
+    )
+    session.add(row)
+    await session.flush()
+    return token
+
+
+@router.get("/verify-email")
+@limiter.limit("10/minute")
+async def verify_email(
+    request: Request,
+    token: str,
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Confirm a patient's email address via the link emailed on registration.
+    The link contains a one-time token: GET /api/v1/auth/verify-email?token=<token>
+
+    On success: sets is_email_verified=True on the patient, deletes the token.
+    On failure: returns 400 — token not found, already used, or expired.
+    Always responds with a generic message to avoid oracle attacks.
+    """
+    from ..models.db_models import EmailVerificationToken, Patient as PatientModel
+    from datetime import datetime, timezone
+    from sqlalchemy import update as sa_update, delete
+
+    now = datetime.now(timezone.utc)
+
+    result = await session.execute(
+        select(EmailVerificationToken).where(
+            EmailVerificationToken.token == token,
+            EmailVerificationToken.expires_at > now,
+        )
+    )
+    evt = result.scalars().first()
+
+    if evt is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Verification link is invalid or has expired. Request a new one.",
+        )
+
+    # Mark patient as verified and consume (delete) the token
+    await session.execute(
+        sa_update(PatientModel)
+        .where(PatientModel.id == evt.patient_id)
+        .values(is_email_verified=True)
+    )
+    await session.execute(
+        delete(EmailVerificationToken).where(EmailVerificationToken.id == evt.id)
+    )
+    await session.flush()
+    return {"message": "Email verified successfully. You can now log in."}
+
+
+@router.post("/resend-verification")
+@limiter.limit("3/minute")
+async def resend_verification_email(
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Re-send the email verification link for the currently authenticated patient.
+    Rate-limited to 3/minute — prevents verification-email flooding.
+    The patient must be logged in (holds a valid access token).
+    """
+    from ..core.security import get_current_patient
+    from ..models.db_models import Patient as PatientModel
+
+    patient = await get_current_patient(
+        token=request.headers.get("authorization", "").replace("Bearer ", "").strip(),
+        session=session,
+    )
+
+    if patient.is_email_verified:
+        return {"message": "Email is already verified."}
+
+    token = await _create_email_verification_token(session, patient.id)
+
+    # TODO (Phase 7): send real email via SendGrid / SES
+    # For now: log the link so devs can test manually
+    import logging
+    logging.getLogger(__name__).info(
+        f"[DEV] Email verification link for {patient.email}: "
+        f"/api/v1/auth/verify-email?token={token}"
+    )
+
+    return {"message": "Verification email sent. Check your inbox."}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Password reset (forgot-password / reset-password)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=3)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=10)
+    new_password: str = Field(..., min_length=8)
+
+    @staticmethod
+    def validate_password(v: str) -> str:
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Password must contain at least one letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Initiate the password-reset flow for a patient.
+
+    Always returns HTTP 200 with the same message regardless of whether the
+    email exists — this prevents user-enumeration attacks where an attacker
+    can discover which emails are registered by checking responses.
+
+    If the email IS registered: generates a 30-min expiring token, logs the
+    reset link (real email sending wired in Phase 7).
+    If the email is NOT registered: silently does nothing.
+    """
+    from ..models.db_models import PasswordResetToken
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import delete
+
+    SAFE_RESPONSE = {"message": "If that email is registered, a reset link has been sent."}
+
+    result = await session.execute(
+        select(Patient).where(Patient.email == body.email)
+    )
+    patient = result.scalars().first()
+
+    if patient is None:
+        # No patient with this email — return safe response, do nothing
+        return SAFE_RESPONSE
+
+    token = _make_secure_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.RESET_TOKEN_EXPIRE_MINUTES
+    )
+
+    # Replace any existing reset token (only one active per patient)
+    await session.execute(
+        delete(PasswordResetToken).where(
+            PasswordResetToken.patient_id == patient.id
+        )
+    )
+    row = PasswordResetToken(
+        patient_id=patient.id,
+        token=token,
+        expires_at=expires_at,
+    )
+    session.add(row)
+    await session.flush()
+
+    # TODO (Phase 7): send real email via SendGrid / SES
+    import logging
+    logging.getLogger(__name__).info(
+        f"[DEV] Password reset link for {patient.email}: "
+        f"/api/v1/auth/reset-password?token={token}  "
+        f"(expires in {settings.RESET_TOKEN_EXPIRE_MINUTES} min)"
+    )
+
+    return SAFE_RESPONSE
+
+
+@router.post("/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(
+    request: Request,
+    body: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Complete the password-reset flow using the token from the reset email.
+
+    Security properties:
+    - Token is single-use: deleted immediately after a successful reset
+    - Token expires in RESET_TOKEN_EXPIRE_MINUTES (30 min by default)
+    - New password is validated against the same strength policy as registration
+    - Returns a generic error for invalid/expired tokens (no oracle attacks)
+    """
+    from ..models.db_models import PasswordResetToken, Patient as PatientModel
+    from datetime import datetime, timezone
+    from sqlalchemy import update as sa_update, delete
+
+    # Validate new password strength before hitting DB
+    try:
+        ResetPasswordRequest.validate_password(body.new_password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    now = datetime.now(timezone.utc)
+
+    result = await session.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token == body.token,
+            PasswordResetToken.expires_at > now,
+        )
+    )
+    prt = result.scalars().first()
+
+    if prt is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Reset link is invalid or has expired. Request a new one.",
+        )
+
+    # Update password and consume (delete) the token atomically
+    new_hash = get_password_hash(body.new_password)
+    await session.execute(
+        sa_update(PatientModel)
+        .where(PatientModel.id == prt.patient_id)
+        .values(hashed_password=new_hash)
+    )
+    await session.execute(
+        delete(PasswordResetToken).where(PasswordResetToken.id == prt.id)
+    )
+    await session.flush()
+
+    return {"message": "Password reset successfully. You can now log in with your new password."}

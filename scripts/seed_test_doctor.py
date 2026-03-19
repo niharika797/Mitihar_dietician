@@ -1,24 +1,27 @@
 """
 seed_test_doctor.py
 ====================
-Creates a fully-seeded test doctor in the database that is visible in:
-  - Patient app  → Find a Doctor / Activate Subscription
-  - Doctor web dashboard → localhost:5173 (login as this doctor)
-  - Admin web dashboard → admin panel → Doctors section
+Creates a test doctor and admin in the database for local development.
+
+Credentials are read from environment variables so they are never
+hardcoded in source. Set them in your .env file:
+
+  TEST_DOCTOR_EMAIL=dr.ashok.mehta@mitihar.test
+  TEST_DOCTOR_PASSWORD=DoctorTest@2026
+  TEST_ADMIN_EMAIL=admin@mitihar.test
+  TEST_ADMIN_PASSWORD=Admin@2026
 
 Run from project root:
     python -m scripts.seed_test_doctor
-
-Credentials created:
-  Doctor login:  dr.ashok.mehta@mitihar.test  / DoctorTest@2026
-  Admin login:   admin@mitihar.test            / Admin@2026  (created if absent)
 """
 
 import asyncio
 import sys
 import os
 
-# Make sure project root is on PYTHONPATH
+from dotenv import load_dotenv
+load_dotenv()
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime, timedelta, timezone
@@ -30,8 +33,8 @@ from app.models.db_models import Doctor, Admin, SubscriptionCode
 
 
 DOCTOR = {
-    "email":           "dr.ashok.mehta@mitihar.test",
-    "password":        "DoctorTest@2026",
+    "email":            os.getenv("TEST_DOCTOR_EMAIL",    "dr.ashok.mehta@mitihar.test"),
+    "password":         os.getenv("TEST_DOCTOR_PASSWORD", "DoctorTest@2026"),
     "name":            "Dr. Ashok Mehta",
     "phone":           "+91-98200-12345",
     "specialization":  "Dietician & Nutritionist",
@@ -49,8 +52,8 @@ DOCTOR = {
 }
 
 ADMIN = {
-    "email":    "admin@mitihar.test",
-    "password": "Admin@2026",
+    "email":    os.getenv("TEST_ADMIN_EMAIL",    "admin@mitihar.test"),
+    "password": os.getenv("TEST_ADMIN_PASSWORD", "Admin@2026"),
     "name":     "Mitihar Admin",
 }
 
@@ -154,11 +157,11 @@ async def seed():
             print(f"\nDoctor Dashboard Login:")
             print(f"  URL:      http://localhost:5173")
             print(f"  Email:    {DOCTOR['email']}")
-            print(f"  Password: {DOCTOR['password']}")
+            print(f"  Password: (set via TEST_DOCTOR_PASSWORD env var)")
             print(f"\nAdmin Dashboard Login:")
             print(f"  URL:      http://localhost:5173")
             print(f"  Email:    {ADMIN['email']}")
-            print(f"  Password: {ADMIN['password']}")
+            print(f"  Password: (set via TEST_ADMIN_PASSWORD env var)")
             print(f"\nSubscription Codes (use on patient app → Activate):")
             for c in CODES:
                 print(f"  {c}")

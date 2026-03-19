@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from datetime import date, datetime
 from typing import Optional
 
@@ -57,3 +57,27 @@ class WeeklyReportResponse(BaseModel):
     daily: list[dict]
     totals: dict
     averages: dict
+
+
+# ── Phase 8 Tier 0: meal rating schemas ──────────────────────────────────────
+
+class MealRateRequest(BaseModel):
+    food_item_id:      int           = Field(..., gt=0)
+    recommendation_id: Optional[int] = Field(default=None)
+    rating:            int           = Field(..., description="+1 (liked) or -1 (disliked)")
+
+    @model_validator(mode="after")
+    def check_rating_value(self):
+        if self.rating not in (1, -1):
+            raise ValueError("rating must be +1 or -1")
+        return self
+
+
+class MealRatingResponse(BaseModel):
+    id:                int
+    patient_id:        int
+    food_item_id:      int
+    recommendation_id: Optional[int]
+    rating:            int
+    rated_at:          datetime
+    model_config = {"from_attributes": True}

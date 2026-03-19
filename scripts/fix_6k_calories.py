@@ -44,12 +44,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.models.db_models import FoodItem
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://admin:mityahar_dev@localhost:5432/mityahar_db")
-USDA_API_KEY = os.getenv("USDA_API_KEY", "uo7qIJasjbhAa77L7h455qdAvtwXg3l2U9TjaUZ8")
+from dotenv import load_dotenv
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set. Add it to your .env file.")
+DATABASE_URL = DATABASE_URL.replace("+asyncpg", "+psycopg2")
+
+USDA_API_KEY = os.getenv("USDA_API_KEY")
+if not USDA_API_KEY:
+    raise RuntimeError(
+        "USDA_API_KEY is not set. Add it to your .env file.\n"
+        "Get a free key at: https://fdc.nal.usda.gov/api-key-signup.html"
+    )
 CSV_PATH     = Path(__file__).parent.parent / "data" / "6000+ Indian Food Recipes Dataset" / "IndianFoodDatasetCSV.csv"
-USDA_DELAY   = 0.05    # seconds between API calls (USDA allows 3500/hr, 0.05s is safe)
-CAL_CAP      = 1200    # rows still > this after fix → deleted (genuinely unverifiable)
-CONFIDENCE_THRESHOLD = 0.50   # slightly relaxed since we're fixing, not inserting fresh
+USDA_DELAY   = 0.05
+CAL_CAP      = 1200
+CONFIDENCE_THRESHOLD = 0.50
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)

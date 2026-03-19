@@ -56,8 +56,16 @@ export default function LoginScreen() {
       try {
         const profile = await getMyProfile();
         setProfile(profile);
-        // Route based on profile completeness
-        if (!profile.disclaimer_accepted_at) {
+        // Onboarding is complete when:
+        //   1. disclaimer_accepted_at is set (authoritative), OR
+        //   2. height_cm > 0 AND weight_kg > 0 (placeholder values used at registration are 0)
+        // This dual-check prevents re-directing existing completed patients to onboarding
+        // even if disclaimer_accepted_at was missed due to a previous backend bug.
+        const onboardingDone =
+          !!profile.disclaimer_accepted_at ||
+          (Number(profile.height_cm) > 0 && Number(profile.weight_kg) > 0);
+
+        if (!onboardingDone) {
           router.replace("/(onboarding)/personal-info");
         } else {
           router.replace("/(tabs)");

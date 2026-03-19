@@ -1,16 +1,26 @@
-import React from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronRight, Edit2, Bell, Info, LogOut, User } from "lucide-react-native";
+import { ChevronRight, Edit2, Bell, Info, LogOut, User, RefreshCw, Settings } from "lucide-react-native";
+import { useMutation } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useToast } from "../../components/shared";
 import { logoutPatient } from "../../services/auth";
+import { requestRenewal, getMyProfile } from "../../services/profile";
 import { computeHealthStats } from "../../utils/calculations";
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { showToast } = useToast();
-  const { profile, logout } = useAuthStore();
+  const { profile, logout, setProfile } = useAuthStore();
+
+  // Always refresh profile from server when the tab is opened so subscription
+  // status, BMI, TDEE and token data are always current.
+  useEffect(() => {
+    getMyProfile()
+      .then(setProfile)
+      .catch(() => {});
+  }, []);
 
   const stats = profile?.date_of_birth
     ? computeHealthStats({
@@ -37,13 +47,34 @@ export default function ProfileScreen() {
   ];
 
   const MENU = [
-    { icon: Edit2, label: "Edit Profile",               path: "/profile/edit-profile"    },
-    { icon: Bell,  label: "Notification Preferences",   path: "/profile/notifications"   },
-    { icon: Info,  label: "About & Disclaimer",         path: "/profile/about"           },
+    { icon: Edit2,     label: "Edit Profile",             path: "/profile/edit-profile"  },
+    { icon: Bell,      label: "Notification Preferences", path: "/profile/notifications" },
+    { icon: Settings,  label: "Account & Security",       path: "/profile/account"       },
+    { icon: Info,      label: "About & Disclaimer",       path: "/profile/about"         },
   ];
 
   const subStatus = profile?.subscription_status;
   const subExpiry = profile?.subscription_end_date;
+
+  // Token 1 data
+  const token1 = profile?.token_1;
+  const token1Active = profile?.token_1_active ?? false;
+  const token1Expiry = profile?.token_1_expiry;
+  const renewalRequested = profile?.renewal_requested ?? false;
+  const expiringSoon = profile?.expiring_soon ?? false;
+
+  // Days remaining calculation
+  const daysLeft = token1Expiry
+    ? Math.max(0, Math.ceil((new Date(token1Expiry).getTime() - Date.now()) / 86_400_000))
+    : null;
+  const progressPct = daysLeft !== null ? Math.min(100, Math.round((daysLeft / 30) * 100)) : 0;
+  const showRenewalBtn = token1Active && daysLeft !== null && daysLeft <= 4 && !renewalRequested;
+
+  const renewalMut = useMutation({
+    mutationFn: () => requestRenewal(profile!.id),
+    onSuccess: () => showToast("Renewal request sent to your doctor 👍", "success"),
+    onError: () => showToast("Failed to send request. Try again.", "error"),
+  });
 
   return (
     <ScrollView style={s.root} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -76,23 +107,56 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* Subscription */}
+        {/* Subscription & Token 1 */}
         <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
-        <View style={[s.subCard, subStatus === "active" ? s.subActive : s.subInactive]}>
+        <View style={[s.subCard, token1Active ? (expiringSoon ? s.subExpiring : s.subActive) : s.subInactive]}>
           <View style={{ flex: 1 }}>
             <Text style={s.subTitle}>
-              {subStatus === "active" ? "✅ Active Plan" : "❌ No Active Plan"}
+              {renewalRequested
+                ? "🔄 Renewal Requested"
+                : expiringSoon
+                ? "⚠️ Expiring Soon"
+                : token1Active
+                ? "✅ Active Plan"
+                : "❌ No Active Plan"}
             </Text>
-            {subStatus === "active" && subExpiry && (
-              <Text style={s.subSub}>Expires: {subExpiry.slice(0, 10)}</Text>
+            {token1 && (
+              <Text style={s.tokenId}>Patient ID: {token1}</Text>
+            )}
+            {daysLeft !== null && token1Active && (
+              <View style={{ marginTop: 8 }}>
+                <View style={s.progressBg}>
+                  <View style={[s.progressFill, { width: `${progressPct}%` as any, backgroundColor: expiringSoon ? '#F59E0B' : '#1E7C45' }]} />
+                </View>
+                <Text style={s.daysLeft}>{daysLeft} days remaining</Text>
+              </View>
             )}
           </View>
-          {subStatus !== "active" && (
+          {!token1Active && (
             <Pressable onPress={() => router.push("/doctor/activate")} style={s.activateBtn}>
               <Text style={s.activateBtnText}>Activate</Text>
             </Pressable>
           )}
         </View>
+
+        {/* Renewal request button */}
+        {showRenewalBtn && (
+          <Pressable
+            onPress={() => renewalMut.mutate()}
+            disabled={renewalMut.isPending}
+            style={[s.renewalBtn, renewalMut.isPending && { opacity: 0.6 }]}
+          >
+            {renewalMut.isPending
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <RefreshCw size={16} color="#fff" />}
+            <Text style={s.renewalBtnText}>Request Renewal</Text>
+          </Pressable>
+        )}
+        {renewalRequested && (
+          <View style={s.renewalSentBanner}>
+            <Text style={s.renewalSentText}>✅ Renewal request sent — waiting for doctor approval</Text>
+          </View>
+        )}
 
         {/* Settings menu */}
         <Text style={s.sectionLabel}>SETTINGS</Text>
@@ -150,6 +214,15 @@ const s = StyleSheet.create({
   menuBorder:    { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   menuIcon:      { width: 36, height: 36, borderRadius: 10, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
   menuLabel:     { flex: 1, fontSize: 14, fontWeight: "500", color: "#111827" },
-  logoutBtn:     { height: 52, borderRadius: 26, backgroundColor: "#FFF1F2", borderWidth: 1.5, borderColor: "#FECDD3", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  logoutText:    { fontSize: 15, fontWeight: "600", color: "#DC2626" },
+  logoutBtn:       { height: 52, borderRadius: 26, backgroundColor: "#FFF1F2", borderWidth: 1.5, borderColor: "#FECDD3", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  logoutText:      { fontSize: 15, fontWeight: "600", color: "#DC2626" },
+  subExpiring:     { backgroundColor: "#FFFBEB", borderColor: "#FCD34D" },
+  tokenId:         { fontSize: 11, color: "#6B7280", marginTop: 4, fontFamily: "monospace" },
+  progressBg:      { height: 6, borderRadius: 99, backgroundColor: "#E5E7EB", overflow: "hidden" },
+  progressFill:    { height: 6, borderRadius: 99 },
+  daysLeft:        { fontSize: 11, color: "#6B7280", marginTop: 4 },
+  renewalBtn:      { height: 48, borderRadius: 24, backgroundColor: "#F59E0B", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  renewalBtnText:  { fontSize: 14, fontWeight: "600", color: "#fff" },
+  renewalSentBanner: { backgroundColor: "#F0FDF4", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#DCFCE7" },
+  renewalSentText: { fontSize: 13, color: "#166534", textAlign: "center" },
 });

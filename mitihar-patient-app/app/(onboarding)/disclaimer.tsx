@@ -40,9 +40,11 @@ export default function DisclaimerScreen() {
       onContinue={() => submitMut.mutate()}
       continueDisabled={!accepted || submitMut.isPending}
       continueLabel={submitMut.isPending ? "Saving..." : "Accept & Start My Journey"}
+      scrollable={false}
     >
+      {/* flex: 1 so this container fills the shell's content area */}
       <View style={s.form}>
-        {/* Disclaimer scroll box */}
+        {/* Disclaimer scroll box — flex: 1 expands to fill available space */}
         <ScrollView style={s.box} nestedScrollEnabled showsVerticalScrollIndicator>
           <Text style={s.boxHeading}>DISCLAIMER</Text>
           <Text style={s.boxBody}>
@@ -79,8 +81,8 @@ export default function DisclaimerScreen() {
 }
 
 const s = StyleSheet.create({
-  form:         { gap: 20 },
-  box:          { height: 260, backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, padding: 16 },
+  form:         { flex: 1, gap: 20 },
+  box:          { flex: 1, backgroundColor: "#F9FAFB", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, padding: 16 },
   boxHeading:   { fontSize: 13, fontWeight: "700", color: "#111827", marginBottom: 12, letterSpacing: 0.5 },
   boxBody:      { fontSize: 12, color: "#374151", lineHeight: 20 },
   checkRow:     { flexDirection: "row", alignItems: "flex-start", gap: 12 },

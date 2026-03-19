@@ -75,9 +75,9 @@ export function Sidebar({ role, userName, userRole, pendingCount = 0, pendingFoo
       ],
     },
     {
-      label: 'BILLING',
+      label: 'CONSULTATIONS',
       items: [
-        { icon: <CreditCard size={18} />, label: 'Codes & Billing', to: '/admin/billing' },
+        { icon: <CreditCard size={18} />, label: 'Codes & Consultations', to: '/admin/billing' },
       ],
     },
     {

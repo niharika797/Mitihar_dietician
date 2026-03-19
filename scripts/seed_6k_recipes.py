@@ -31,8 +31,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.models.db_models import FoodItem
 
 # ── Config ────────────────────────────────────────────────────────────────────
-USDA_API_KEY  = os.getenv("USDA_API_KEY",  "uo7qIJasjbhAa77L7h455qdAvtwXg3l2U9TjaUZ8")
-DATABASE_URL  = os.getenv("DATABASE_URL",  "postgresql+psycopg2://admin:mityahar_dev@localhost:5432/mityahar_db")
+USDA_API_KEY  = os.getenv("USDA_API_KEY")
+if not USDA_API_KEY:
+    raise RuntimeError(
+        "USDA_API_KEY is not set. Add it to your .env file before running this script.\n"
+        "Get a free key at: https://fdc.nal.usda.gov/api-key-signup.html"
+    )
+DATABASE_URL  = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set. Add it to your .env file.")
 CSV_PATH      = Path(__file__).parent.parent / "6000+ Indian Food Recipes Dataset" / "IndianFoodDatasetCSV.csv"
 CONFIDENCE_THRESHOLD = 0.55   # min fraction of ingredients matched to accept recipe
 BATCH_SIZE    = 100            # print progress every N recipes

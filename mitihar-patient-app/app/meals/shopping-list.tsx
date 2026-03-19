@@ -25,8 +25,9 @@ export default function ShoppingListScreen() {
   });
 
   // ShoppingListResponse = { [category: string]: ShoppingItem[] }
-  const categories = list ? Object.keys(list) : [];
-  const allItems: ShoppingItem[] = categories.flatMap(cat => list![cat]);
+  // Guard: filter out any non-array values (e.g. if backend adds metadata keys)
+  const categories = list ? Object.keys(list).filter(k => Array.isArray(list![k])) : [];
+  const allItems: ShoppingItem[] = categories.flatMap(cat => (Array.isArray(list![cat]) ? list![cat] : []));
   const checkedCount = allItems.filter(i => i.have_at_home).length;
 
   if (isLoading) return <View style={s.loader}><ActivityIndicator size="large" color="#1E7C45" /></View>;
@@ -54,7 +55,7 @@ export default function ShoppingListScreen() {
           </View>
         ) : (
           categories.map(cat => {
-            const catItems = list![cat];
+            const catItems: ShoppingItem[] = Array.isArray(list![cat]) ? list![cat] : [];
             return (
               <View key={cat} style={s.catSection}>
                 <Text style={s.catLabel}>{cat.toUpperCase()}</Text>

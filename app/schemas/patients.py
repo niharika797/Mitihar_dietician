@@ -1,27 +1,31 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, Literal
-from datetime import date
+from datetime import date, datetime
 
 class OnboardingRequest(BaseModel):
     date_of_birth: date
+    gender: str
+    height_cm: float = Field(..., gt=0)
+    weight_kg: float = Field(..., gt=0)
+    activity_level: str = Field(default="LA")
+    diet_type: str = Field(default="Vegetarian")
+    region: str = Field(default="North")
+    health_condition: str = Field(default="Healthy")
     health_goals: list[str] = Field(default_factory=list)
     medical_conditions: list[str] = Field(default_factory=list)
-    food_allergies: list[str] = Field(..., min_length=1)
-    # mandatory — patient must list at least one allergy or "None"
-    target_weight_kg: float = Field(..., gt=0)
-    meals_per_day: Literal[3, 5]
-    sleep_hours: float = Field(..., gt=0, le=24)
-    water_glasses: int = Field(default=8, ge=0)
-    occupation: str
-    nonveg_meals_per_week: int = Field(default=3, ge=0, le=7)
+    food_allergies: list[str] = Field(default_factory=list)
     dietary_preferences: list[str] = Field(default_factory=list)
+    meals_per_day: int = Field(default=3)
     fasting_days: list[str] = Field(default_factory=list)
+    sleep_hours: float = Field(default=7.0)
+    water_glasses: int = Field(default=8)
+    occupation: Optional[str] = None
     smoking: bool = False
     alcohol: bool = False
-    pace_preference: Optional[str] = Field(default=None)
-    # "slow" | "moderate" | "fast"
+    nonveg_meals_per_week: int = 0
+    pace_preference: str = Field(default="moderate")
     eating_habits: list[str] = Field(default_factory=list)
-    # e.g. ["skips_breakfast", "late_night_eating", "irregular_meals"]
+    target_weight_kg: Optional[float] = None
 
     @field_validator("date_of_birth")
     @classmethod
@@ -66,6 +70,17 @@ class PatientProfileResponse(BaseModel):
     bmr: Optional[float]
     tdee: Optional[float]
     is_active: bool
+    # Onboarding completion gate — used by login to skip re-onboarding
+    disclaimer_accepted_at: Optional[datetime] = None
+    # Subscription expiry date
+    subscription_end_date: Optional[datetime] = None
+    # Token 1 — subscription identifier shown to doctor
+    token_1: Optional[str] = None
+    token_1_active: bool = False
+    token_1_expiry: Optional[datetime] = None
+    renewal_requested: bool = False
+    renewal_requested_at: Optional[datetime] = None
+    expiring_soon: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -85,3 +100,9 @@ class PublicDoctorResponse(BaseModel):
     is_accepting: bool = True
 
     model_config = ConfigDict(from_attributes=True)
+
+class ActivationResponse(BaseModel):
+    patient: PatientProfileResponse
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"

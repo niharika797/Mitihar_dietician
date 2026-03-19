@@ -1,17 +1,21 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
 from ..core.security import get_current_patient
-from ..models.db_models import Patient, SubscriptionCode, Doctor, PatientRequest
+from ..models.db_models import Patient, SubscriptionCode, Doctor, PatientRequest, PatientVisit, PendingVisitApproval
 from ..schemas.patients import (
     OnboardingRequest, ActivationRequest,
     DoctorRequestBody, PatientProfileResponse, PublicDoctorResponse,
+    ActivationResponse
 )
 from ..services.meal_generator.calculations import (
     calculate_bmr, calculate_tdee, calculate_bmi,
+)
+from ..services.token_service import (
+    generate_token_1, generate_token_2, token_1_expiry_from_now,
 )
 
 router = APIRouter()
@@ -39,18 +43,25 @@ async def onboard_patient(
     age = _derive_age(body.date_of_birth)
 
     bmr = calculate_bmr(
-        patient.gender,
-        float(patient.weight_kg),
-        float(patient.height_cm),
+        body.gender,
+        body.weight_kg,
+        body.height_cm,
         age,
     )
-    tdee = calculate_tdee(bmr, patient.activity_level)
-    bmi = calculate_bmi(float(patient.height_cm), float(patient.weight_kg))
+    tdee = calculate_tdee(bmr, body.activity_level)
+    bmi = calculate_bmi(body.height_cm, body.weight_kg)
 
     await session.execute(
         update(Patient)
         .where(Patient.id == patient.id)
         .values(
+            gender=body.gender,
+            height_cm=body.height_cm,
+            weight_kg=body.weight_kg,
+            activity_level=body.activity_level,
+            diet_type=body.diet_type,
+            region=body.region,
+            health_condition=body.health_condition,
             date_of_birth=body.date_of_birth,
             health_goals=body.health_goals,
             medical_conditions=body.medical_conditions,
@@ -70,6 +81,12 @@ async def onboard_patient(
             bmi=round(bmi, 2),
             bmr=round(bmr, 2),
             tdee=round(tdee, 2),
+            # Token 1 — only set if not already assigned (idempotent re-onboarding)
+            token_1=generate_token_1(patient.id) if not patient.token_1 else patient.token_1,
+            token_1_active=True,
+            token_1_expiry=token_1_expiry_from_now(),
+            renewal_requested=False,
+            expiring_soon=False,
         )
     )
     await session.flush()
@@ -77,6 +94,21 @@ async def onboard_patient(
     # Return the refreshed row
     result = await session.execute(select(Patient).where(Patient.id == patient.id))
     updated = result.scalars().first()
+
+    # ── Create initial PatientVisit row (Token 2) if doctor is assigned ──
+    if updated.doctor_id:
+        from datetime import timezone as _tz
+        now = datetime.now(_tz.utc)
+        pv = PatientVisit(
+            patient_id=updated.id,
+            doctor_id=updated.doctor_id,
+            token_2=generate_token_2(),
+            cycle_start=now,
+            cycle_expiry=now + timedelta(days=30),
+            visit_counter=0,
+        )
+        session.add(pv)
+        await session.flush()
     # ── Auto-generate first diet plan (fire-and-soft-fail) ──────────────
     # Only generates if no active plan exists. Never fails the onboarding response.
     import logging
@@ -92,14 +124,17 @@ async def onboard_patient(
                 "email": updated.email,
                 "name": updated.name,
                 "gender": updated.gender,
-                "height": float(updated.height_cm),
-                "weight": float(updated.weight_kg),
+                "height": float(updated.height_cm or 0),
+                "weight": float(updated.weight_kg or 0),
                 "activity_level": updated.activity_level,
                 "diet": updated.diet_type,
                 "health_condition": updated.health_condition or "Healthy",
                 "region": updated.region or "North",
                 "nonveg_meals_per_week": updated.nonveg_meals_per_week or 3,
                 "food_allergies": updated.food_allergies or [],
+                "health_goals": list(updated.health_goals or []),
+                "medical_conditions": list(updated.medical_conditions or []),
+                # medical_conditions drives PCOS/Thyroid macro overrides
                 "age": age,
             }
             diet_plan = await diet_service.generate_diet_plan(user_data, session)
@@ -114,7 +149,7 @@ async def onboard_patient(
 
 # ─── POST /api/v1/patients/activate ───────────────────────────────────────
 
-@router.post("/activate", response_model=PatientProfileResponse)
+@router.post("/activate", response_model=ActivationResponse)
 async def activate_subscription(
     body: ActivationRequest,
     patient: Patient = Depends(get_current_patient),
@@ -161,7 +196,16 @@ async def activate_subscription(
 
     result2 = await session.execute(select(Patient).where(Patient.id == patient.id))
     updated = result2.scalars().first()
-    return updated
+
+    from ..routers.auth import _patient_token_data, _issue_tokens
+    token_data = _patient_token_data(updated)
+    tokens = _issue_tokens(token_data)
+
+    return ActivationResponse(
+        patient=PatientProfileResponse.model_validate(updated),
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"]
+    )
 
 
 # ─── POST /api/v1/patients/request-doctor ─────────────────────────────────
@@ -270,6 +314,59 @@ async def list_doctors(
     )
     result = await session.execute(stmt)
     return result.scalars().all()
+
+
+# ─── GET /api/v1/patients/my-visit ────────────────────────────────────────
+
+@router.get("/my-visit")
+async def get_my_visit(
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Return the patient's most recent active PatientVisit row (Token 2 details).
+    Used by the patient app to show subscription / visit cycle info.
+    Returns null fields if no visit cycle exists yet.
+    """
+    if not patient.doctor_id:
+        return {
+            "has_visit": False,
+            "token_2": None,
+            "visit_counter": 0,
+            "cycle_start": None,
+            "cycle_expiry": None,
+            "last_charged_at": None,
+        }
+
+    result = await session.execute(
+        select(PatientVisit)
+        .where(
+            PatientVisit.patient_id == patient.id,
+            PatientVisit.doctor_id == patient.doctor_id,
+        )
+        .order_by(PatientVisit.cycle_start.desc())
+        .limit(1)
+    )
+    pv = result.scalars().first()
+
+    if pv is None:
+        return {
+            "has_visit": False,
+            "token_2": None,
+            "visit_counter": 0,
+            "cycle_start": None,
+            "cycle_expiry": None,
+            "last_charged_at": None,
+        }
+
+    return {
+        "has_visit": True,
+        "token_2": pv.token_2,
+        "visit_counter": pv.visit_counter,
+        "cycle_start": pv.cycle_start.isoformat() if pv.cycle_start else None,
+        "cycle_expiry": pv.cycle_expiry.isoformat() if pv.cycle_expiry else None,
+        "last_charged_at": pv.last_charged_at.isoformat() if pv.last_charged_at else None,
+    }
 
 
 # ─── POST /api/v1/patients/disclaimer ─────────────────────────────────────

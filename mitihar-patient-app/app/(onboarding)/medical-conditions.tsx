@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { Check } from "lucide-react-native";
-import { OnboardingShell, ChipGrid, Toggle } from "../../components/shared";
+import { OnboardingShell, ChipGrid } from "../../components/shared";
 import { useOnboardingStore } from "../../store/useOnboardingStore";
 
 const CONDITIONS = [
@@ -16,7 +16,6 @@ export default function MedicalConditionsScreen() {
   const router = useRouter();
   const { data, update } = useOnboardingStore();
   const [conditions, setConditions] = useState<string[]>(data.medical_conditions ?? []);
-  const [onMeds, setOnMeds] = useState(false);
 
   const toggle = (c: string) => {
     if (c === "None of the above") { setConditions(["None of the above"]); return; }
@@ -42,15 +41,6 @@ export default function MedicalConditionsScreen() {
           {noneSelected && <Check size={14} color="#166534" />}
           <Text style={[s.noneText, noneSelected && s.noneTextSel]}>None of the above</Text>
         </Pressable>
-
-        {/* Medication toggle */}
-        <View style={s.medRow}>
-          <View style={s.medInfo}>
-            <Text style={s.medTitle}>Currently on medication?</Text>
-            <Text style={s.medSub}>Helps us tailor recommendations</Text>
-          </View>
-          <Toggle value={onMeds} onToggle={setOnMeds} />
-        </View>
       </View>
     </OnboardingShell>
   );
@@ -62,8 +52,4 @@ const s = StyleSheet.create({
   noneBtnSel:   { borderColor: "#1E7C45", backgroundColor: "#DCFCE7" },
   noneText:     { fontSize: 14, fontWeight: "500", color: "#374151" },
   noneTextSel:  { color: "#166534" },
-  medRow:       { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 14, backgroundColor: "#F9FAFB", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB" },
-  medInfo:      { flex: 1 },
-  medTitle:     { fontSize: 14, fontWeight: "500", color: "#111827" },
-  medSub:       { fontSize: 12, color: "#6B7280" },
 });

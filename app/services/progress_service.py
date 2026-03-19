@@ -24,7 +24,35 @@ async def log_meal(
     patient_id: int,
     data: dict,
 ) -> MealLog:
-    """Insert a row into meal_logs. Returns the created MealLog."""
+    """
+    Insert a row into meal_logs. Returns the created MealLog.
+
+    Phase 8 Tier 0 fixes:
+    - Populates food_id when a recommendation_id + meal_type are provided
+      (links the log entry back to the specific food_item that was recommended)
+    - Updates ProgressLog.total_calories_consumed for today after each log
+      (required for bandit reward signal and calorie adjustment calculations)
+    """
+    # ── Resolve food_id from recommendation if available ─────────────────
+    food_id = data.get("food_id")  # caller may pass it directly
+    recommendation_id = data.get("recommendation_id")
+    if food_id is None and recommendation_id:
+        # Try to find the food_item by matching meal_type in the recommendation's meals JSONB
+        from ..models.db_models import Recommendation
+        rec_result = await session.execute(
+            select(Recommendation.meals).where(Recommendation.id == recommendation_id)
+        )
+        rec_meals = rec_result.scalar()
+        if rec_meals:
+            meal_type = data.get("meal_type", "")
+            for meal in rec_meals:
+                if meal.get("Meal Type") == meal_type and meal.get("food_id"):
+                    try:
+                        food_id = int(meal["food_id"])
+                    except (TypeError, ValueError):
+                        pass
+                    break
+
     entry = MealLog(
         patient_id=patient_id,
         logged_date=date.today(),
@@ -34,10 +62,27 @@ async def log_meal(
         carbs_g=data.get("carbs", 0),
         fat_g=data.get("fat", 0),
         fiber_g=data.get("fiber", 0),
-        recommendation_id=data.get("recommendation_id"),  # nullable — None for custom meals
+        recommendation_id=recommendation_id,
+        food_id=food_id,  # now populated when traceable
     )
     session.add(entry)
     await session.flush()
+
+    # ── Update today's total_calories_consumed on ProgressLog ────────────
+    # Sum all meal logs for today and write back to the progress row.
+    # This powers the calorie adjustment calculation and future RL signals.
+    today = date.today()
+    total_cal_result = await session.execute(
+        select(sa_func.sum(MealLog.calories_consumed)).where(
+            MealLog.patient_id == patient_id,
+            MealLog.logged_date == today,
+        )
+    )
+    total_calories_today = float(total_cal_result.scalar() or 0)
+    progress_row = await _get_or_create_progress(session, patient_id, today)
+    progress_row.total_calories_consumed = total_calories_today
+    await session.flush()
+
     return entry
 
 

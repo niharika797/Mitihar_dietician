@@ -10,9 +10,11 @@ from sqlalchemy.orm import selectinload
 
 from ..core.database import get_db
 from ..core.security import get_current_doctor
+from ..services.token_service import generate_token_2, token_1_expiry_from_now, is_chargeable_visit
 from ..models.db_models import (
     Doctor, Patient, Recommendation, PatientRequest, SubscriptionCode,
-    MealLog, ProgressLog, ClinicalNote, FoodItem,
+    MealLog, ProgressLog, ClinicalNote, FoodItem, PatientVisit,
+    DoctorMealOverride, PendingVisitApproval,
 )
 from ..schemas.doctor import (
     PatientSummary, PaginatedPatients, RecommendationDetail,
@@ -22,6 +24,10 @@ from ..schemas.doctor import (
     ClinicalNoteCreate, ClinicalNoteResponse, MealPlanNoteRequest,
     FoodItemSummary, RecipeCreateRequest, RecipeAssignRequest,
     DoctorDashboardStats,
+    PatientVisitResponse, RecordVisitResponse, RenewalApproveResponse,
+    BulkRenewalResponse, PendingRenewalItem,
+    RecordVisitRequest, FlagVisitRequest, PendingVisitApprovalResponse,
+    PatientSummaryWithVisit,
 )
 
 router = APIRouter()
@@ -40,6 +46,75 @@ def _generate_code(length: int = 12) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+# ── Phase 8 Tier 0: override-logging helpers ──────────────────────────────────
+
+def _bucket_age(dob) -> str:
+    """Map date_of_birth → age bracket string for RL context bucketing."""
+    if dob is None:
+        return "unknown"
+    from datetime import date as _date
+    today = _date.today()
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    if age < 26:   return "18-25"
+    if age < 36:   return "26-35"
+    if age < 51:   return "36-50"
+    return "50+"
+
+
+def _bucket_bmi(bmi) -> str:
+    """Map BMI float → category string for RL context bucketing."""
+    if bmi is None:
+        return "unknown"
+    b = float(bmi)
+    if b < 18.5:  return "underweight"
+    if b < 25.0:  return "normal"
+    if b < 30.0:  return "overweight"
+    return "obese"
+
+
+def _extract_food_id(meal: dict) -> Optional[int]:
+    """
+    Read food_item ID from a meal JSONB dict.
+    Returns None if the meal was custom (no food_id key or value is None).
+    """
+    raw = meal.get("food_id")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _diff_meals(old_meals: list, new_meals: list) -> list[dict]:
+    """
+    Diff two meal arrays by (Date, Meal Type).
+    Returns list of dicts with keys: meal_type, old_food_id, new_food_id.
+    Only includes slots where the food_id actually changed.
+    """
+    old_map = {
+        (m.get("Date"), m.get("Meal Type")): _extract_food_id(m)
+        for m in old_meals
+    }
+    new_map = {
+        (m.get("Date"), m.get("Meal Type")): (m, _extract_food_id(m))
+        for m in new_meals
+    }
+    diffs = []
+    for key, new_val in new_map.items():
+        new_meal_dict, new_fid = new_val
+        old_fid = old_map.get(key)
+        if old_fid != new_fid:  # something changed in this slot
+            diffs.append({
+                "meal_type": key[1],
+                "date": key[0],
+                "old_food_id": old_fid,
+                "new_food_id": new_fid,
+                "slot_type": new_meal_dict.get("slot_type"),
+            })
+    return diffs
+
+
 # ─── GET /api/v1/doctor/patients ──────────────────────────────────────────
 
 @router.get("/patients", response_model=PaginatedPatients)
@@ -47,21 +122,29 @@ async def list_patients(
     request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    search: Optional[str] = Query(default=None),
     doctor: Doctor = Depends(get_current_doctor),
     session: AsyncSession = Depends(get_db),
 ):
     did = _doctor_id(request)
     offset = (page - 1) * page_size
 
-    total_result = await session.execute(
-        select(func.count(Patient.id)).where(Patient.doctor_id == did)
-    )
+    stmt = select(Patient).where(Patient.doctor_id == did)
+    count_stmt = select(func.count(Patient.id)).where(Patient.doctor_id == did)
+
+    if search:
+        search_filter = (
+            Patient.name.ilike(f"%{search}%") | 
+            Patient.email.ilike(f"%{search}%")
+        )
+        stmt = stmt.where(search_filter)
+        count_stmt = count_stmt.where(search_filter)
+
+    total_result = await session.execute(count_stmt)
     total = total_result.scalar()
 
     result = await session.execute(
-        select(Patient)
-        .where(Patient.doctor_id == did)
-        .order_by(Patient.created_at.desc())
+        stmt.order_by(Patient.created_at.desc())
         .offset(offset)
         .limit(page_size)
     )
@@ -154,6 +237,35 @@ async def override_patient_plan(
         raise HTTPException(status_code=404, detail="No active plan to update")
 
     if body.meals is not None:
+        # ── Phase 8 Tier 0: record override events before applying change ──
+        old_meals = list(rec.meals or [])
+        diffs = _diff_meals(old_meals, body.meals)
+        if diffs:
+            # Fetch patient for context snapshot
+            pat_result = await session.execute(
+                select(Patient).where(Patient.id == patient_id)
+            )
+            pat = pat_result.scalars().first()
+            if pat:
+                age_bucket = _bucket_age(pat.date_of_birth)
+                bmi_bucket = _bucket_bmi(pat.bmi)
+                for diff in diffs:
+                    override = DoctorMealOverride(
+                        doctor_id=did,
+                        patient_id=patient_id,
+                        override_date=date.today(),
+                        slot_type=diff.get("slot_type"),
+                        meal_type=diff["meal_type"] or "Unknown",
+                        rejected_food_id=diff["old_food_id"],
+                        chosen_food_id=diff["new_food_id"],
+                        patient_health_condition=pat.health_condition,
+                        patient_medical_conditions=list(pat.medical_conditions or []),
+                        patient_region=pat.region,
+                        patient_diet_type=pat.diet_type,
+                        patient_age_bucket=age_bucket,
+                        patient_bmi_bucket=bmi_bucket,
+                    )
+                    session.add(override)
         rec.meals = body.meals
     if body.doctor_notes is not None:
         rec.doctor_notes = body.doctor_notes
@@ -161,6 +273,53 @@ async def override_patient_plan(
     await session.flush()
     await session.refresh(rec)
     return rec
+
+
+# ─── GET /api/v1/doctor/patients/{patient_id}/plan/overrides ─────────────
+
+@router.get("/patients/{patient_id}/plan/overrides")
+async def get_plan_overrides(
+    patient_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Return the history of AI meal replacements made by this doctor for the patient.
+    Useful as an audit trail and for future RL inspection.
+    """
+    did = _doctor_id(request)
+    pat_result = await session.execute(
+        select(Patient.id).where(Patient.id == patient_id, Patient.doctor_id == did)
+    )
+    if pat_result.scalars().first() is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    result = await session.execute(
+        select(DoctorMealOverride)
+        .where(
+            DoctorMealOverride.doctor_id == did,
+            DoctorMealOverride.patient_id == patient_id,
+        )
+        .order_by(DoctorMealOverride.override_date.desc(), DoctorMealOverride.id.desc())
+        .limit(100)
+    )
+    overrides = result.scalars().all()
+    return [
+        {
+            "id":                       o.id,
+            "override_date":            str(o.override_date),
+            "meal_type":                o.meal_type,
+            "slot_type":                o.slot_type,
+            "rejected_food_id":         o.rejected_food_id,
+            "chosen_food_id":           o.chosen_food_id,
+            "patient_health_condition": o.patient_health_condition,
+            "patient_region":           o.patient_region,
+            "patient_age_bucket":       o.patient_age_bucket,
+            "patient_bmi_bucket":       o.patient_bmi_bucket,
+        }
+        for o in overrides
+    ]
 
 
 # ─── GET /api/v1/doctor/requests ──────────────────────────────────────────
@@ -208,6 +367,11 @@ async def accept_request(
     req.status = "accepted"
     req.responded_at = datetime.now(timezone.utc)
 
+    # ── Activate patient subscription ──────────────────────────────────────
+    from ..services.token_service import generate_token_1, token_1_expiry_from_now
+    token_1 = generate_token_1(req.patient_id)
+    now = datetime.now(timezone.utc)
+
     await session.execute(
         update(Patient)
         .where(Patient.id == req.patient_id)
@@ -215,9 +379,82 @@ async def accept_request(
             doctor_id=did,
             user_type="doctor_assigned",
             subscription_status="active",
+            # Token 1 — only set if not already assigned (idempotent)
+            token_1=token_1,
+            token_1_active=True,
+            token_1_expiry=token_1_expiry_from_now(),
+            renewal_requested=False,
         )
     )
     await session.flush()
+
+    # ── Create initial PatientVisit row (Token 2) ─────────────────────────
+    existing_pv = await session.execute(
+        select(PatientVisit).where(
+            PatientVisit.patient_id == req.patient_id,
+            PatientVisit.doctor_id == did,
+        )
+    )
+    if existing_pv.scalars().first() is None:
+        pv = PatientVisit(
+            patient_id=req.patient_id,
+            doctor_id=did,
+            token_2=generate_token_2(),
+            cycle_start=now,
+            cycle_expiry=now + timedelta(days=30),
+            visit_counter=0,
+        )
+        session.add(pv)
+        await session.flush()
+
+    # ── Auto-generate diet plan if patient has onboarded ─────────────────
+    # Fetch the patient to check if onboarding is done (height/weight set)
+    pat_result = await session.execute(
+        select(Patient).where(Patient.id == req.patient_id)
+    )
+    patient = pat_result.scalars().first()
+
+    if patient and patient.height_cm and patient.weight_kg and float(patient.height_cm) > 0:
+        import logging as _log
+        _logger = _log.getLogger(__name__)
+        try:
+            from datetime import date as _date
+            from ..services.diet_plan_service import DietPlanService
+            diet_service = DietPlanService()
+
+            dob = patient.date_of_birth
+            if dob:
+                today = _date.today()
+                age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            else:
+                age = 30
+
+            user_data = {
+                "id": str(patient.id),
+                "email": patient.email,
+                "name": patient.name,
+                "gender": patient.gender or "Other",
+                "height": float(patient.height_cm),
+                "weight": float(patient.weight_kg),
+                "activity_level": patient.activity_level or "LA",
+                "diet": patient.diet_type or "Vegetarian",
+                "health_condition": patient.health_condition or "Healthy",
+                "region": patient.region or "North",
+                "nonveg_meals_per_week": patient.nonveg_meals_per_week or 3,
+                "health_goals": list(patient.health_goals or []),
+                "medical_conditions": list(patient.medical_conditions or []),
+                "food_allergies": list(patient.food_allergies or []),
+                "age": age,
+            }
+            existing_plan = await diet_service.get_diet_plan(str(patient.id), session=session)
+            if existing_plan is None:
+                diet_plan = await diet_service.generate_diet_plan(user_data, session)
+                await diet_service.store_diet_plan(diet_plan, session=session)
+                _logger.info(f"Auto-generated diet plan for patient {patient.id} on doctor acceptance")
+        except Exception as exc:
+            _logger.error(f"Diet plan auto-gen failed on accept for patient {req.patient_id}: {exc}", exc_info=True)
+            # Non-blocking — patient can generate from the app
+
     return {"message": "Request accepted", "patient_id": req.patient_id}
 
 
@@ -539,13 +776,28 @@ async def browse_recipes(
     diet_type: Optional[str] = Query(default=None),
     meal_time: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
+    my_library: bool = Query(default=False, description="True = show only this doctor's personal library items"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     doctor: Doctor = Depends(get_current_doctor),
     session: AsyncSession = Depends(get_db),
 ):
-    """Browse the food database. Supports optional filters and pagination."""
-    stmt = select(FoodItem).where(FoodItem.is_verified == True)
+    """
+    Browse food items.
+    my_library=False (default): global verified items only.
+    my_library=True: this doctor's personal library (unverified, doctor_id=doctor.id).
+    """
+    did = _doctor_id(request)
+
+    if my_library:
+        # Doctor's personal library — their own unverified submissions
+        stmt = select(FoodItem).where(
+            FoodItem.doctor_id == did,
+            FoodItem.source.in_(["doctor", "doctor_global"]),
+        )
+    else:
+        # Global verified dataset
+        stmt = select(FoodItem).where(FoodItem.is_verified == True)
 
     if diet_type:
         stmt = stmt.where(FoodItem.diet_type == diet_type)
@@ -571,17 +823,16 @@ async def add_recipe(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Doctor adds a new recipe to the food database.
-    Saved with source='doctor', is_verified=False (pending admin approval).
-    Once admin approves it (PATCH /admin/food/{id}/approve), it becomes available to all patients.
-    """
-    # Guard: save_to_library=False not yet implemented
-    if not body.save_to_library:
-        raise HTTPException(
-            status_code=501,
-            detail="save_to_library=False is not yet implemented. Use True to submit for admin approval.",
-        )
+    Doctor adds a recipe to their personal library.
 
+    By default (submit_to_global=False): saved with source='doctor', is_verified=False,
+    doctor_id=doctor.id — visible only in this doctor's library. Doctor can reuse it for
+    any of their patients without repeating data entry.
+
+    When submit_to_global=True: same item is also flagged for admin review. Once admin
+    approves (PATCH /admin/food/{id}/approve), is_verified becomes True and the recipe
+    joins the global dataset available to all doctors and the AI meal generator.
+    """
     food = FoodItem(
         recipe_name=body.recipe_name,
         slot_type=body.slot_type,
@@ -596,8 +847,9 @@ async def add_recipe(
         ingredients=body.ingredients,
         region_tags=body.region_tags,
         doctor_id=doctor.id,
-        source="doctor",
-        is_verified=False,
+        # source differentiates library-only vs pending global approval
+        source="doctor_global" if body.submit_to_global else "doctor",
+        is_verified=False,  # admin must approve before entering global pool
     )
     session.add(food)
     await session.flush()
@@ -965,3 +1217,363 @@ async def get_dashboard(
         inactive_patients=inactive_patients,
         expiring_soon=expiring_soon,
     )
+
+
+# ─── POST /api/v1/doctor/patients/{patient_id}/record-visit ───────────────
+
+@router.post("/patients/{patient_id}/record-visit", response_model=RecordVisitResponse)
+async def record_patient_visit(
+    patient_id: int,
+    body: RecordVisitRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Record a physical clinic visit for a patient using their Token 2.
+
+    FRAUD PREVENTION: The patient must show their Token 2 from the patient app.
+    The doctor enters this token here. If it doesn't match the patient's current
+    cycle token, the visit is rejected with HTTP 400.
+
+    Charging rules (see token_service.is_chargeable_visit):
+      - First visit within 15 days of Token 1 activation → FREE (included in ₹800/mo)
+      - First visit after 15-day grace period → ₹1,200
+      - Subsequent visits > 15 days since last charge → ₹1,200
+      - Subsequent visits ≤ 15 days since last charge → FREE (follow-up grace)
+    """
+    from ..services.audit_service import log_action
+    did = _doctor_id(request)
+
+    # Verify patient belongs to this doctor
+    pat_result = await session.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.doctor_id == did)
+    )
+    patient = pat_result.scalars().first()
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    now = datetime.now(timezone.utc)
+
+    # Get current active PatientVisit row
+    pv_result = await session.execute(
+        select(PatientVisit).where(
+            PatientVisit.patient_id == patient_id,
+            PatientVisit.doctor_id == did,
+            PatientVisit.cycle_expiry > now,
+        ).order_by(PatientVisit.cycle_start.desc())
+    )
+    pv = pv_result.scalars().first()
+
+    if pv is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No active visit cycle found for this patient. "
+                   "Please ensure the patient's subscription is active.",
+        )
+
+    # ── TOKEN 2 VERIFICATION — fraud prevention ────────────────────────────
+    # Normalise both sides: strip whitespace, uppercase
+    submitted = body.token_2.strip().upper()
+    expected  = pv.token_2.strip().upper()
+    if submitted != expected:
+        raise HTTPException(
+            status_code=400,
+            detail="Token 2 does not match. Ask the patient to show their Token 2 "
+                   "from the Mityahar app and enter it exactly.",
+        )
+
+    # ── Apply charging rules ───────────────────────────────────────────────
+    charged = is_chargeable_visit(
+        last_charged_at=pv.last_charged_at,
+        visit_counter=pv.visit_counter,
+        cycle_start=pv.cycle_start,
+    )
+    if charged:
+        pv.visit_counter += 1
+        pv.last_charged_at = now
+
+    await session.flush()
+    await log_action(
+        session,
+        actor_id=did,
+        actor_role="doctor",
+        action="record_visit",
+        entity_type="patient",
+        entity_id=patient_id,
+        detail={"charged": charged, "visit_counter": pv.visit_counter, "token_2_verified": True},
+    )
+
+    if charged:
+        msg = f"Visit verified and charged (₹1,200). Total visits this cycle: {pv.visit_counter}"
+    elif pv.visit_counter == 0:
+        msg = "Visit verified — free initial consultation (within 15-day grace period after subscription)."
+    else:
+        msg = "Visit verified — within 15-day follow-up window, no charge."
+
+    return RecordVisitResponse(
+        charged=charged,
+        visit_counter=pv.visit_counter,
+        last_charged_at=pv.last_charged_at,
+        message=msg,
+    )
+
+
+# ─── POST /api/v1/doctor/patients/{patient_id}/flag-visit ─────────────────
+
+@router.post("/patients/{patient_id}/flag-visit", status_code=201)
+async def flag_visit(
+    patient_id: int,
+    body: FlagVisitRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Flag a visit when the patient forgot their phone and can't show Token 2.
+
+    Creates a PendingVisitApproval record. The patient sees a notification in
+    their app and must approve it before the visit is recorded and charged.
+    This maintains fraud prevention even when the patient is phoneless.
+    """
+    did = _doctor_id(request)
+
+    pat_result = await session.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.doctor_id == did)
+    )
+    patient = pat_result.scalars().first()
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    now = datetime.now(timezone.utc)
+
+    # Get active PatientVisit to link to
+    pv_result = await session.execute(
+        select(PatientVisit).where(
+            PatientVisit.patient_id == patient_id,
+            PatientVisit.doctor_id == did,
+            PatientVisit.cycle_expiry > now,
+        ).order_by(PatientVisit.cycle_start.desc())
+    )
+    pv = pv_result.scalars().first()
+
+    pending = PendingVisitApproval(
+        patient_id=patient_id,
+        doctor_id=did,
+        patient_visit_id=pv.id if pv else None,
+        status="pending",
+        visit_date=now,
+        doctor_note=body.doctor_note,
+    )
+    session.add(pending)
+    await session.flush()
+
+    return {
+        "message": "Visit flagged. The patient will receive a notification to confirm.",
+        "pending_visit_id": pending.id,
+    }
+
+
+# ─── GET /api/v1/doctor/patients/{patient_id}/visits ─────────────────────
+
+@router.get("/patients/{patient_id}/visits", response_model=list[PatientVisitResponse])
+async def get_patient_visits(
+    patient_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return all visit cycles for a patient, newest first."""
+    did = _doctor_id(request)
+    pat_result = await session.execute(
+        select(Patient.id).where(Patient.id == patient_id, Patient.doctor_id == did)
+    )
+    if pat_result.scalars().first() is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    result = await session.execute(
+        select(PatientVisit)
+        .where(PatientVisit.patient_id == patient_id, PatientVisit.doctor_id == did)
+        .order_by(PatientVisit.cycle_start.desc())
+    )
+    return result.scalars().all()
+
+
+# ─── POST /api/v1/doctor/patients/{patient_id}/request-renewal ───────────
+
+@router.post("/patients/{patient_id}/request-renewal", status_code=200)
+async def request_renewal(
+    patient_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Patient-triggered renewal request. Sets renewal_requested flag."""
+    did = _doctor_id(request)
+    pat_result = await session.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.doctor_id == did)
+    )
+    patient = pat_result.scalars().first()
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    await session.execute(
+        update(Patient).where(Patient.id == patient_id).values(
+            renewal_requested=True,
+            renewal_requested_at=datetime.now(timezone.utc),
+        )
+    )
+    await session.flush()
+    return {"message": "Renewal request submitted. Your doctor will be notified."}
+
+
+# ─── POST /api/v1/doctor/patients/{patient_id}/approve-renewal ───────────
+
+@router.post("/patients/{patient_id}/approve-renewal", response_model=RenewalApproveResponse)
+async def approve_renewal(
+    patient_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Doctor approves a single patient's renewal.
+    Reactivates Token 1 (same value), generates new Token 2, resets 30-day cycle.
+    """
+    from ..services.audit_service import log_action
+    did = _doctor_id(request)
+    pat_result = await session.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.doctor_id == did)
+    )
+    patient = pat_result.scalars().first()
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    now = datetime.now(timezone.utc)
+    new_expiry = token_1_expiry_from_now()
+    new_token_2 = generate_token_2()
+
+    # Reactivate Token 1
+    await session.execute(
+        update(Patient).where(Patient.id == patient_id).values(
+            token_1_active=True,
+            token_1_expiry=new_expiry,
+            renewal_requested=False,
+            renewal_requested_at=None,
+            expiring_soon=False,
+            subscription_status="active",
+        )
+    )
+
+    # Create fresh PatientVisit (Token 2) for new cycle
+    pv = PatientVisit(
+        patient_id=patient_id,
+        doctor_id=did,
+        token_2=new_token_2,
+        cycle_start=now,
+        cycle_expiry=now + timedelta(days=30),
+        visit_counter=0,
+    )
+    session.add(pv)
+    await session.flush()
+
+    await log_action(
+        session, actor_id=did, actor_role="doctor",
+        action="approve_renewal", entity_type="patient", entity_id=patient_id,
+    )
+
+    return RenewalApproveResponse(
+        message=f"Renewal approved for patient {patient.name}.",
+        token_1=patient.token_1,
+        token_2=new_token_2,
+        token_1_expiry=new_expiry,
+    )
+
+
+# ─── POST /api/v1/doctor/patients/approve-all-renewals ───────────────────
+
+@router.post("/patients/approve-all-renewals", response_model=BulkRenewalResponse)
+async def approve_all_renewals(
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Bulk approve all pending renewal requests for this doctor's patients."""
+    from ..services.audit_service import log_action
+    did = _doctor_id(request)
+
+    result = await session.execute(
+        select(Patient).where(
+            Patient.doctor_id == did,
+            Patient.renewal_requested == True,
+        )
+    )
+    patients = result.scalars().all()
+    if not patients:
+        return BulkRenewalResponse(approved_count=0, patient_ids=[])
+
+    now = datetime.now(timezone.utc)
+    approved_ids = []
+
+    for patient in patients:
+        new_expiry = token_1_expiry_from_now()
+        await session.execute(
+            update(Patient).where(Patient.id == patient.id).values(
+                token_1_active=True,
+                token_1_expiry=new_expiry,
+                renewal_requested=False,
+                renewal_requested_at=None,
+                expiring_soon=False,
+                subscription_status="active",
+            )
+        )
+        pv = PatientVisit(
+            patient_id=patient.id,
+            doctor_id=did,
+            token_2=generate_token_2(),
+            cycle_start=now,
+            cycle_expiry=now + timedelta(days=30),
+            visit_counter=0,
+        )
+        session.add(pv)
+        approved_ids.append(patient.id)
+
+    await session.flush()
+    await log_action(
+        session, actor_id=did, actor_role="doctor",
+        action="approve_all_renewals", entity_type="patient", entity_id=None,
+        detail={"approved_count": len(approved_ids), "patient_ids": approved_ids},
+    )
+    return BulkRenewalResponse(approved_count=len(approved_ids), patient_ids=approved_ids)
+
+
+# ─── GET /api/v1/doctor/pending-renewals ─────────────────────────────────
+# NOTE: This route is at /doctor/pending-renewals (NOT under /patients/{id})
+# to avoid FastAPI matching "pending-renewals" as a patient_id int parameter.
+
+@router.get("/pending-renewals", response_model=list[PendingRenewalItem])
+async def get_pending_renewals(
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return all patients with a pending renewal request for this doctor."""
+    did = _doctor_id(request)
+    result = await session.execute(
+        select(Patient).where(
+            Patient.doctor_id == did,
+            Patient.renewal_requested == True,
+        ).order_by(Patient.renewal_requested_at.asc())
+    )
+    patients = result.scalars().all()
+    return [
+        PendingRenewalItem(
+            patient_id=p.id,
+            patient_name=p.name,
+            patient_email=p.email,
+            token_1=p.token_1,
+            renewal_requested_at=p.renewal_requested_at,
+            token_1_expiry=p.token_1_expiry,
+        )
+        for p in patients
+    ]
