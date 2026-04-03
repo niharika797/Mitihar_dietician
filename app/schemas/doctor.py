@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import Annotated, Literal, Optional
 from datetime import date, datetime
 
 class PatientSummary(BaseModel):
@@ -54,8 +54,8 @@ class RecommendationDetail(BaseModel):
     model_config = {"from_attributes": True}
 
 class PlanOverrideRequest(BaseModel):
-    meals: Optional[list] = None
-    doctor_notes: Optional[str] = None
+    meals:        Optional[list[dict]] = None  # typed to dict; long-term goal: list[MealSlot]
+    doctor_notes: Optional[str] = Field(default=None, max_length=2000)
 
 class PatientRequestDetail(BaseModel):
     id: int
@@ -69,7 +69,7 @@ class PatientRequestDetail(BaseModel):
     model_config = {"from_attributes": True}
 
 class RejectRequest(BaseModel):
-    rejection_note: Optional[str] = Field(default=None)
+    rejection_note: Optional[str] = Field(default=None, max_length=1000)
 
 class GenerateCodesRequest(BaseModel):
     count: int = Field(..., ge=1, le=50)
@@ -118,9 +118,8 @@ class PatientProgressResponse(BaseModel):
 
 
 class ClinicalNoteCreate(BaseModel):
-    content: str = Field(..., min_length=1)
-    note_type: str = Field(default="general")
-    # "general" | "dietary" | "medical" | "progress"
+    content:   str = Field(..., min_length=1, max_length=5000)
+    note_type: Literal["general", "dietary", "medical", "progress"] = "general"
     is_private: bool = True
 
 
@@ -137,9 +136,10 @@ class ClinicalNoteResponse(BaseModel):
 
 
 class MealPlanNoteRequest(BaseModel):
-    meal_date: str = Field(..., description="Date string matching meal's 'Date' key e.g. '2026-03-10'")
-    meal_type: str = Field(..., description="e.g. 'Breakfast', 'Lunch'")
-    note: str = Field(..., min_length=1)
+    # Pydantic parses and validates '2026-03-10' automatically; handler converts back to str
+    meal_date: date
+    meal_type: Literal["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner"]
+    note: str = Field(..., min_length=1, max_length=1000)
 
 
 class FoodItemSummary(BaseModel):
@@ -161,19 +161,34 @@ class FoodItemSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# Typed ingredient item — prevents arbitrary JSON injection into meal JSONB / AI prompts
+class IngredientItem(BaseModel):
+    name:     str = Field(..., min_length=1, max_length=100)
+    quantity: str = Field(..., min_length=1, max_length=50)
+    unit:     str = Field(..., min_length=1, max_length=20)
+
+
+# Bounded tag list: max 10 tags, each max 50 chars
+_BoundedTag = Annotated[str, Field(max_length=50)]
+BoundedTagList = Annotated[list[_BoundedTag], Field(max_length=10)]
+
+
 class RecipeCreateRequest(BaseModel):
-    recipe_name: str = Field(..., min_length=2)
-    slot_type: str = Field(..., description="grain | dal_protein | main_dish | sabzi | beverage | snack_item | fruit | egg_dish")
-    cal_per_serving: float = Field(..., gt=0)
-    protein_per_serving: float = Field(default=0.0, ge=0)
-    carbs_per_serving: float = Field(default=0.0, ge=0)
-    fat_per_serving: float = Field(default=0.0, ge=0)
-    fiber_per_serving: float = Field(default=0.0, ge=0)
-    diet_type: str = Field(..., description="Vegetarian | Non-Vegetarian | Eggetarian")
-    meal_time_tags: list[str] = Field(default_factory=list)
-    plan_type_tags: list[str] = Field(default=["Healthy", "Diabetic-Friendly", "Gym-Friendly"])
-    ingredients: list[dict] = Field(default_factory=list)
-    region_tags: list[str] = Field(default_factory=list)
+    recipe_name:       str = Field(..., min_length=2, max_length=200)
+    slot_type:         Literal[
+        "grain", "dal_protein", "main_dish", "sabzi",
+        "beverage", "snack_item", "fruit", "egg_dish"
+    ]
+    cal_per_serving:   float = Field(..., gt=0, le=5000)
+    protein_per_serving: float = Field(default=0.0, ge=0, le=500)
+    carbs_per_serving:   float = Field(default=0.0, ge=0, le=500)
+    fat_per_serving:     float = Field(default=0.0, ge=0, le=500)
+    fiber_per_serving:   float = Field(default=0.0, ge=0, le=200)
+    diet_type:         Literal["Vegetarian", "Non-Vegetarian", "Eggetarian"]
+    meal_time_tags:    BoundedTagList = Field(default_factory=list)
+    plan_type_tags:    BoundedTagList = Field(default=["Healthy", "Diabetic-Friendly", "Gym-Friendly"])
+    ingredients:       Annotated[list[IngredientItem], Field(max_length=50)] = Field(default_factory=list)
+    region_tags:       BoundedTagList = Field(default_factory=list)
     submit_to_global: bool = Field(
         default=False,
         description=(
@@ -185,9 +200,9 @@ class RecipeCreateRequest(BaseModel):
 
 class RecipeAssignRequest(BaseModel):
     patient_ids: list[int] = Field(..., min_length=1)
-    meal_type: str = Field(..., description="Breakfast | MorningSnacks | Lunch | EveningSnacks | Dinner")
-    meal_date: str = Field(..., description="Date string e.g. '2026-03-15'")
-    note: Optional[str] = None
+    meal_type:   Literal["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner"]
+    meal_date:   date  # Pydantic parses '2026-03-15'; handler uses str(body.meal_date)
+    note:        Optional[str] = Field(default=None, max_length=500)
 
 
 class PatientVisitResponse(BaseModel):
@@ -243,11 +258,11 @@ class DoctorDashboardStats(BaseModel):
 # ── Visit verification schemas ─────────────────────────────────────────────
 
 class RecordVisitRequest(BaseModel):
-    token_2: str = Field(..., min_length=5, description="Token 2 shown by the patient on their app")
+    token_2: str = Field(..., min_length=5, max_length=100, description="Token 2 shown by the patient on their app")
 
 
 class FlagVisitRequest(BaseModel):
-    doctor_note: Optional[str] = Field(None, description="Optional note for the patient about this flagged visit")
+    doctor_note: Optional[str] = Field(None, max_length=1000, description="Optional note for the patient about this flagged visit")
 
 
 class PendingVisitApprovalResponse(BaseModel):

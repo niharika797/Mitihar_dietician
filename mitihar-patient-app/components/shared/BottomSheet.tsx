@@ -1,11 +1,9 @@
 import React, { useEffect } from "react";
-import { View, Pressable, StyleSheet, Dimensions, ScrollView } from "react-native";
+import { View, Pressable, StyleSheet, ScrollView, useWindowDimensions } from "react-native";
 import Animated, {
   useSharedValue, useAnimatedStyle,
-  withTiming, withSpring, runOnJS,
+  withTiming, withSpring,
 } from "react-native-reanimated";
-
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface BottomSheetProps {
   open: boolean;
@@ -14,8 +12,11 @@ interface BottomSheetProps {
   maxHeight?: number;
 }
 
-export function BottomSheet({ open, onClose, children, maxHeight = SCREEN_HEIGHT * 0.9 }: BottomSheetProps) {
-  const translateY = useSharedValue(SCREEN_HEIGHT);
+export function BottomSheet({ open, onClose, children, maxHeight }: BottomSheetProps) {
+  const { height: screenHeight } = useWindowDimensions();
+  const effectiveMaxHeight = maxHeight ?? screenHeight * 0.9;
+
+  const translateY = useSharedValue(screenHeight);
   const backdropOpacity = useSharedValue(0);
 
   useEffect(() => {
@@ -24,9 +25,9 @@ export function BottomSheet({ open, onClose, children, maxHeight = SCREEN_HEIGHT
       translateY.value = withSpring(0, { damping: 18, stiffness: 200 });
     } else {
       backdropOpacity.value = withTiming(0, { duration: 250 });
-      translateY.value = withTiming(SCREEN_HEIGHT, { duration: 280 });
+      translateY.value = withTiming(screenHeight, { duration: 280 });
     }
-  }, [open]);
+  }, [open, screenHeight]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -36,7 +37,7 @@ export function BottomSheet({ open, onClose, children, maxHeight = SCREEN_HEIGHT
     opacity: backdropOpacity.value,
   }));
 
-  if (!open && translateY.value === SCREEN_HEIGHT) return null;
+  if (!open && translateY.value === screenHeight) return null;
 
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents={open ? "auto" : "none"}>
@@ -46,7 +47,7 @@ export function BottomSheet({ open, onClose, children, maxHeight = SCREEN_HEIGHT
       </Animated.View>
 
       {/* Sheet */}
-      <Animated.View style={[s.sheet, { maxHeight }, sheetStyle]}>
+      <Animated.View style={[s.sheet, { maxHeight: effectiveMaxHeight }, sheetStyle]}>
         {/* Drag handle */}
         <View style={s.handle} />
         <ScrollView
@@ -72,11 +73,7 @@ const s = StyleSheet.create({
     backgroundColor: "#fff",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 12,
+    boxShadow: "0px -4px 16px rgba(0,0,0,0.12)",
   },
   handle: {
     width: 32, height: 4,

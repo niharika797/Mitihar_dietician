@@ -369,4 +369,18 @@ export const doctorApi = {
 
   getPendingRenewals: () =>
     apiClient.get<PendingRenewalItem[]>('/doctor/patients/pending-renewals').then(r => r.data),
+
+  // Audit C-8: was calling /recipes/lookup (path does not exist → 404) with field
+  // food_name (wrong field name). Correct route is /recipes/estimate with dish_name.
+  fetchNutritionFromGemini: (dishName: string) =>
+    apiClient
+      .post<{
+        dish_name: string;
+        calories: string;
+        protein: string;
+        carbs: string;
+        fat: string;
+        fiber: string;
+      }>('/doctor/recipes/estimate', { dish_name: dishName })
+      .then(r => r.data),
 };

@@ -22,7 +22,7 @@ def generate_mfa_secret() -> str:
     return pyotp.random_base32()
 
 
-def get_totp_uri(secret: str, email: str, issuer: str = "Mityahar") -> str:
+def get_totp_uri(secret: str, email: str, issuer: str = "Mitihar") -> str:
     """
     Return an otpauth:// URI for QR-code generation.
     The client (web/mobile) renders this as a QR code — the backend never

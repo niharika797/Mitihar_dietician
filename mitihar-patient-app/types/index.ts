@@ -166,7 +166,7 @@ export interface ShoppingItem {
   quantity: number;
   unit: string;
   category: string;
-  have_at_home: boolean;
+  at_home: boolean; // Audit W-5: was have_at_home — backend uses key "at_home"
 }
 
 export interface ShoppingListResponse {
@@ -174,12 +174,23 @@ export interface ShoppingListResponse {
 }
 
 // ── Progress ──────────────────────────────────────────────────────────────
+// Audit C-6: aligned to actual nested backend response from GET /progress/today.
+// The old flat shape (tdee, calories_consumed, water, steps, streak) did not
+// match the backend, causing the home screen to always display zero.
 export interface TodaySummary {
-  tdee: number;
-  calories_consumed: number;
-  water: number;
-  steps: number;
-  streak: number;
+  calories: {
+    consumed: number;
+    target: number;
+    remaining: number;
+  };
+  water_intake: {
+    glasses: number;
+    target: number;
+  };
+  activity: {
+    steps: number;
+    target_steps: number;
+  };
 }
 
 export interface MealLogEntry {
@@ -220,10 +231,15 @@ export interface RequestStatusResponse {
   status: RequestStatus;
 }
 
+// Audit W-4: aligned to actual ActivationResponse schema from the backend:
+// { patient: PatientProfile, access_token, refresh_token }.
+// The old type had message, doctor_name (doesn't exist), and optional tokens.
+// Audit M-5: refresh_token is now correctly declared so callers can store it
+// in SecureStore after activation to keep silent refresh working beyond 7 days.
 export interface ActivateResponse {
-  message: string;
-  doctor_name?: string;
-  access_token?: string;
+  patient: PatientProfile;
+  access_token: string;
+  refresh_token: string;
   token_type?: string;
 }
 

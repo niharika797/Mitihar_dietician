@@ -20,26 +20,28 @@ function formatTs(ts: string) {
 }
 
 export function AuditLogs() {
-  const [roleFilter, setRoleFilter]   = useState('');
+  // Live input value — stays responsive while debounce is pending
   const [actionSearch, setActionSearch] = useState('');
-  const [debouncedAction, setDebouncedAction] = useState('');
-  const [page, setPage] = useState(1);
+
+  // Single state object driving the API call: role, debounced action, and page
+  // together so a search change never leaves page and action out of sync.
+  const [apiQuery, setApiQuery] = useState({ role: '', action: '', page: 1 });
+
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounce action search
+  // Debounce: one setState resets both debounced action and page atomically
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      setDebouncedAction(actionSearch);
-      setPage(1);
+      setApiQuery(q => ({ ...q, action: actionSearch, page: 1 }));
     }, 400);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [actionSearch]);
 
   const queryParams = {
-    page,
-    ...(roleFilter    ? { actor_role: roleFilter }    : {}),
-    ...(debouncedAction ? { action: debouncedAction } : {}),
+    page: apiQuery.page,
+    ...(apiQuery.role   ? { actor_role: apiQuery.role }   : {}),
+    ...(apiQuery.action ? { action:    apiQuery.action }  : {}),
   };
 
   const { data, isLoading, isFetching } = useQuery({
@@ -91,9 +93,9 @@ export function AuditLogs() {
           ].map(f => (
             <button
               key={f.value}
-              onClick={() => { setRoleFilter(f.value); setPage(1); }}
+              onClick={() => setApiQuery(q => ({ ...q, role: f.value, page: 1 }))}
               className={`h-9 px-3 text-xs font-medium transition-colors ${
-                roleFilter === f.value ? 'bg-[#1E7C45] text-white' : 'text-[#6B7280] hover:bg-[#F3F4F6]'
+              apiQuery.role === f.value ? 'bg-[#1E7C45] text-white' : 'text-[#6B7280] hover:bg-[#F3F4F6]'
               }`}
             >
               {f.label}
@@ -155,26 +157,26 @@ export function AuditLogs() {
       {total > PAGE_SIZE && (
         <div className="flex items-center justify-between mt-4 px-1">
           <p className="text-sm text-[#6B7280]">
-            Page {page} of {totalPages} &middot; {total.toLocaleString()} total
+            Page {apiQuery.page} of {totalPages} &middot; {total.toLocaleString()} total
           </p>
           <div className="flex items-center gap-1">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            <button onClick={() => setApiQuery(q => ({ ...q, page: Math.max(1, q.page - 1) }))} disabled={apiQuery.page === 1}
               className="w-8 h-8 rounded border border-[#E5E7EB] flex items-center justify-center text-[#374151] hover:bg-[#F3F4F6] disabled:opacity-40">
               <ChevronLeft size={14} />
             </button>
             {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
               const half = 3;
-              let start = Math.max(1, page - half);
+              let start = Math.max(1, apiQuery.page - half);
               const end   = Math.min(totalPages, start + 6);
               start = Math.max(1, end - 6);
               return start + i;
             }).filter(n => n >= 1 && n <= totalPages).map(n => (
-              <button key={n} onClick={() => setPage(n)}
+              <button key={n} onClick={() => setApiQuery(q => ({ ...q, page: n }))}
                 className={`w-8 h-8 rounded border text-sm transition-colors ${
-                  page === n ? 'bg-[#1E7C45] border-[#1E7C45] text-white' : 'border-[#E5E7EB] text-[#374151] hover:bg-[#F3F4F6]'
+                  apiQuery.page === n ? 'bg-[#1E7C45] border-[#1E7C45] text-white' : 'border-[#E5E7EB] text-[#374151] hover:bg-[#F3F4F6]'
                 }`}>{n}</button>
             ))}
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            <button onClick={() => setApiQuery(q => ({ ...q, page: Math.min(totalPages, q.page + 1) }))} disabled={apiQuery.page === totalPages}
               className="w-8 h-8 rounded border border-[#E5E7EB] flex items-center justify-center text-[#374151] hover:bg-[#F3F4F6] disabled:opacity-40">
               <ChevronRight size={14} />
             </button>

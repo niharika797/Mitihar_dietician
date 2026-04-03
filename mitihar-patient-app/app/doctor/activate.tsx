@@ -82,7 +82,7 @@ export default function ActivateScreen() {
         <View style={s.codeRow}>
           {code.map((char, i) => (
             <TextInput
-              key={i}
+              key={`otp-${i}`}
               ref={el => { refs.current[i] = el; }}
               value={char}
               maxLength={1}

@@ -20,16 +20,20 @@ export interface DoctorAdminView {
   created_at: string;
 }
 
-export interface DoctorDetailView extends DoctorAdminView {
-  patient_count: number;
-  mfa_enabled: boolean;
-}
+// DoctorDetailView removed — it extended DoctorAdminView but was never
+// imported by any component. Re-add here if the doctor detail endpoint is wired.
 
+// Audit W-2: added expiring_soon_count, pending_renewals_count, and
+// total_consultations_this_month which GET /admin/stats now returns but
+// were absent from this type (caused TS errors in strict mode).
 export interface PlatformStats {
   total_patients: number;
   active_subscriptions: number;
   total_doctors: number;
   total_plans_generated: number;
+  expiring_soon_count: number;
+  pending_renewals_count: number;
+  total_consultations_this_month: number;
 }
 
 export interface AdminPatientView {
@@ -153,6 +157,14 @@ export const adminApi = {
 
   erasePatient: (id: number) =>
     apiClient.delete(`/admin/patients/${id}`).then(r => r.data),
+
+  /**
+   * DEV ONLY — physically deletes the patient row so the email can be re-used.
+   * Only works when ALLOW_HARD_DELETE=True is set in the backend .env.
+   * Returns 403 in production.
+   */
+  hardDeletePatient: (id: number) =>
+    apiClient.delete(`/admin/patients/${id}/hard-delete`).then(r => r.data),
 
   // ── Food database ──────────────────────────────────────────────────────────
   listFood: (params: { source?: string; is_verified?: boolean; page?: number; page_size?: number }) =>

@@ -97,12 +97,15 @@ class Doctor(Base):
     rating            = Column(Numeric(3, 2), nullable=True, default=0)
     review_count      = Column(Integer, nullable=True, default=0)
     is_accepting      = Column(Boolean, default=True)               # false = not taking new patients
-    mfa_secret        = Column(String, nullable=True)
-    mfa_enabled       = Column(Boolean, default=False)
-    is_active         = Column(Boolean, default=True)
-    role              = Column(String(10), default="doctor")
-    created_at        = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at        = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    mfa_secret              = Column(String, nullable=True)
+    mfa_enabled             = Column(Boolean, default=False)
+    # ── Login lockout (T1-6) ──────────────────────────────────────────────
+    failed_login_attempts   = Column(Integer, default=0, nullable=False)
+    locked_until            = Column(DateTime(timezone=True), nullable=True)
+    is_active               = Column(Boolean, default=True)
+    role                    = Column(String(10), default="doctor")
+    created_at              = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at              = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # relationships
     patients          = relationship("Patient", back_populates="doctor", foreign_keys="Patient.doctor_id")
@@ -122,13 +125,16 @@ class Admin(Base):
     email           = Column(String, unique=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     name            = Column(String, nullable=False)
-    mfa_secret      = Column(String, nullable=True)
-    mfa_enabled     = Column(Boolean, default=False)
-    allowed_ips     = Column(JSONB, default=[])
-    is_active       = Column(Boolean, default=True)
-    role            = Column(String(10), default="admin")
-    created_at      = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at      = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    mfa_secret              = Column(String, nullable=True)
+    mfa_enabled             = Column(Boolean, default=False)
+    allowed_ips             = Column(JSONB, default=[])
+    # ── Login lockout (T1-6) ──────────────────────────────────────────────
+    failed_login_attempts   = Column(Integer, default=0, nullable=False)
+    locked_until            = Column(DateTime(timezone=True), nullable=True)
+    is_active               = Column(Boolean, default=True)
+    role                    = Column(String(10), default="admin")
+    created_at              = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at              = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +203,20 @@ class Patient(Base):
     renewal_requested_at  = Column(DateTime(timezone=True), nullable=True)
     expiring_soon         = Column(Boolean, default=False)
     # set True by daily cron when ≤4 days left on token_1_expiry
+
+    # ── FCM push notifications ──────────────────────────────────────────────
+    fcm_token             = Column(String(512), nullable=True)
+    # Device FCM token — updated on every login, cleared on logout.
+    # NULL means patient has not granted notification permission or is logged out.
+
+    # ── Login lockout (T1-6) ─────────────────────────────────────────────────
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until          = Column(DateTime(timezone=True), nullable=True)
+
+    # ── Session invalidation on password change (T1-7) ─────────────────────
+    # Set to now() on every password reset. Tokens issued before this timestamp
+    # are rejected, providing stateless session invalidation without a blacklist.
+    password_changed_at   = Column(DateTime(timezone=True), nullable=True)
 
     created_at            = Column(DateTime(timezone=True), server_default=func.now())
     updated_at            = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

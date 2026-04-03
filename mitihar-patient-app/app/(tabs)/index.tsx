@@ -6,7 +6,7 @@ import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, ChevronRight, Droplets, Footprints } from "lucide-react-native";
 import { QUERY_KEYS } from "../../lib/queryKeys";
-import { getTodaySummary, logWater, logSteps, logMeal, rateMeal, getMyRatings, MealRating } from "../../services/progress";
+import { getTodaySummary, logWater, logSteps, logMeal, rateMeal, getMyRatings, getStreak, MealRating } from "../../services/progress"; // Audit C-6: added getStreak
 import { getWeeklyPlan } from "../../services/meals";
 import { getRequestStatus, getMyProfile } from "../../services/profile";
 import { useAuthStore } from "../../store/useAuthStore";
@@ -31,6 +31,84 @@ const MEAL_SLOTS = [
   { id: "dinner",    emoji: "🌙",  label: "Dinner",    time: "08:00 PM" },
 ];
 
+
+// ── HomeHeader ─────────────────────────────────────────────────────────────────
+interface HomeHeaderProps {
+  firstName: string;
+  streak: number;
+  hasUnread: boolean;
+  onBellPress: () => void;
+}
+
+function HomeHeader({ firstName, streak, hasUnread, onBellPress }: HomeHeaderProps) {
+  return (
+    <View style={s.headerCard}>
+      <View style={s.headerRow}>
+        <View>
+          <Text style={s.greetingText}>{greeting()}, {firstName} ☀️</Text>
+          <Text style={s.dateText}>
+            {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
+          </Text>
+        </View>
+        <Pressable onPress={onBellPress} style={s.bellBtn}>
+          <Bell size={20} color="#374151" />
+          {hasUnread && <View style={s.bellDot} />}
+        </Pressable>
+      </View>
+      <View style={s.pillRow}>
+        <View style={s.streakPill}>
+          <Text style={s.streakEmoji}>🔥</Text>
+          <Text style={s.streakText}>{streak} Day Streak</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ── DoctorStatusBanner ─────────────────────────────────────────────────────────
+interface DoctorStatusBannerProps {
+  subscriptionStatus: string | undefined;
+  doctorId: number | undefined;
+  reqStatus: { status: string } | undefined;
+  onNavigate: (path: string) => void;
+}
+
+function DoctorStatusBanner({ subscriptionStatus, doctorId, reqStatus, onNavigate }: DoctorStatusBannerProps) {
+  if (subscriptionStatus === "active" && doctorId) {
+    return (
+      <Pressable style={s.doctorBanner} onPress={() => onNavigate("/doctor/connection-status")}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.doctorLabel}>📋 Doctor connected</Text>
+          <Text style={s.doctorSub}>Tap to view your plan details</Text>
+        </View>
+        <Text style={s.doctorLink}>View</Text>
+      </Pressable>
+    );
+  }
+  if (subscriptionStatus !== "active" && reqStatus?.status === "pending") {
+    return (
+      <Pressable style={s.pendingBanner} onPress={() => onNavigate("/doctor/connection-status")}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.pendingLabel}>⏳ Approval pending</Text>
+          <Text style={s.pendingSub}>Waiting for your doctor to accept. You'll be notified automatically.</Text>
+        </View>
+        <Text style={s.pendingLink}>View</Text>
+      </Pressable>
+    );
+  }
+  if (subscriptionStatus !== "active" && !reqStatus) {
+    return (
+      <Pressable style={s.findBanner} onPress={() => onNavigate("/doctor/find-doctor")}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.findLabel}>🩺 Connect with a doctor</Text>
+          <Text style={s.findSub}>Get a personalised meal plan from a certified dietician.</Text>
+        </View>
+        <Text style={s.findLink}>Find →</Text>
+      </Pressable>
+    );
+  }
+  return null;
+}
 export default function HomeScreen() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -81,6 +159,14 @@ export default function HomeScreen() {
     queryKey: QUERY_KEYS.TODAY,
     queryFn: getTodaySummary,
     refetchInterval: 60_000,
+  });
+
+  // Audit C-6: streak lives on its own endpoint — it is NOT part of TodaySummary.
+  // The old code read today?.streak which was always undefined → always 0.
+  const { data: streakData } = useQuery({
+    queryKey: QUERY_KEYS.STREAK,
+    queryFn: getStreak,
+    staleTime: 1000 * 60 * 5,
   });
 
   React.useEffect(() => { if (today) hydrateSummary(today); }, [today]);
@@ -141,10 +227,12 @@ export default function HomeScreen() {
   });
 
   // ── Derived UI values ─────────────────────────────────────────────────────
-  const dailyTarget = today?.tdee ? today.tdee - 400 : (profile ? 1850 : 1850);
-  const cals         = today?.calories_consumed ?? 0;
+  // Audit C-6: nested response shape — today?.calories_consumed → today?.calories?.consumed.
+  // streak is fetched from its own endpoint (streakData), not from TodaySummary.
+  const dailyTarget = today?.calories?.target ?? (profile ? 1850 : 1850);
+  const cals         = today?.calories?.consumed ?? 0;
   const calPercent   = Math.min(100, Math.round((cals / dailyTarget) * 100));
-  const streak       = today?.streak ?? 0;
+  const streak       = streakData?.streak_days ?? 0; // Audit C-6: was today?.streak (field never existed)
   const hasUnread    = true; // static badge — Phase 5 FCM will drive this
 
   const firstName = profile?.name?.split(" ")[0] ?? "there";
@@ -163,27 +251,14 @@ export default function HomeScreen() {
     <View style={s.root}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
-        {/* ── Top header card ── */}
-        <View style={s.headerCard}>
-          <View style={s.headerRow}>
-            <View>
-              <Text style={s.greetingText}>{greeting()}, {firstName} ☀️</Text>
-              <Text style={s.dateText}>{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</Text>
-            </View>
-            <Pressable onPress={() => router.push("/home/notifications")} style={s.bellBtn}>
-              <Bell size={20} color="#374151" />
-              {hasUnread && <View style={s.bellDot} />}
-            </Pressable>
-          </View>
-          <View style={s.pillRow}>
-            <View style={s.streakPill}>
-              <Text style={s.streakEmoji}>🔥</Text>
-              <Text style={s.streakText}>{streak} Day Streak</Text>
-            </View>
-          </View>
-        </View>
+        <HomeHeader
+          firstName={firstName}
+          streak={streak}
+          hasUnread={hasUnread}
+          onBellPress={() => router.push("/home/notifications")}
+        />
 
-        <View style={s.body}>
+                <View style={s.body}>
           {/* ── Calories ring ── */}
           <Text style={s.sectionLabel}>TODAY'S CALORIES</Text>
           <View style={s.card}>
@@ -256,37 +331,13 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          {/* ── Doctor / subscription banners ── */}
-          {profile?.subscription_status === "active" && profile?.doctor_id && (
-            <Pressable style={s.doctorBanner} onPress={() => router.push("/doctor/connection-status")}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.doctorLabel}>📋 Doctor connected</Text>
-                <Text style={s.doctorSub}>Tap to view your plan details</Text>
-              </View>
-              <Text style={s.doctorLink}>View</Text>
-            </Pressable>
-          )}
-          {/* Pending approval banner — visible while doctor hasn't accepted yet */}
-          {profile?.subscription_status !== "active" && reqStatus?.status === "pending" && (
-            <Pressable style={s.pendingBanner} onPress={() => router.push("/doctor/connection-status")}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.pendingLabel}>⏳ Approval pending</Text>
-                <Text style={s.pendingSub}>Waiting for your doctor to accept. You'll be notified automatically.</Text>
-              </View>
-              <Text style={s.pendingLink}>View</Text>
-            </Pressable>
-          )}
-          {/* Not connected nudge */}
-          {profile?.subscription_status !== "active" && !reqStatus && (
-            <Pressable style={s.findBanner} onPress={() => router.push("/doctor/find-doctor")}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.findLabel}>🩺 Connect with a doctor</Text>
-                <Text style={s.findSub}>Get a personalised meal plan from a certified dietician.</Text>
-              </View>
-              <Text style={s.findLink}>Find →</Text>
-            </Pressable>
-          )}
-        </View>
+          <DoctorStatusBanner
+            subscriptionStatus={profile?.subscription_status}
+            doctorId={profile?.doctor_id}
+            reqStatus={reqStatus}
+            onNavigate={(path) => router.push(path as any)}
+          />
+                </View>
       </ScrollView>
 
       {/* ── Log Meal Sheet ── */}
@@ -332,7 +383,7 @@ export default function HomeScreen() {
           </View>
           <View style={sh.dropRow}>
             {Array.from({ length: 8 }, (_, i) => (
-              <Droplets key={i} size={20} color={i < tempWater ? "#2563EB" : "#E5E7EB"} />
+              <Droplets key={`drop-${i}`} size={20} color={i < tempWater ? "#2563EB" : "#E5E7EB"} />
             ))}
           </View>
           <Pressable style={sh.cta} onPress={() => waterMut.mutate(tempWater)} disabled={waterMut.isPending}>
@@ -373,7 +424,7 @@ const s = StyleSheet.create({
   root:        { flex: 1, backgroundColor: "#F9FAFB" },
   loader:      { flex: 1, alignItems: "center", justifyContent: "center" },
   scroll:      { paddingBottom: 32 },
-  headerCard:  { backgroundColor: "#fff", padding: 16, paddingTop: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2 },
+  headerCard:  { backgroundColor: "#fff", padding: 16, paddingTop: 20, boxShadow: "0px 2px 6px rgba(0,0,0,0.04)" },
   headerRow:   { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   greetingText:{ fontSize: 20, fontWeight: "600", color: "#111827" },
   dateText:    { fontSize: 13, color: "#6B7280", marginTop: 2 },

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -25,6 +25,7 @@ router = APIRouter()
 @router.post("/doctors", response_model=DoctorAdminView, status_code=201)
 async def create_doctor(
     body: CreateDoctorRequest,
+    request: Request,
     admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
@@ -44,6 +45,16 @@ async def create_doctor(
         await session.flush()
     except IntegrityError:
         raise HTTPException(status_code=409, detail="Email already registered")
+    await log_action(
+        session,
+        actor_id=admin.id,
+        actor_role="admin",
+        action="create_doctor",
+        entity_type="doctor",
+        entity_id=doctor.id,
+        ip_address=request.client.host if request.client else None,
+        detail={"email": body.email, "name": body.name},
+    )
     return doctor
 
 
@@ -120,7 +131,7 @@ async def get_stats(
 async def list_patients(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    search: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None, max_length=100),
     admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
@@ -147,6 +158,7 @@ async def list_patients(
 @router.patch("/doctors/{doctor_id}/deactivate")
 async def deactivate_doctor(
     doctor_id: int,
+    request: Request,
     admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
@@ -163,6 +175,15 @@ async def deactivate_doctor(
         update(Doctor).where(Doctor.id == doctor_id).values(is_active=False)
     )
     await session.flush()
+    await log_action(
+        session,
+        actor_id=admin.id,
+        actor_role="admin",
+        action="deactivate_doctor",
+        entity_type="doctor",
+        entity_id=doctor_id,
+        ip_address=request.client.host if request.client else None,
+    )
     return {"message": f"Doctor {doctor_id} deactivated"}
 
 
@@ -239,8 +260,8 @@ async def delete_doctor(
 async def get_audit_logs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    actor_role: Optional[str] = Query(default=None),
-    action: Optional[str] = Query(default=None),
+    actor_role: Optional[Literal["patient", "doctor", "admin"]] = Query(default=None),
+    action: Optional[str] = Query(default=None, max_length=50),
     admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
@@ -379,7 +400,7 @@ async def override_subscription(
 
 @router.get("/food", response_model=list[FoodAdminView])
 async def list_food_items(
-    source: Optional[str] = Query(default=None, description="manual | doctor"),
+    source: Optional[Literal["manual", "doctor", "doctor_global", "rejected"]] = Query(default=None),
     is_verified: Optional[bool] = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
@@ -598,8 +619,12 @@ async def erase_patient_data(
 
 class BillingMarkPaidRequest(BaseModel):
     amount: Optional[float] = Field(default=None, ge=0)
-    notes: Optional[str] = Field(default=None, max_length=500)
-    period: Optional[str] = Field(default=None, description="e.g. '2026-03'")
+    notes:  Optional[str]   = Field(default=None, max_length=500)
+    period: Optional[str]   = Field(
+        default=None,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        description="Billing period in YYYY-MM format e.g. '2026-03'",
+    )
 
 
 @router.post("/billing/{doctor_id}/mark-paid")
@@ -823,3 +848,72 @@ async def admin_override_approve_renewal(
 # Note: stats endpoint already exists — we patch it at runtime via the
 # existing route. The expiring_soon_count + pending_renewals_count are
 # appended by the updated get_stats function below (replaces old one).
+
+
+# ─── DELETE /api/v1/admin/patients/{patient_id}/hard-delete ──────────────
+#
+# DEV-ONLY endpoint — physically removes a patient row from the database
+# so the same email address can be re-registered during testing.
+#
+# Gated behind ALLOW_HARD_DELETE=True in .env — returns 403 if the flag
+# is not set. MUST remain False in any production environment.
+#
+# Difference from /patients/{id} (DPDP erase):
+#   DPDP erase → anonymises the row, keeps it for aggregate stats
+#   hard-delete → physically removes everything, frees the email immediately
+
+@router.delete("/patients/{patient_id}/hard-delete")
+async def hard_delete_patient(
+    patient_id: int,
+    request: Request,
+    admin: Admin = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    from ..core.config import settings
+
+    if not settings.ALLOW_HARD_DELETE:
+        raise HTTPException(
+            status_code=403,
+            detail="Hard-delete is disabled. Set ALLOW_HARD_DELETE=True in .env (dev only).",
+        )
+
+    patient_result = await session.execute(select(Patient).where(Patient.id == patient_id))
+    patient = patient_result.scalars().first()
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    patient_email = patient.email  # capture before deletion for the response
+
+    # Delete all dependent rows first (FK order matters)
+    await session.execute(sa_delete(MealLog).where(MealLog.patient_id == patient_id))
+    await session.execute(sa_delete(ProgressLog).where(ProgressLog.patient_id == patient_id))
+    await session.execute(sa_delete(ClinicalNote).where(ClinicalNote.patient_id == patient_id))
+    await session.execute(sa_delete(Rec).where(Rec.patient_id == patient_id))
+    await session.execute(sa_delete(PatientVisit).where(PatientVisit.patient_id == patient_id))
+
+    # Nullify used_by_patient_id on any subscription codes this patient consumed
+    # so the code row itself stays (for billing audit) but the FK is cleaned up
+    from sqlalchemy import update as sa_update
+    await session.execute(
+        sa_update(SubscriptionCode)
+        .where(SubscriptionCode.used_by_patient_id == patient_id)
+        .values(used_by_patient_id=None)
+    )
+
+    # Now physically delete the patient row
+    await session.execute(sa_delete(Patient).where(Patient.id == patient_id))
+    await session.flush()
+
+    await log_action(
+        session,
+        actor_id=admin.id,
+        actor_role="admin",
+        action="hard_delete_patient",
+        entity_type="patient",
+        entity_id=patient_id,
+        ip_address=request.client.host if request.client else None,
+        detail={"email": patient_email, "dev_only": True},
+    )
+    return {
+        "message": f"Patient {patient_id} permanently deleted.",
+    }

@@ -40,7 +40,10 @@ async def log_meal(
         # Try to find the food_item by matching meal_type in the recommendation's meals JSONB
         from ..models.db_models import Recommendation
         rec_result = await session.execute(
-            select(Recommendation.meals).where(Recommendation.id == recommendation_id)
+            select(Recommendation.meals).where(
+                Recommendation.id == recommendation_id,
+                Recommendation.patient_id == patient_id,  # T2-3: prevent cross-patient rec access
+            )
         )
         rec_meals = rec_result.scalar()
         if rec_meals:
@@ -104,9 +107,12 @@ async def calculate_adherence(
     today = date.today()
     start = today - timedelta(days=days - 1)
 
-    # Get patient's meals_per_day target
+    # Get patient's meals_per_day target (only for active patients)
     patient_result = await session.execute(
-        select(Patient.meals_per_day, Patient.id).where(Patient.id == patient_id)
+        select(Patient.meals_per_day, Patient.id).where(
+            Patient.id == patient_id,
+            Patient.is_active == True,
+        )
     )
     patient_row = patient_result.first()
     meals_per_day_target = patient_row.meals_per_day if patient_row else 5

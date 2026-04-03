@@ -8,9 +8,11 @@
 // ─── Auth responses ──────────────────────────────────────────────────────────
 
 /** Returned by /auth/doctor/login and /auth/admin/login on successful login (no MFA) */
+// Audit W-7: doctor/admin logins place refresh_token in an HttpOnly cookie, NOT
+// the response body. Marking it optional so the type contract matches reality.
 export interface LoginResponse {
   access_token: string;
-  refresh_token: string;
+  refresh_token?: string; // present only for patient login; cookie-based for doctor/admin
   token_type: 'bearer';
 }
 
@@ -30,30 +32,10 @@ export interface RefreshResponse {
 }
 
 // ─── Decoded JWT claim shapes ────────────────────────────────────────────────
-// These are what you get after decoding the access_token with jwt-decode.
-// We use them to extract user_id and user_name after login.
-
-export interface DoctorTokenClaims {
-  sub: string;       // email
-  role: 'doctor';
-  user_type: 'doctor';
-  doctor_id: number;
-  exp: number;
-  iat: number;
-  nbf: number;
-}
-
-export interface AdminTokenClaims {
-  sub: string;       // email
-  role: 'admin';
-  user_type: 'admin';
-  admin_id: number;
-  exp: number;
-  iat: number;
-  nbf: number;
-}
-
-export type TokenClaims = DoctorTokenClaims | AdminTokenClaims;
+// DoctorTokenClaims, AdminTokenClaims, and TokenClaims were removed — they
+// were never imported anywhere. authService.ts decodes JWTs with
+// Record<string, unknown> and accesses claims by key directly.
+// Restore here if typed JWT decoding is introduced.
 
 // ─── MFA step-2 request bodies ───────────────────────────────────────────────
 

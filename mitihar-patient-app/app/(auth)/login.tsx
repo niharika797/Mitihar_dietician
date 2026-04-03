@@ -41,8 +41,8 @@ function GoogleIcon() {
 }
 
 export default function LoginScreen() {
-  const router = useRouter();
-  const { setTokens, setProfile } = useAuthStore();
+  const router = useRouter(); // still used for "Register" link and "Forgot password" nav
+  const { loginSuccess } = useAuthStore();
   const { showToast } = useToast();
 
   const [email, setEmail]       = useState("");
@@ -50,29 +50,16 @@ export default function LoginScreen() {
   const [showPw, setShowPw]     = useState(false);
 
   const loginMut = useMutation({
-    mutationFn: () => loginPatient(email.trim(), password),
-    onSuccess: async (tokens) => {
-      await setTokens(tokens.access_token, tokens.refresh_token);
-      try {
-        const profile = await getMyProfile();
-        setProfile(profile);
-        // Onboarding is complete when:
-        //   1. disclaimer_accepted_at is set (authoritative), OR
-        //   2. height_cm > 0 AND weight_kg > 0 (placeholder values used at registration are 0)
-        // This dual-check prevents re-directing existing completed patients to onboarding
-        // even if disclaimer_accepted_at was missed due to a previous backend bug.
-        const onboardingDone =
-          !!profile.disclaimer_accepted_at ||
-          (Number(profile.height_cm) > 0 && Number(profile.weight_kg) > 0);
-
-        if (!onboardingDone) {
-          router.replace("/(onboarding)/personal-info");
-        } else {
-          router.replace("/(tabs)");
-        }
-      } catch {
-        router.replace("/(tabs)");
-      }
+    mutationFn: async () => {
+      const tokens = await loginPatient(email.trim(), password);
+      const profile = await getMyProfile();
+      return { tokens, profile };
+    },
+    onSuccess: ({ tokens, profile }) => {
+      // Single atomic update — AuthGate sees isAuthenticated+profile together
+      // and routes to the correct destination without any race condition.
+      // Do NOT call router.replace here; AuthGate owns all post-auth navigation.
+      loginSuccess(tokens.access_token, tokens.refresh_token, profile);
     },
     onError: () => showToast("Invalid email or password", "error"),
   });

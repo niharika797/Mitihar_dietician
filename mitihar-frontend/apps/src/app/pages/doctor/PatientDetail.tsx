@@ -129,7 +129,7 @@ export function PatientDetail() {
       {/* Tab content */}
       <div className="p-6">
         {activeTab === 'profile'  && <ProfileTab  patient={patient} />}
-        {activeTab === 'plan'     && <PlanTab     patientId={patientId} patientTdee={patient.tdee ?? 2000} patientName={patient.name} patientDietType={patient.diet_type ?? 'Vegetarian'} />}
+        {activeTab === 'plan'     && <PlanTab     patientId={patientId} patientTdee={patient.tdee ?? 2000} patientName={patient.name} patientDietType={patient.diet_type ?? 'Vegetarian'} patientMealsPerDay={patient.meals_per_day ?? 3} />}
         {activeTab === 'activity' && <ActivityTab patientId={patientId} patientName={patient.name} />}
         {activeTab === 'notes'    && <NotesTab    patientId={patientId} patientName={patient.name} />}
         {activeTab === 'visits'   && <VisitsTab   patientId={patientId} patientName={patient.name} />}

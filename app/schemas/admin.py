@@ -1,15 +1,35 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from datetime import datetime
 
 class CreateDoctorRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=8)
-    name: str = Field(..., min_length=1)
-    phone: Optional[str] = None
-    specialization: Optional[str] = None
-    clinic_name: Optional[str] = None
-    city: Optional[str] = None
+    email:          EmailStr
+    password:       str           = Field(..., min_length=8)
+    name:           str           = Field(..., min_length=1, max_length=100)
+    phone:          Optional[str] = Field(
+        default=None,
+        max_length=20,
+        pattern=r"^\+?[\d\s\-\(\)]{7,20}$",
+    )
+    specialization: Optional[str] = Field(default=None, max_length=100)
+    clinic_name:    Optional[str] = Field(default=None, max_length=200)
+    city:           Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("name", "specialization", "clinic_name", "city", mode="before")
+    @classmethod
+    def strip_text_fields(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Password must contain at least one letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
 
 class DoctorAdminView(BaseModel):
     id: int

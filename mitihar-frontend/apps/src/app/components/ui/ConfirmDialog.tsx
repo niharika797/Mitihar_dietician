@@ -26,7 +26,7 @@ export function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
+      <div className="absolute inset-0 bg-black/40" onClick={onCancel} onKeyDown={(e) => e.key === "Escape" && onCancel()} role="button" aria-label="Close dialog" tabIndex={0} />
       <div
         className="relative bg-white rounded-lg shadow-[0_20px_25px_-5px_rgb(0_0_0/0.1)] w-full max-w-[480px] mx-4 p-6"
       >

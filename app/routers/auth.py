@@ -12,13 +12,16 @@ Backward-compatible: accounts with mfa_enabled=False go through exactly the same
 code path as before — no change to the token structure they receive.
 """
 
+import logging
 from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+
+logger = logging.getLogger(__name__)
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.database import get_db
 from ..core.limiter import limiter
-from ..core.security import create_access_token, create_refresh_token, get_current_doctor, get_current_admin, verify_password, get_password_hash
+from ..core.security import create_access_token, create_refresh_token, get_current_patient, get_current_doctor, get_current_admin, verify_password, get_password_hash
 from ..models.db_models import Doctor, Patient
 from ..schemas.user import UserCreate
 from ..services.audit_service import log_action
@@ -111,7 +114,12 @@ def _issue_partial_token(role_pending: str, user_id: int, email: str) -> str:
 def _decode_partial_token(token: str, expected_role: str) -> dict:
     """Decode & validate a partial MFA token. Raises HTTPException on any failure."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=["HS256"],
+            options={"verify_exp": True, "verify_iat": True, "verify_nbf": True},
+        )
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired MFA session token")
     if payload.get("role") != expected_role:
@@ -124,7 +132,7 @@ def _decode_partial_token(token: str, expected_role: str) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=dict)
-@limiter.limit("10/minute")
+@limiter.limit("3/hour")
 async def register(
     request: Request,
     user_data: UserCreate,
@@ -202,21 +210,69 @@ async def register(
 
 
 @router.post("/token")
-@limiter.limit("20/minute")
+@limiter.limit("5/15minutes")
 async def login(
     request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: AsyncSession = Depends(get_db),
 ):
-    """Patient login — returns JWT tokens."""
+    """Patient login — returns JWT tokens. Refresh token is set as HttpOnly cookie."""
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import update as _sa_update
+
+    # Pre-fetch patient to check lockout before running bcrypt
+    result = await session.execute(select(Patient).where(Patient.email == form_data.username))
+    raw_patient = result.scalars().first()
+
+    if raw_patient and raw_patient.locked_until:
+        if datetime.now(timezone.utc) < raw_patient.locked_until.replace(tzinfo=timezone.utc) \
+                if raw_patient.locked_until.tzinfo is None else raw_patient.locked_until:
+            raise HTTPException(
+                status_code=423,
+                detail="Account temporarily locked due to too many failed login attempts. Try again later.",
+            )
+
     patient = await authenticate_patient(session, form_data.username, form_data.password)
     if not patient:
+        # Increment failed attempt counter; lock after 10 consecutive failures
+        if raw_patient:
+            attempts = (raw_patient.failed_login_attempts or 0) + 1
+            lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
+            await session.execute(
+                _sa_update(Patient)
+                .where(Patient.id == raw_patient.id)
+                .values(failed_login_attempts=attempts, locked_until=lock_until)
+            )
+            await session.flush()
+        logger.warning(
+            "login_failed role=patient email=%s ip=%s",
+            form_data.username,
+            request.client.host if request.client else "unknown",
+        )
         raise HTTPException(
             status_code=401,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return _issue_tokens(_patient_token_data(patient))
+    # Success — reset lockout counter
+    await session.execute(
+        _sa_update(Patient)
+        .where(Patient.id == patient.id)
+        .values(failed_login_attempts=0, locked_until=None)
+    )
+    logger.info(
+        "login_success role=patient user_id=%s email=%s ip=%s",
+        patient.id,
+        patient.email,
+        request.client.host if request.client else "unknown",
+    )
+    tokens = _issue_tokens(_patient_token_data(patient))
+    # Patient app is React Native — it cannot read HttpOnly cookies.
+    # SecureStore on mobile provides equivalent security to HttpOnly cookies on web.
+    # We return the refresh_token in the body for the mobile app to store in SecureStore.
+    # Doctor/admin tokens use HttpOnly cookies (web browser clients only).
+    return {"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"], "token_type": "bearer"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -237,13 +293,39 @@ async def admin_login(
     If mfa_enabled=True  → partial token (5 min); client must call /admin/mfa-login.
     """
     from ..models.db_models import Admin as AdminModel
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import update as _sa_update
 
     result = await session.execute(
         select(AdminModel).where(AdminModel.email == form_data.username)
     )
     admin = result.scalars().first()
 
+    # Check lockout before running bcrypt
+    if admin and admin.locked_until:
+        locked = admin.locked_until if admin.locked_until.tzinfo else \
+            admin.locked_until.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) < locked:
+            raise HTTPException(
+                status_code=423,
+                detail="Account temporarily locked due to too many failed login attempts. Try again later.",
+            )
+
     if admin is None or not verify_password(form_data.password, admin.hashed_password):
+        if admin:
+            attempts = (admin.failed_login_attempts or 0) + 1
+            lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
+            await session.execute(
+                _sa_update(AdminModel)
+                .where(AdminModel.id == admin.id)
+                .values(failed_login_attempts=attempts, locked_until=lock_until)
+            )
+            await session.flush()
+        logger.warning(
+            "login_failed role=admin email=%s ip=%s",
+            form_data.username,
+            request.client.host if request.client else "unknown",
+        )
         raise HTTPException(
             status_code=401,
             detail="Incorrect email or password",
@@ -252,10 +334,28 @@ async def admin_login(
     if not admin.is_active:
         raise HTTPException(status_code=403, detail="Account deactivated")
 
+    # Success — reset lockout counter
+    await session.execute(
+        _sa_update(AdminModel).where(AdminModel.id == admin.id)
+        .values(failed_login_attempts=0, locked_until=None)
+    )
+
     if admin.mfa_enabled:
         partial = _issue_partial_token("mfa_pending_admin", admin.id, admin.email)
+        logger.info(
+            "login_success role=admin mfa_step=1 user_id=%s email=%s ip=%s",
+            admin.id,
+            admin.email,
+            request.client.host if request.client else "unknown",
+        )
         return {"mfa_required": True, "partial_token": partial}
 
+    logger.info(
+        "login_success role=admin user_id=%s email=%s ip=%s",
+        admin.id,
+        admin.email,
+        request.client.host if request.client else "unknown",
+    )
     tokens = _issue_tokens(_admin_token_data(admin))
     response.set_cookie(
         key="refresh_token",
@@ -266,7 +366,7 @@ async def admin_login(
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         path="/api/v1/auth",
     )
-    return tokens
+    return {"access_token": tokens["access_token"], "token_type": "bearer"}
 
 
 class MFALoginRequest(BaseModel):
@@ -398,16 +498,14 @@ async def refresh_token(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Refresh access token for doctor, admin, or patient.
-
-    Doctor / Admin: reads refresh_token from the HttpOnly cookie set at login.
-    Patient (legacy): reads refresh_token from JSON request body.
-    Returns a new access_token. Re-issues the HttpOnly cookie for doctor/admin.
+    Refresh access token.
+    Doctor / Admin: reads refresh_token from HttpOnly cookie (web browser clients).
+    Patient:        reads refresh_token from request body (React Native / SecureStore).
     """
-    # 1. Try HttpOnly cookie first (doctor / admin path)
+    # 1. Try HttpOnly cookie first (doctor / admin — web browser clients)
     refresh_tok: Optional[str] = request.cookies.get("refresh_token")
 
-    # 2. Fallback to JSON body (patient path)
+    # 2. Fallback to JSON body (patient — React Native stores in SecureStore)
     if not refresh_tok:
         try:
             body = await request.json()
@@ -468,15 +566,13 @@ async def refresh_token(
         return {"access_token": tokens["access_token"], "token_type": "bearer"}
 
     else:
-        # Patient path — legacy body-based refresh
+        # Patient path — React Native mobile app uses SecureStore (equivalent to HttpOnly cookie).
+        # Return refresh_token in body so the app can persist it in SecureStore.
         patient = await get_patient_by_email(session, email)
         if not patient:
             raise HTTPException(status_code=401, detail="Patient not found")
-        access_token = create_access_token(
-            data=_patient_token_data(patient),
-            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-        )
-        return {"access_token": access_token, "token_type": "bearer"}
+        tokens = _issue_tokens(_patient_token_data(patient))
+        return {"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"], "token_type": "bearer"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -589,10 +685,37 @@ async def doctor_login(
     If mfa_enabled=False → full JWT immediately.
     If mfa_enabled=True  → partial token (5 min); client must call /doctor/mfa-login.
     """
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import update as _sa_update
+
     result = await session.execute(select(Doctor).where(Doctor.email == form_data.username))
     doctor = result.scalars().first()
 
+    # Check lockout before running bcrypt
+    if doctor and doctor.locked_until:
+        locked = doctor.locked_until if doctor.locked_until.tzinfo else \
+            doctor.locked_until.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) < locked:
+            raise HTTPException(
+                status_code=423,
+                detail="Account temporarily locked due to too many failed login attempts. Try again later.",
+            )
+
     if doctor is None or not verify_password(form_data.password, doctor.hashed_password):
+        if doctor:
+            attempts = (doctor.failed_login_attempts or 0) + 1
+            lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
+            await session.execute(
+                _sa_update(Doctor)
+                .where(Doctor.id == doctor.id)
+                .values(failed_login_attempts=attempts, locked_until=lock_until)
+            )
+            await session.flush()
+        logger.warning(
+            "login_failed role=doctor email=%s ip=%s",
+            form_data.username,
+            request.client.host if request.client else "unknown",
+        )
         raise HTTPException(
             status_code=401,
             detail="Incorrect email or password",
@@ -601,10 +724,28 @@ async def doctor_login(
     if not doctor.is_active:
         raise HTTPException(status_code=403, detail="Account deactivated")
 
+    # Success — reset lockout counter
+    await session.execute(
+        _sa_update(Doctor).where(Doctor.id == doctor.id)
+        .values(failed_login_attempts=0, locked_until=None)
+    )
+
     if doctor.mfa_enabled:
         partial = _issue_partial_token("mfa_pending_doctor", doctor.id, doctor.email)
+        logger.info(
+            "login_success role=doctor mfa_step=1 user_id=%s email=%s ip=%s",
+            doctor.id,
+            doctor.email,
+            request.client.host if request.client else "unknown",
+        )
         return {"mfa_required": True, "partial_token": partial}
 
+    logger.info(
+        "login_success role=doctor user_id=%s email=%s ip=%s",
+        doctor.id,
+        doctor.email,
+        request.client.host if request.client else "unknown",
+    )
     tokens = _issue_tokens(_doctor_token_data(doctor))
     response.set_cookie(
         key="refresh_token",
@@ -615,7 +756,7 @@ async def doctor_login(
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         path="/api/v1/auth",
     )
-    return tokens
+    return {"access_token": tokens["access_token"], "token_type": "bearer"}
 
 
 @router.post("/doctor/mfa-login")
@@ -904,19 +1045,13 @@ async def verify_email(
 async def resend_verification_email(
     request: Request,
     session: AsyncSession = Depends(get_db),
+    patient=Depends(get_current_patient),
 ):
     """
     Re-send the email verification link for the currently authenticated patient.
     Rate-limited to 3/minute — prevents verification-email flooding.
     The patient must be logged in (holds a valid access token).
     """
-    from ..core.security import get_current_patient
-    from ..models.db_models import Patient as PatientModel
-
-    patient = await get_current_patient(
-        token=request.headers.get("authorization", "").replace("Bearer ", "").strip(),
-        session=session,
-    )
 
     if patient.is_email_verified:
         return {"message": "Email is already verified."}
@@ -939,15 +1074,16 @@ async def resend_verification_email(
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ForgotPasswordRequest(BaseModel):
-    email: str = Field(..., min_length=3)
+    email: EmailStr  # validates RFC 5321 format and normalises the address
 
 
 class ResetPasswordRequest(BaseModel):
     token: str = Field(..., min_length=10)
     new_password: str = Field(..., min_length=8)
 
-    @staticmethod
-    def validate_password(v: str) -> str:
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
         if not any(c.isalpha() for c in v):
             raise ValueError("Password must contain at least one letter")
         if not any(c.isdigit() for c in v):
@@ -1038,12 +1174,8 @@ async def reset_password(
     from datetime import datetime, timezone
     from sqlalchemy import update as sa_update, delete
 
-    # Validate new password strength before hitting DB
-    try:
-        ResetPasswordRequest.validate_password(body.new_password)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
+    # Password strength is enforced by ResetPasswordRequest.validate_password
+    # (Pydantic @field_validator) before this handler is entered.
     now = datetime.now(timezone.utc)
 
     result = await session.execute(
@@ -1060,12 +1192,13 @@ async def reset_password(
             detail="Reset link is invalid or has expired. Request a new one.",
         )
 
-    # Update password and consume (delete) the token atomically
+    # Update password and consume (delete) the token atomically.
+    # Setting password_changed_at invalidates all tokens issued before this moment (T1-7).
     new_hash = get_password_hash(body.new_password)
     await session.execute(
         sa_update(PatientModel)
         .where(PatientModel.id == prt.patient_id)
-        .values(hashed_password=new_hash)
+        .values(hashed_password=new_hash, password_changed_at=datetime.now(timezone.utc))
     )
     await session.execute(
         delete(PasswordResetToken).where(PasswordResetToken.id == prt.id)
@@ -1073,3 +1206,31 @@ async def reset_password(
     await session.flush()
 
     return {"message": "Password reset successfully. You can now log in with your new password."}
+
+
+# ─── POST /api/v1/auth/register-fcm-token ──────────────────────────────────────
+#
+# Stores (or clears) the patient's FCM device token.
+# Called by the patient app after login + notification permission granted.
+# Pass { "fcm_token": null } on logout to clear the token so notifications
+# are not delivered to a device that is no longer authenticated.
+
+class FCMTokenRequest(BaseModel):
+    fcm_token: Optional[str] = None
+
+
+@router.post("/register-fcm-token", status_code=200)
+async def register_fcm_token(
+    body: FCMTokenRequest,
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import update as sa_update
+    await session.execute(
+        sa_update(Patient)
+        .where(Patient.id == patient.id)
+        .values(fcm_token=body.fcm_token)
+    )
+    await session.flush()
+    action = "registered" if body.fcm_token else "cleared"
+    return {"message": f"FCM token {action} successfully."}

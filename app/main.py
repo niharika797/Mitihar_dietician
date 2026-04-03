@@ -1,11 +1,14 @@
 import logging
+import uuid
 from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -21,6 +24,16 @@ from .routers.doctor import router as doctor_router
 from .routers.admin import router as admin_router
 
 _log = logging.getLogger(__name__)
+
+
+# ─── X-Request-ID middleware ──────────────────────────────────────────────────
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
 
 # ─── Daily cron: flag expiring patients ───────────────────────────────────────
@@ -85,6 +98,24 @@ async def _deactivate_expired_patients() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── T1-8: COOKIE_SECURE startup guard ────────────────────────────────────────
+    import socket
+    if not settings.COOKIE_SECURE:
+        hostname = socket.gethostname()
+        is_local = hostname in ("localhost", "127.0.0.1") or hostname.startswith("DESKTOP-") \
+            or hostname.endswith(".local")
+        if not is_local:
+            _log.critical(
+                "SECURITY WARNING: COOKIE_SECURE=False on a non-localhost host (%s). "
+                "Refresh tokens will be sent over plain HTTP and can be intercepted. "
+                "Set COOKIE_SECURE=True in .env before deploying to production.",
+                hostname,
+            )
+
+    # ── Firebase Admin SDK (push notifications) ───────────────────────
+    from .services.notification_service import init_firebase
+    init_firebase()
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(_flag_expiring_patients,      CronTrigger(hour=1, minute=0))
     scheduler.add_job(_deactivate_expired_patients, CronTrigger(hour=1, minute=5))
@@ -94,6 +125,8 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
     _log.info("APScheduler shut down")
 
+# NOTE: slowapi uses in-memory storage by default.
+# Set REDIS_URL in .env before multi-worker production deployment.
 # TODO: Switch to RedisStorage before multi-worker/production deployment
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
@@ -118,10 +151,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Cookie"],
 )
-app.add_middleware(SecurityHeadersMiddleware)        # outermost — must be last
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIDMiddleware)              # outermost — runs first on request
 
 # --- Routers ---
 app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
@@ -133,6 +167,18 @@ app.include_router(meal_plan_router, prefix=f"{settings.API_V1_STR}/meal-plan", 
 app.include_router(patients_router, prefix=f"{settings.API_V1_STR}/patients", tags=["patients"])
 app.include_router(doctor_router, prefix=f"{settings.API_V1_STR}/doctor", tags=["doctor"])
 app.include_router(admin_router, prefix=f"{settings.API_V1_STR}/admin", tags=["admin"])
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    _log.exception(
+        "Unhandled error: method=%s path=%s",
+        request.method, request.url.path,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
 
 @app.get("/")
 async def root():

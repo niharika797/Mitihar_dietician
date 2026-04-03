@@ -166,7 +166,7 @@ export default function ProgressScreen() {
             <Text style={s.streakSub}>Keep logging every day</Text>
             <View style={s.dotRow}>
               {STREAK_DOTS.map((done, i) => (
-                <View key={i} style={s.dotCol}>
+                <View key={STREAK_LABELS[i]} style={s.dotCol}>
                   <Text style={s.dotLabel}>{STREAK_LABELS[i]}</Text>
                   <View style={[s.dot, done && s.dotDone]} />
                 </View>
@@ -191,7 +191,7 @@ export default function ProgressScreen() {
           </View>
           <View style={sh.dropRow}>
             {Array.from({ length: 8 }, (_, i) => (
-              <Droplets key={i} size={20} color={i < tempWater ? "#2563EB" : "#E5E7EB"} />
+              <Droplets key={`drop-${i}`} size={20} color={i < tempWater ? "#2563EB" : "#E5E7EB"} />
             ))}
           </View>
           <Pressable style={sh.cta} onPress={() => waterMut.mutate(tempWater)} disabled={waterMut.isPending}>

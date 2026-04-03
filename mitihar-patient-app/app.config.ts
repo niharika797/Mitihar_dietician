@@ -47,6 +47,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
     googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
-    eas: { projectId: "your-eas-project-id" },
+    eas: { projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID ?? "your-eas-project-id" },
   },
 });

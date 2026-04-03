@@ -69,13 +69,13 @@ export function AdminSettings() {
               <h2 className="text-base font-medium text-[#111827] mb-5">Security Settings</h2>
               <div className="max-w-md space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#374151] mb-1.5">Current Password</label>
-                  <input type="password" placeholder="••••••••"
+                  <label htmlFor="admin-current-pw" className="block text-sm font-medium text-[#374151] mb-1.5">Current Password</label>
+                  <input id="admin-current-pw" type="password" placeholder="••••••••"
                     className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#374151] mb-1.5">New Password</label>
-                  <input type="password" placeholder="••••••••"
+                  <label htmlFor="admin-new-pw" className="block text-sm font-medium text-[#374151] mb-1.5">New Password</label>
+                  <input id="admin-new-pw" type="password" placeholder="••••••••"
                     className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
                 </div>
                 <button

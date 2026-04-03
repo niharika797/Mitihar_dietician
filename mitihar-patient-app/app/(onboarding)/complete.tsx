@@ -5,7 +5,6 @@ import Svg, { Path } from "react-native-svg";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/useAuthStore";
 import { computeHealthStats } from "../../utils/calculations";
-import { generatePlan } from "../../services/meals";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 
 function CheckCircle() {
@@ -23,12 +22,11 @@ export default function CompleteScreen() {
   const qc = useQueryClient();
   const profile = useAuthStore(s => s.profile);
 
-  // Ensure a diet plan exists — re-trigger generation if onboarding
-  // completed but the backend silent-failed during plan auto-gen.
+  // Invalidate the plan cache so the Meals tab fetches fresh data when the
+  // user arrives. The backend generates the plan in the background after
+  // onboarding — by the time the user taps through to Meals it will be ready.
   useEffect(() => {
-    generatePlan()
-      .then(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN }))
-      .catch(() => {}); // soft-fail — user can retry from Meals tab
+    qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN });
   }, []);
 
   // Compute stats from stored profile or show fallback zeroes
@@ -86,7 +84,17 @@ export default function CompleteScreen() {
         </View>
       )}
 
-      <Pressable style={s.cta} onPress={() => router.replace("/(tabs)")}>
+      {/*
+        * NOTE: router.replace here is intentional and correct.
+        * AuthGate only intercepts navigation from (auth) screens — it has
+        * no handler for (onboarding) because adding one would cause AuthGate
+        * to skip this screen entirely (profile is already complete at this
+        * point). This is a user-initiated press, not a race-prone auto-nav.
+        */}
+      <Pressable
+        style={s.cta}
+        onPress={() => router.replace("/(tabs)")}
+      >
         <Text style={s.ctaText}>View My Meal Plan</Text>
       </Pressable>
     </ScrollView>
@@ -108,6 +116,6 @@ const s = StyleSheet.create({
   rowNote:            { fontSize: 11, color: "#6B7280", marginTop: 2 },
   rowValue:           { fontSize: 18, fontWeight: "700", color: "#111827" },
   rowValueHighlight:  { color: "#1E7C45" },
-  cta:                { width: "100%", height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
+  cta:                { width: "100%", height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
   ctaText:            { fontSize: 16, fontWeight: "600", color: "#fff" },
 });

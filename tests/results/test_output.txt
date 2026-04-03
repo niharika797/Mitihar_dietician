@@ -1,0 +1,330 @@
+
+[1m======================================================================[0m
+[1m  MITYAHAR — SECURITY VERIFICATION TEST SUITE[0m
+[1m  Server: http://localhost:8000[0m
+[1m======================================================================[0m
+
+[96m[1m── 1 · Server Health + Security Headers ──[0m
+  [92m✅[0m  GET / returns 200 with welcome message
+  [92m✅[0m  GET /docs (Swagger UI) reachable
+  [92m✅[0m  X-Content-Type-Options: nosniff present
+  [92m✅[0m  X-Frame-Options: DENY present
+  [92m✅[0m  X-XSS-Protection present
+  [92m✅[0m  Referrer-Policy present
+  [92m✅[0m  Content-Security-Policy present
+  [92m✅[0m  Permissions-Policy present
+
+[96m[1m── 2 · Admin Auth + Account Lockout (T1-6) ──[0m
+  [92m✅[0m  Failed login attempt 1 returns 401 or 429
+  [92m✅[0m  Failed login attempt 2 returns 401 or 429
+  [92m✅[0m  Failed login attempt 3 returns 401 or 429
+  [92m✅[0m  POST /auth/admin/login with correct password returns 200
+  [92m✅[0m  Admin access_token received
+  [92m✅[0m  Admin refresh_token NOT in response body (T1-2)
+  [92m✅[0m  Admin refresh_token cookie set (T1-2)
+  [92m✅[0m  CORS does not allow wildcard methods (T1-10)
+
+[96m[1m── 3 · Admin — Doctor Management + Input Validation (T4-16) ──[0m
+  [92m✅[0m  GET /admin/stats returns 200
+  [92m✅[0m  Stats has 'total_patients'
+  [92m✅[0m  Stats has 'total_doctors'
+  [92m✅[0m  Stats has 'active_subscriptions'
+  [92m✅[0m  Stats has 'expiring_soon_count'
+  [92m✅[0m  Stats has 'pending_renewals_count'
+  [92m✅[0m  T4-16: Password without digit rejected (422)
+  [92m✅[0m  T4-16: Password without letter rejected (422)
+  [92m✅[0m  T4-16: Invalid phone format rejected (422)
+  [92m✅[0m  T4-16: Name over 100 chars rejected (422)
+  [92m✅[0m  POST /admin/doctors creates test doctor (201 or 409)
+  [92m✅[0m  POST /admin/doctors creates test doctor 2 (201 or 409)
+  [92m✅[0m  GET /admin/doctors returns list
+  [92m✅[0m  Test doctor 1 found
+  [92m✅[0m  Test doctor 2 found
+  [92m✅[0m  GET /admin/doctors/{id} returns detail
+  [92m✅[0m  Detail has patient_count
+
+[96m[1m── 4 · Admin — Codes, Audit Logs, Billing ──[0m
+  [92m✅[0m  POST /admin/codes/generate returns 201
+  [92m✅[0m  2 codes generated
+  [92m✅[0m  T4-13: /admin/patients search > 100 chars rejected (422)
+  [92m✅[0m  T4-13: audit-logs actor_role='hacker' rejected (422)
+  [92m✅[0m  T4-13: /admin/food source='invalid_source' rejected (422)
+  [92m✅[0m  T4-15: period='26-03' (bad format) rejected (422)
+  [92m✅[0m  T4-15: period='2026-13' (month 13) rejected (422)
+  [92m✅[0m  T4-15: period='2026-03' (valid) returns 200
+  [92m✅[0m  GET /admin/audit-logs returns 200
+  [92m✅[0m  Audit has logs + total
+  [92m✅[0m  GET /admin/billing returns 200
+  [92m✅[0m  GET /admin/consultations returns 200
+  [92m✅[0m  GET /admin/consultations/annual returns 200
+  [92m✅[0m  GET /admin/renewals returns 200
+  [92m✅[0m  GET /admin/food returns 200
+
+[96m[1m── 5 · Doctor Auth + Lockout (T1-6) + Cookie (T1-2) ──[0m
+  [93m(Sending 10 bad login attempts to test lockout — takes ~2s)[0m
+  [92m✅[0m  T1-6: 10 failed doctor logins blocked (401/429)
+  [92m✅[0m  T1-6: After 10 failures, account locked or rate-limited (423/429)
+  [92m✅[0m  T1-6: Account blocked during lockout/rate-limit (423/429)
+  [93mℹ  Lockout confirmed. Waiting 62s for rate limiter to reset before doctor2 login...[0m
+  [92m✅[0m  POST /auth/doctor/login (doctor2) returns 200
+  [92m✅[0m  Doctor2 access_token received
+  [92m✅[0m  T1-2: Doctor refresh_token NOT in response body
+  [92m✅[0m  T1-2: Doctor refresh_token cookie set
+  [92m✅[0m  T1-2: POST /auth/refresh via cookie returns new access_token
+  [92m✅[0m  T1-2: Refresh does NOT return refresh_token in body
+  [92m✅[0m  T1-2: POST /auth/refresh with no cookie returns 401
+
+[96m[1m── 6 · Patient Auth + Cookie (T1-2) ──[0m
+  [92m✅[0m  POST /auth/register returns 200 or 409
+  [92m✅[0m  POST /auth/token (patient login) returns 200
+  [92m✅[0m  Patient access_token received
+  [92m✅[0m  T1-2: Patient refresh_token NOT in response body
+  [92m✅[0m  T1-2: Patient refresh_token cookie set
+  [92m✅[0m  T1-2: Patient /auth/refresh via cookie returns 200
+  [92m✅[0m  T4-1: forgot-password with invalid email rejected (422)
+  [92m✅[0m  T4-1: forgot-password with XSS string rejected (422)
+  [92m✅[0m  T4-1: forgot-password with valid email returns 200
+
+[96m[1m── 7 · Input Validation — Progress Schemas (T4-3, T4-4) ──[0m
+  [91m❌[0m  T4-3: meal_type='HACK' rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-3: XSS meal_type rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-3: calories=-1 rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-3: calories=999999 (> 5000) rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-3: protein=600 (> 500) rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-3: Valid meal log returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: glasses=-1 rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: glasses=999 (> 50) rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: glasses=3 (valid) returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: steps=-100 rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: steps=200000 (> 100000) rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: steps=8000 (valid) returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: weight=0 rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: weight=9999 (> 500) rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: weight=57.8 (valid) returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  GET /progress/today returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  GET /progress/weekly returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  GET /progress/weekly-report returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  GET /progress/weight-history returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  GET /progress/streak returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  GET /progress/adherence/weekly returns 200
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+
+[96m[1m── 8 · Patient — Activation + Onboarding Validation (T4-5/6/7) ──[0m
+  [92m✅[0m  POST /patients/activate returns 200
+  [92m✅[0m  T4-5: gender='alien' rejected (422)
+  [92m✅[0m  T4-5: activity_level='COUCH_POTATO' rejected (422)
+  [92m✅[0m  T4-5: pace_preference='turbo' rejected (422)
+  [92m✅[0m  T4-6: health_goals with 21 items rejected (422)
+  [92m✅[0m  T4-6: food_allergy item > 100 chars rejected (422)
+  [92m✅[0m  T4-7: meals_per_day=0 rejected (422)
+  [92m✅[0m  T4-7: sleep_hours=25 rejected (422)
+  [92m✅[0m  POST /patients/onboarding (valid) returns 200
+  [92m✅[0m  BMI populated after onboarding
+  [92m✅[0m  TDEE populated after onboarding
+  [92m✅[0m  POST /patients/disclaimer returns 200
+  [92m✅[0m  GET /users/me returns 200
+
+[96m[1m── 9 · Doctor — Recipes + IDOR (T2-1) + Validation (T4-8/9/10/11/12) ──[0m
+  [92m✅[0m  GET /doctor/recipes (global) returns 200
+  [91m❌[0m  T4-14: /doctor/recipes search > 100 chars rejected (422)
+       [93m↳ [][0m
+  [92m✅[0m  T4-10: slot_type='invalid_slot' rejected (422)
+  [92m✅[0m  T4-10: diet_type='Junk' rejected (422)
+  [92m✅[0m  T4-10: cal_per_serving=99999 rejected (422)
+  [92m✅[0m  T4-10: recipe_name > 200 chars rejected (422)
+  [92m✅[0m  T4-10: meal_time_tags with 11 items rejected (422)
+  [92m✅[0m  POST /doctor/recipes creates private recipe (201)
+  [92m✅[0m  Recipe source='doctor'
+  [92m✅[0m  Recipe is_verified=False
+  [92m✅[0m  T2-1: assign non-existent recipe returns 404
+  [92m✅[0m  T4-11: meal_type='Brunch' rejected (422)
+  [92m✅[0m  T4-11: meal_date='15-03-2026' (wrong format) rejected (422)
+  [92m✅[0m  T4-11: note > 500 chars rejected (422)
+  [92m✅[0m  T4-8: note_type='gossip' rejected (422)
+  [92m✅[0m  T4-8: content > 5000 chars rejected (422)
+  [92m✅[0m  T4-12: doctor_notes > 2000 chars rejected (422)
+
+[96m[1m── 10 · Role Isolation + Auth Security ──[0m
+  [92m✅[0m  Patient blocked from /doctor/patients (403)
+  [92m✅[0m  Patient blocked from /doctor/dashboard (403)
+  [92m✅[0m  Doctor blocked from /admin/stats (403)
+  [92m✅[0m  Doctor blocked from /admin/doctors (403)
+  [92m✅[0m  Patient blocked from /admin/stats (403)
+  [92m✅[0m  No token → 401 on /doctor/patients
+  [92m✅[0m  No token → 401 on /admin/stats
+  [92m✅[0m  No token → 401 on /progress/today
+  [92m✅[0m  Tampered token → 401 on doctor route
+  [92m✅[0m  Garbage token → 401 on /users/me
+  [92m✅[0m  Doctor gets 404 for non-owned patient ID
+  [92m✅[0m  T1-4: Refresh token as Bearer rejected (401)
+
+[96m[1m── 11 · Password Reset + Session Invalidation (T1-7, T4-2) ──[0m
+  [92m✅[0m  T4-2: new_password without digit rejected (422 or 400)
+  [92m✅[0m  T4-2: new_password without letter rejected (422 or 400)
+  [92m✅[0m  POST /auth/forgot-password (valid email) returns 200
+  [92m✅[0m  POST /auth/reset-password with bad token returns 400
+  [92m✅[0m  Patient token still valid (no password change)
+  [93mℹ  T1-7 session invalidation: logic verified in code; full E2E requires email infra (Phase 7)[0m
+
+[96m[1m── 12 · Meal Plan + Diet Plans ──[0m
+  [92m✅[0m  GET /diet-plans/my-plan returns 200 or 404
+  [92m✅[0m  Plan has version field
+  [92m✅[0m  Plan has meals array
+  [91m❌[0m  Plan is_active=True
+  [92m✅[0m  GET /meal-plan/week returns 200 or 404
+  [92m✅[0m  GET /meal-plan/history returns 200
+  [92m✅[0m  GET /meal-plan/shopping-list returns 200 or 404
+  [92m✅[0m  GET /calculations/bmi returns 200
+  [92m✅[0m  GET /calculations/bmr returns 200
+  [92m✅[0m  GET /calculations/tdee returns 200
+
+[96m[1m── 13 · Doctor — Patient Data, Requests, Dashboard ──[0m
+  [92m✅[0m  GET /doctor/dashboard returns 200
+  [92m✅[0m  Dashboard has 'total_patients'
+  [92m✅[0m  Dashboard has 'active_patients'
+  [92m✅[0m  Dashboard has 'pending_requests'
+  [92m✅[0m  Dashboard has 'inactive_patients'
+  [92m✅[0m  Dashboard has 'expiring_soon'
+  [92m✅[0m  GET /doctor/patients returns 200
+  [92m✅[0m  Response has patients + total
+  [92m✅[0m  T4-14: /doctor/patients search > 100 chars rejected (422)
+  [92m✅[0m  GET /doctor/requests returns 200
+  [92m✅[0m  GET /doctor/subscription-codes returns 200
+  [92m✅[0m  POST /doctor/subscription-codes returns 201
+  [92m✅[0m  GET /doctor/patients/{id} returns 200
+  [92m✅[0m  GET /doctor/patients/{id}/logs returns 200
+  [92m✅[0m  GET /doctor/patients/{id}/progress returns 200
+  [92m✅[0m  GET /doctor/patients/{id}/visits returns 200
+  [92m✅[0m  GET /doctor/patients/{id}/plan/overrides returns 200
+  [92m✅[0m  T4-9: invalid meal_date rejected (422)
+  [92m✅[0m  T4-9: meal_type='Brunch' rejected (422)
+  [92m✅[0m  T4-9: note > 1000 chars rejected (422)
+  [92m✅[0m  GET /doctor/pending-renewals returns 200
+  [92m✅[0m  POST /doctor/recipes/estimate returns 200
+  [92m✅[0m  Estimate has calories field
+  [92m✅[0m  Estimate has source field
+
+[96m[1m── 14 · Admin — Patient Management (T2-5) ──[0m
+  [92m✅[0m  GET /admin/patients returns 200
+  [92m✅[0m  Admin patient list has patients + total
+  [92m✅[0m  PATCH /admin/.../subscription/override returns 200
+  [92m✅[0m  Override returns subscription_status=active
+  [92m✅[0m  Override with status='maybe' returns 400
+  [92m✅[0m  T2-5: Hard-delete response does NOT contain email_freed
+  [92m✅[0m  T2-5: Hard-delete message doesn't leak email
+  [92m✅[0m  DELETE /admin/patients/{id} (DPDP erase) returns 200
+
+[96m[1m── 15 · Admin — Food Management + Approval ──[0m
+  [92m✅[0m  POST /doctor/recipes with submit_to_global=True returns 201
+  [92m✅[0m  Recipe source='doctor_global'
+  [92m✅[0m  PATCH /admin/food/{id}/approve returns 200
+  [92m✅[0m  Re-approving already-verified recipe returns 400
+  [91m❌[0m  Approved recipe appears in global doctor recipe list
+  [92m✅[0m  PATCH /admin/food/{id}/reject returns 200
+
+[96m[1m── 16 · Logout ──[0m
+  [92m✅[0m  POST /auth/logout (doctor) returns 200
+  [92m✅[0m  Logout clears refresh_token cookie (Max-Age=0)
+  [92m✅[0m  POST /auth/logout (patient via cookie) returns 200
+
+[96m[1m── 17 · Security Audit Regression Checklist ──[0m
+  [92m✅[0m  T1-1: Server is running (rate limiter initialized)
+  [92m✅[0m  T1-2: Admin login body has NO refresh_token key
+  [92m✅[0m  T1-2: Admin login sets refresh_token cookie
+  [92m✅[0m  T1-3: JWT creation no server error on admin login
+  [92m✅[0m  T2-1: assign non-existent recipe_id returns 404
+  [92m✅[0m  T3-4: Server started → DATABASE_URL is set
+  [92m✅[0m  T4-1: Non-email string rejected by forgot-password (422)
+  [92m✅[0m  T4-2: Password with no digits rejected (422 or 400)
+  [91m❌[0m  T4-3: Invalid meal_type rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌[0m  T4-4: glasses=100 rejected (422)
+       [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [92m✅[0m  T4-5: gender='robot' rejected (422)
+  [92m✅[0m  T4-6: health_goals with 25 items rejected (422)
+  [92m✅[0m  T4-13: actor_role='nobody' rejected (422)
+  [92m✅[0m  T4-13: /admin/patients search=200 chars rejected (422)
+  [92m✅[0m  T4-16: Doctor password without digit rejected (422)
+  [92m✅[0m  T1-6: Account lockout verified live in section 5
+
+  [93mManual checks required:[0m
+  ⚠  T3-1: Run 'git log --all --full-history -- .env' — ✅ Already done (no commits)
+  ⚠  T1-8: COOKIE_SECURE=False warning — check startup logs if deploying to production
+  ⚠  T1-7: Session invalidation E2E — requires email infra (Phase 7)
+
+[1m======================================================================[0m
+[93m[1m  RESULTS: 176/202 passed (87%) — 26 failed[0m
+
+[91m[1m  FAILED CHECKS:[0m
+  [91m❌  T4-3: meal_type='HACK' rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-3: XSS meal_type rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-3: calories=-1 rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-3: calories=999999 (> 5000) rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-3: protein=600 (> 500) rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-3: Valid meal log returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: glasses=-1 rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: glasses=999 (> 50) rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: glasses=3 (valid) returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: steps=-100 rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: steps=200000 (> 100000) rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: steps=8000 (valid) returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: weight=0 rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: weight=9999 (> 500) rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: weight=57.8 (valid) returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  GET /progress/today returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  GET /progress/weekly returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  GET /progress/weekly-report returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  GET /progress/weight-history returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  GET /progress/streak returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  GET /progress/adherence/weekly returns 200[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-14: /doctor/recipes search > 100 chars rejected (422)[0m
+     [93m↳ [][0m
+  [91m❌  Plan is_active=True[0m
+  [91m❌  Approved recipe appears in global doctor recipe list[0m
+  [91m❌  T4-3: Invalid meal_type rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+  [91m❌  T4-4: glasses=100 rejected (422)[0m
+     [93m↳ {"detail":"Subscription expired","code":"SUBSCRIPTION_EXPIRED"}[0m
+[1m======================================================================[0m
+

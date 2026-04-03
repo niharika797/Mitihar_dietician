@@ -9,8 +9,11 @@ export const SECURE_KEYS = {
 
 // ─── Axios instance ────────────────────────────────────────────────────────
 const api = axios.create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL ?? "http://10.0.2.2:8000/api/v1",
-  timeout: 15000,
+  baseURL: process.env.EXPO_PUBLIC_API_URL ?? "http://10.0.2.2:8001/api/v1", // Audit C-1: fallback corrected to port 8001
+  // Default timeout for most requests. The onboarding endpoint returns
+  // immediately now (plan generation is backgrounded), but 30 s gives
+  // headroom for any future slow responses without hammering the user.
+  timeout: 30000,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -71,7 +74,7 @@ api.interceptors.response.use(
       if (!refreshToken) throw new Error("No refresh token");
 
       const { data } = await axios.post(
-        `${process.env.EXPO_PUBLIC_API_URL ?? "http://10.0.2.2:8000/api/v1"}/auth/refresh`,
+        `${process.env.EXPO_PUBLIC_API_URL ?? "http://10.0.2.2:8001/api/v1"}/auth/refresh`, // Audit C-1
         { refresh_token: refreshToken }
       );
 

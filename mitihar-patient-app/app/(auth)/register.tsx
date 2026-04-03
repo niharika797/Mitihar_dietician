@@ -46,8 +46,8 @@ export default function RegisterScreen() {
         email: email.trim(),
         password,
         gender: "Other",        // onboarding fills the rest
-        height: 160,            // placeholder — overwritten during onboarding
-        weight: 60,             // placeholder — overwritten during onboarding
+        height: 0,              // zero signals "not yet onboarded" — isOnboardingComplete() checks disclaimer_accepted_at only
+        weight: 0,              // zero signals "not yet onboarded"
         activity_level: "LA",
         diet: "Vegetarian",
         health_condition: "Healthy",
@@ -57,9 +57,12 @@ export default function RegisterScreen() {
       return loginPatient(email.trim(), password);
     },
     onSuccess: async (tokens) => {
+      // setTokens persists tokens and flips isAuthenticated=true while profile stays null.
+      // AuthGate reacts to that state change and routes to /(onboarding)/personal-info
+      // because profile===null means onboarding is incomplete.
+      // Do NOT call router.replace here — AuthGate owns all post-auth navigation.
       await setTokens(tokens.access_token, tokens.refresh_token);
       showToast("Account created! Let's set up your profile 🎉", "success");
-      router.replace("/(onboarding)/personal-info");
     },
     onError: (err: any) => {
       showToast(getApiError(err, "Registration failed. Try again."), "error");
@@ -118,10 +121,10 @@ export default function RegisterScreen() {
           {password.length > 0 && (
             <View style={{ marginTop: 8 }}>
               <View style={s.strengthBar}>
-                {[1, 2, 3, 4].map(i => (
+                {[1, 2, 3, 4].map(segment => (
                   <View
-                    key={i}
-                    style={[s.strengthSegment, { backgroundColor: i <= strength ? STRENGTH_COLORS[strength] : "#E5E7EB" }]}
+                    key={segment}
+                    style={[s.strengthSegment, { backgroundColor: segment <= strength ? STRENGTH_COLORS[strength] : "#E5E7EB" }]}
                   />
                 ))}
               </View>

@@ -105,8 +105,7 @@ export default function WeightLogScreen() {
             <Text style={s.sheetTitle}>Log Weight</Text>
             <View style={s.unitWrap}>
               <TextInput style={s.sheetInput} value={input} onChangeText={setInput}
-                keyboardType="decimal-pad" placeholder="72.5" placeholderTextColor="#9CA3AF"
-                autoFocus />
+                keyboardType="decimal-pad" placeholder="72.5" placeholderTextColor="#9CA3AF" />
               <Text style={s.sheetUnit}>kg</Text>
             </View>
             <Pressable style={[s.sheetBtn, !canLog && s.sheetBtnDisabled]}

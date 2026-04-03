@@ -96,7 +96,6 @@ export function NotesTab({ patientId, patientName }: NotesTabProps) {
           <textarea
             value={newNote}
             onChange={e => setNewNote(e.target.value)}
-            autoFocus
             placeholder="Add a clinical note about this patient…"
             rows={3}
             className="w-full resize-none bg-white border border-[#D1D5DB] rounded-md px-3 py-2 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"

@@ -7,6 +7,11 @@
  *   - object  → custom error shapes
  */
 export function getApiError(err: unknown, fallback = "Something went wrong. Please try again."): string {
+  // Plain JS/TS Error thrown before the network call (e.g. toPayload() validation)
+  if (err instanceof Error && !(err as any).response) {
+    return err.message || fallback;
+  }
+
   const detail = (err as any)?.response?.data?.detail;
 
   if (!detail) return fallback;

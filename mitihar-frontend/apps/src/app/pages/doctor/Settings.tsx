@@ -117,10 +117,11 @@ function MfaSetupPanel() {
               2. Scan the QR code on the left.<br />
               3. Enter the 6-digit code below to confirm.
             </p>
-            <label className="block text-xs font-medium text-[#374151] mb-1.5">
+            <label htmlFor="totp-code-enable" className="block text-xs font-medium text-[#374151] mb-1.5">
               Verification Code
             </label>
             <input
+              id="totp-code-enable"
               type="text"
               inputMode="numeric"
               maxLength={6}
@@ -165,8 +166,9 @@ function MfaSetupPanel() {
       </p>
       <div className="flex items-end gap-2">
         <div>
-          <label className="block text-xs font-medium text-[#374151] mb-1.5">Verification Code</label>
+          <label htmlFor="totp-code-disable" className="block text-xs font-medium text-[#374151] mb-1.5">Verification Code</label>
           <input
+            id="totp-code-disable"
             type="text"
             inputMode="numeric"
             maxLength={6}
@@ -286,8 +288,9 @@ export function DoctorSettings() {
               <h2 className="text-base font-medium text-[#111827] mb-5">Profile Information</h2>
               <div className="max-w-md space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#374151] mb-1.5">Full Name</label>
+                  <label htmlFor="profile-name" className="block text-sm font-medium text-[#374151] mb-1.5">Full Name</label>
                   <input
+                    id="profile-name"
                     defaultValue={doctorName}
                     className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
                   />
@@ -337,8 +340,9 @@ export function DoctorSettings() {
 
                     {/* Generate controls */}
                     <div className="flex items-center gap-3 p-3 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB] flex-wrap">
-                      <label className="text-sm text-[#374151]">Generate:</label>
+                      <label htmlFor="codes-count" className="text-sm text-[#374151]">Generate:</label>
                       <select
+                        id="codes-count"
                         value={generateCount}
                         onChange={e => setGenerateCount(Number(e.target.value))}
                         className="h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
@@ -347,8 +351,9 @@ export function DoctorSettings() {
                           <option key={n} value={n}>{n} codes</option>
                         ))}
                       </select>
-                      <label className="text-sm text-[#374151]">Expires in:</label>
+                      <label htmlFor="codes-expiry" className="text-sm text-[#374151]">Expires in:</label>
                       <select
+                        id="codes-expiry"
                         value={expiresInDays}
                         onChange={e => setExpiresInDays(Number(e.target.value))}
                         className="h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"

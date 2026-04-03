@@ -55,7 +55,7 @@ export function CommandPalette({ open, onClose, role }: CommandPaletteProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="button" aria-label="Close command palette" tabIndex={0} />
       <div className="relative w-full max-w-lg mx-4">
         <Command
           className="bg-white rounded-xl border border-[#E5E7EB] shadow-[0_20px_25px_-5px_rgb(0_0_0/0.15)] overflow-hidden"
@@ -64,7 +64,7 @@ export function CommandPalette({ open, onClose, role }: CommandPaletteProps) {
           <div className="flex items-center gap-3 px-4 border-b border-[#E5E7EB]">
             <Search size={16} className="text-[#9CA3AF] flex-shrink-0" />
             <Command.Input
-              autoFocus
+              aria-label="Search patients, pages, and actions"
               placeholder="Search patients, pages, actions..."
               className="flex-1 h-12 bg-transparent text-sm text-[#111827] placeholder:text-[#9CA3AF] outline-none"
             />

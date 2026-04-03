@@ -121,7 +121,9 @@ async def get_week_plan(
     diet_service = DietPlanService()
     plan = await diet_service.get_diet_plan(str(current_user.id), session=session)
     if plan is None:
-        return {}
+        # Audit W-6: the old code had `return {}` here followed by an unreachable
+        # HTTPException. Returning {} silently hid missing plans from the frontend.
+        # Now correctly raises 404 so the mobile app can show an appropriate message.
         raise HTTPException(status_code=404, detail="No active meal plan found")
 
     # Group meals by Date field

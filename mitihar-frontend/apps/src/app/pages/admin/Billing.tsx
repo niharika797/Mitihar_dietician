@@ -117,23 +117,23 @@ function GenerateCodesPanel({ doctors }: { doctors: DoctorAdminView[] }) {
       <h2 className="text-base font-medium text-[#111827] mb-4">Generate Activation Codes</h2>
       <div className="flex items-end gap-4 flex-wrap">
         <div>
-          <label className="block text-sm font-medium text-[#374151] mb-1.5">Doctor</label>
-          <select value={selectedDoctorId} onChange={e => setSelectedDoctorId(e.target.value === '' ? '' : Number(e.target.value))}
+          <label htmlFor="gen-doctor" className="block text-sm font-medium text-[#374151] mb-1.5">Doctor</label>
+          <select id="gen-doctor" value={selectedDoctorId} onChange={e => setSelectedDoctorId(e.target.value === '' ? '' : Number(e.target.value))}
             className="h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] min-w-[200px]">
             <option value="">Select doctor…</option>
             {doctors.filter(d => d.is_active).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-[#374151] mb-1.5">Number of Codes</label>
-          <select value={count} onChange={e => setCount(Number(e.target.value))}
+          <label htmlFor="gen-count" className="block text-sm font-medium text-[#374151] mb-1.5">Number of Codes</label>
+          <select id="gen-count" value={count} onChange={e => setCount(Number(e.target.value))}
             className="h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]">
             {[5, 10, 15, 20, 25, 50].map(n => <option key={n} value={n}>{n} codes</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-[#374151] mb-1.5">Valid For</label>
-          <select value={expiryDays} onChange={e => setExpiryDays(Number(e.target.value))}
+          <label htmlFor="gen-expiry" className="block text-sm font-medium text-[#374151] mb-1.5">Valid For</label>
+          <select id="gen-expiry" value={expiryDays} onChange={e => setExpiryDays(Number(e.target.value))}
             className="h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]">
             {[7, 14, 30, 60, 90].map(n => <option key={n} value={n}>{n} days</option>)}
           </select>

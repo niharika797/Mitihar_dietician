@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronRight, Edit2, Bell, Info, LogOut, User, RefreshCw, Settings } from "lucide-react-native";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useToast } from "../../components/shared";
 import { logoutPatient } from "../../services/auth";
@@ -13,6 +13,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { showToast } = useToast();
   const { profile, logout, setProfile } = useAuthStore();
+  const queryClient = useQueryClient();
 
   // Always refresh profile from server when the tab is opened so subscription
   // status, BMI, TDEE and token data are always current.
@@ -35,6 +36,10 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     try { await logoutPatient(); } catch {}
     await logout();
+    // Clear all cached query data so a different account logging in
+    // on the same device never sees the previous user's meals, progress
+    // or profile data, even briefly before the first fresh fetch.
+    queryClient.clear();
     showToast("Logged out successfully", "success");
     router.replace("/(auth)/login");
   };

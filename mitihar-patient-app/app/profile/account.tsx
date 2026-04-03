@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, Pressable, StyleSheet, Alert, Switch } from "react-native";
+import { View, Text, Pressable, StyleSheet, Alert, Switch, Modal, TextInput, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, Trash2, Shield, LogOut, Fingerprint } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Trash2, Shield, LogOut, Fingerprint, Eye, EyeOff } from "lucide-react-native";
 import { useMutation } from "@tanstack/react-query";
 import { logoutPatient } from "../../services/auth";
+import { deleteMyAccount } from "../../services/profile";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useBiometricStore } from "../../store/useBiometricStore";
 import { useToast } from "../../components/shared";
@@ -26,13 +27,48 @@ export default function AccountScreen() {
     },
   });
 
+  // ── Delete account state ──────────────────────────────────────────────────
+  // Step 1: Alert confirms intent.
+  // Step 2: Modal captures password for verification.
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword]         = useState("");
+  const [deletePasswordError, setDeletePasswordError] = useState("");
+  const [showDeletePw, setShowDeletePw]             = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteMyAccount(deletePassword),
+    onSuccess: async () => {
+      setDeleteModalVisible(false);
+      // Clear all local state — tokens, biometric key, profile
+      await logout();
+      router.replace("/(auth)/login");
+    },
+    onError: (err: any) => {
+      // Parse the backend error message
+      const detail = err?.response?.data?.detail ?? "Something went wrong. Please try again.";
+      setDeletePasswordError(detail);
+    },
+  });
+
+  // Step 1 — show the initial confirmation alert
   const handleDeleteAccount = () => {
     Alert.alert(
       "Delete Account",
-      "This will permanently delete your account and all associated data. This action cannot be undone.",
+      "This will permanently delete your account and all your data including meal logs, progress, and meal plans. This cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => showToast("Please contact support to delete your account.", "error") },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            // Step 2 — open the password modal
+            setDeletePassword("");
+            setDeletePasswordError("");
+            setShowDeletePw(false);
+            deleteMutation.reset();
+            setDeleteModalVisible(true);
+          },
+        },
       ]
     );
   };
@@ -114,6 +150,94 @@ export default function AccountScreen() {
         </Pressable>
         <Text style={s.dangerSub}>This will permanently remove all your data.</Text>
       </View>
+
+      {/* ── Password confirmation modal ─────────────────────────────────────
+           Shown after the user confirms intent in the Alert above.
+           Requires the account password before deletion proceeds.
+        ────────────────────────────────────────────────────────────────── */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deleteMutation.isPending && setDeleteModalVisible(false)}
+      >
+        <View style={s.overlay}>
+          <View style={s.modalCard}>
+            {/* Header */}
+            <View style={s.modalHeader}>
+              <View style={s.modalIconWrap}>
+                <Trash2 size={18} color="#DC2626" />
+              </View>
+              <View>
+                <Text style={s.modalTitle}>Confirm deletion</Text>
+                <Text style={s.modalSub}>Enter your password to continue</Text>
+              </View>
+            </View>
+
+            {/* Warning bullet list */}
+            <View style={s.modalWarnings}>
+              {[
+                "Your profile and personal data will be anonymised",
+                "All meal logs and progress records will be deleted",
+                "Your meal plans will be removed",
+                "Your original email will be freed for re-registration",
+              ].map((w, i) => (
+                <Text key={w} style={s.modalWarningItem}>• {w}</Text>
+              ))}
+            </View>
+
+            {/* Password input */}
+            <View style={s.pwWrap}>
+              <TextInput
+                style={[s.pwInput, deletePasswordError ? s.pwInputError : null]}
+                placeholder="Your password"
+                placeholderTextColor="#9CA3AF"
+                value={deletePassword}
+                onChangeText={t => { setDeletePassword(t); setDeletePasswordError(""); }}
+                secureTextEntry={!showDeletePw}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!deleteMutation.isPending}
+              />
+              <Pressable
+                onPress={() => setShowDeletePw(v => !v)}
+                style={s.pwEye}
+                hitSlop={8}
+              >
+                {showDeletePw
+                  ? <EyeOff size={16} color="#6B7280" />
+                  : <Eye    size={16} color="#6B7280" />}
+              </Pressable>
+            </View>
+
+            {/* Inline error */}
+            {deletePasswordError !== "" && (
+              <Text style={s.pwError}>{deletePasswordError}</Text>
+            )}
+
+            {/* Actions */}
+            <View style={s.modalActions}>
+              <Pressable
+                style={s.modalCancelBtn}
+                onPress={() => { setDeleteModalVisible(false); deleteMutation.reset(); }}
+                disabled={deleteMutation.isPending}
+              >
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[s.modalDeleteBtn, (!deletePassword || deleteMutation.isPending) && s.modalDeleteBtnDisabled]}
+                onPress={() => deleteMutation.mutate()}
+                disabled={!deletePassword || deleteMutation.isPending}
+              >
+                {deleteMutation.isPending
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.modalDeleteText}>Delete Account</Text>
+                }
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -141,4 +265,24 @@ const s = StyleSheet.create({
   deleteBtn:      { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fff", borderRadius: 8, borderWidth: 1, borderColor: "#FECACA", paddingHorizontal: 14, paddingVertical: 10 },
   deleteBtnText:  { fontSize: 14, fontWeight: "500", color: "#DC2626" },
   dangerSub:      { fontSize: 12, color: "#6B7280" },
+  // ── Delete account modal ────────────────────────────────────────────────
+  overlay:            { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center" },
+  modalCard:          { width: "88%", backgroundColor: "#fff", borderRadius: 16, padding: 20, gap: 16 },
+  modalHeader:        { flexDirection: "row", alignItems: "center", gap: 12 },
+  modalIconWrap:      { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" },
+  modalTitle:         { fontSize: 15, fontWeight: "600", color: "#111827" },
+  modalSub:           { fontSize: 12, color: "#6B7280", marginTop: 1 },
+  modalWarnings:      { gap: 5 },
+  modalWarningItem:   { fontSize: 12, color: "#374151", lineHeight: 18 },
+  pwWrap:             { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 10, paddingHorizontal: 14 },
+  pwInput:            { flex: 1, height: 46, fontSize: 14, color: "#111827" },
+  pwInputError:       { borderColor: "#DC2626" },
+  pwEye:              { padding: 4 },
+  pwError:            { fontSize: 12, color: "#DC2626", marginTop: -8 },
+  modalActions:       { flexDirection: "row", gap: 10 },
+  modalCancelBtn:     { flex: 1, height: 42, borderRadius: 10, borderWidth: 1.5, borderColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
+  modalCancelText:    { fontSize: 14, fontWeight: "500", color: "#374151" },
+  modalDeleteBtn:     { flex: 1, height: 42, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center", justifyContent: "center" },
+  modalDeleteBtnDisabled: { backgroundColor: "#9CA3AF" },
+  modalDeleteText:    { fontSize: 14, fontWeight: "600", color: "#fff" },
 });

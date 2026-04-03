@@ -1,9 +1,10 @@
 from datetime import date, datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
+from ..core.limiter import limiter
 from ..core.security import get_current_patient
 from ..models.db_models import Patient, SubscriptionCode, Doctor, PatientRequest, PatientVisit, PendingVisitApproval
 from ..schemas.patients import (
@@ -30,9 +31,45 @@ def _derive_age(dob: date) -> int:
 
 # ─── POST /api/v1/patients/onboarding ─────────────────────────────────────
 
+async def _generate_plan_background(patient_id: int, user_data: dict, age: int) -> None:
+    """
+    Fire-and-forget plan generation — runs AFTER the onboarding response is
+    already delivered to the client so the HTTP request never times out.
+    Opens its own DB session to avoid sharing the request-scoped session.
+    """
+    import logging
+    _log = logging.getLogger(__name__)
+    from ..core.database import AsyncSessionLocal  # local import to keep top-level clean
+    async with AsyncSessionLocal() as bg_session:
+        try:
+            from ..services.diet_plan_service import DietPlanService
+            diet_service = DietPlanService()
+            existing = await diet_service.get_diet_plan(str(patient_id), session=bg_session)
+            if existing is None:
+                diet_plan = await diet_service.generate_diet_plan(user_data, bg_session)
+                await diet_service.store_diet_plan(diet_plan, session=bg_session)
+                _log.info(f"Background: diet plan generated for patient {patient_id}")
+                try:
+                    from ..services.notification_service import notify_plan_ready
+                    # fetch the patient row to pass to the notifier
+                    from sqlalchemy import select as _select
+                    from ..models.db_models import Patient as _Patient
+                    result = await bg_session.execute(_select(_Patient).where(_Patient.id == patient_id))
+                    pt = result.scalars().first()
+                    if pt:
+                        notify_plan_ready(pt)
+                except Exception as notif_exc:
+                    _log.debug(f"notify_plan_ready failed silently: {notif_exc}")
+        except Exception as exc:
+            _log.error(f"Background plan generation failed for patient {patient_id}: {exc}", exc_info=True)
+
+
 @router.post("/onboarding", response_model=PatientProfileResponse)
+@limiter.limit("100/minute")
 async def onboard_patient(
+    request: Request,
     body: OnboardingRequest,
+    background_tasks: BackgroundTasks,
     patient: Patient = Depends(get_current_patient),
     session: AsyncSession = Depends(get_db),
 ):
@@ -109,40 +146,26 @@ async def onboard_patient(
         )
         session.add(pv)
         await session.flush()
-    # ── Auto-generate first diet plan (fire-and-soft-fail) ──────────────
-    # Only generates if no active plan exists. Never fails the onboarding response.
-    import logging
-    _log = logging.getLogger(__name__)
-    try:
-        from ..services.diet_plan_service import DietPlanService
-        from ..services.meal_generator.meal_generator import meal_generator
-        diet_service = DietPlanService()
-        existing = await diet_service.get_diet_plan(str(updated.id), session=session)
-        if existing is None:
-            user_data = {
-                "id": str(updated.id),
-                "email": updated.email,
-                "name": updated.name,
-                "gender": updated.gender,
-                "height": float(updated.height_cm or 0),
-                "weight": float(updated.weight_kg or 0),
-                "activity_level": updated.activity_level,
-                "diet": updated.diet_type,
-                "health_condition": updated.health_condition or "Healthy",
-                "region": updated.region or "North",
-                "nonveg_meals_per_week": updated.nonveg_meals_per_week or 3,
-                "food_allergies": updated.food_allergies or [],
-                "health_goals": list(updated.health_goals or []),
-                "medical_conditions": list(updated.medical_conditions or []),
-                # medical_conditions drives PCOS/Thyroid macro overrides
-                "age": age,
-            }
-            diet_plan = await diet_service.generate_diet_plan(user_data, session)
-            await diet_service.store_diet_plan(diet_plan, session=session)
-            _log.info(f"Auto-generated diet plan for patient {updated.id} after onboarding")
-    except Exception as exc:
-        _log.error(f"Auto plan generation failed for patient {updated.id}: {exc}", exc_info=True)
-        # Do NOT re-raise — onboarding must succeed even if plan gen fails
+    # ── Schedule plan generation as a background task ────────────────────
+    # Runs AFTER the 200 response is sent — the client never waits for it.
+    user_data = {
+        "id": str(updated.id),
+        "email": updated.email,
+        "name": updated.name,
+        "gender": updated.gender,
+        "height": float(updated.height_cm or 0),
+        "weight": float(updated.weight_kg or 0),
+        "activity_level": updated.activity_level,
+        "diet": updated.diet_type,
+        "health_condition": updated.health_condition or "Healthy",
+        "region": updated.region or "North",
+        "nonveg_meals_per_week": updated.nonveg_meals_per_week or 3,
+        "food_allergies": updated.food_allergies or [],
+        "health_goals": list(updated.health_goals or []),
+        "medical_conditions": list(updated.medical_conditions or []),
+        "age": age,
+    }
+    background_tasks.add_task(_generate_plan_background, updated.id, user_data, age)
 
     return updated
 
@@ -290,7 +313,9 @@ async def get_request_status(
 # ─── GET /api/v1/patients/doctors ─────────────────────────────────────────
 
 @router.get("/doctors", response_model=list[PublicDoctorResponse])
+@limiter.limit("100/minute")
 async def list_doctors(
+    request: Request,
     search: str | None = None,
     patient: Patient = Depends(get_current_patient),
     session: AsyncSession = Depends(get_db),
@@ -388,3 +413,33 @@ async def accept_disclaimer(
     )
     await session.flush()
     return {"message": "Disclaimer accepted", "accepted_at": accepted_at.isoformat()}
+
+
+# ─── POST /api/v1/patients/request-renewal ────────────────────────────────
+# Audit C-5: patient-facing renewal endpoint that sits outside /doctor/* so
+# DoctorIsolationMiddleware does NOT intercept it.  The doctor-facing
+# /doctor/patients/{id}/request-renewal remains for doctor-initiated flows.
+
+@router.post("/request-renewal", status_code=200)
+async def patient_request_renewal(
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Patient requests subscription renewal from their assigned doctor.
+    Sets renewal_requested=True on the patient row so the doctor's
+    pending-renewals list picks it up automatically.
+    Returns 409 if the patient has no linked doctor yet.
+    """
+    if not patient.doctor_id:
+        raise HTTPException(
+            status_code=409,
+            detail="No doctor linked to this account — cannot request renewal",
+        )
+    await session.execute(
+        update(Patient)
+        .where(Patient.id == patient.id)
+        .values(renewal_requested=True)
+    )
+    await session.flush()
+    return {"message": "Renewal request submitted successfully"}

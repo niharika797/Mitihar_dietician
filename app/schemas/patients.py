@@ -1,37 +1,74 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Optional, Literal
+from typing import Annotated, Optional, Literal
 from datetime import date, datetime
+from .user import ActivityLevel, DietType, HealthCondition
+
+# Bounded list type: max 20 items, each item max 100 chars.
+# Prevents DoS via oversized payloads and prompt-injection via unbounded strings.
+# Uses explicit Annotated constraints; enforced by field_validator below as defence-in-depth.
+_BoundedStr = Annotated[str, Field(max_length=100)]
+BoundedStrList = Annotated[list[_BoundedStr], Field(max_length=20)]
 
 class OnboardingRequest(BaseModel):
-    date_of_birth: date
-    gender: str
-    height_cm: float = Field(..., gt=0)
-    weight_kg: float = Field(..., gt=0)
-    activity_level: str = Field(default="LA")
-    diet_type: str = Field(default="Vegetarian")
-    region: str = Field(default="North")
-    health_condition: str = Field(default="Healthy")
-    health_goals: list[str] = Field(default_factory=list)
-    medical_conditions: list[str] = Field(default_factory=list)
-    food_allergies: list[str] = Field(default_factory=list)
-    dietary_preferences: list[str] = Field(default_factory=list)
-    meals_per_day: int = Field(default=3)
-    fasting_days: list[str] = Field(default_factory=list)
-    sleep_hours: float = Field(default=7.0)
-    water_glasses: int = Field(default=8)
-    occupation: Optional[str] = None
-    smoking: bool = False
-    alcohol: bool = False
-    nonveg_meals_per_week: int = 0
-    pace_preference: str = Field(default="moderate")
-    eating_habits: list[str] = Field(default_factory=list)
-    target_weight_kg: Optional[float] = None
+    date_of_birth:        date
+    # T4-5: use enums/Literals — reject any value not in the allowed set
+    gender:               Literal["Male", "Female", "Other"]
+    height_cm:            float          = Field(..., gt=0)
+    weight_kg:            float          = Field(..., gt=0)
+    activity_level:       ActivityLevel  = ActivityLevel.LIGHTLY_ACTIVE
+    diet_type:            DietType       = DietType.VEGETARIAN
+    region:               Literal["North", "South", "East", "West"] = "North"
+    health_condition:     HealthCondition = HealthCondition.HEALTHY
+    # T4-6: bounded list fields — cap item count and per-item length
+    health_goals:         BoundedStrList = Field(default_factory=list)
+    medical_conditions:   BoundedStrList = Field(default_factory=list)
+    food_allergies:       BoundedStrList = Field(default_factory=list)
+    dietary_preferences:  BoundedStrList = Field(default_factory=list)
+    fasting_days:         BoundedStrList = Field(default_factory=list)
+    eating_habits:        BoundedStrList = Field(default_factory=list)
+    # T4-7: numeric bounds
+    meals_per_day:        int            = Field(default=3,   ge=1, le=10)
+    sleep_hours:          float          = Field(default=7.0, ge=0, le=24)
+    water_glasses:        int            = Field(default=8,   ge=0, le=30)
+    nonveg_meals_per_week: int           = Field(default=0,   ge=0, le=21)
+    target_weight_kg:     Optional[float] = Field(default=None, gt=0, le=500)
+    occupation:           Optional[str]  = Field(default=None, max_length=100)
+    # T4-5: enum for pace_preference
+    pace_preference:      Literal["slow", "moderate", "fast"] = "moderate"
+    smoking:              bool = False
+    alcohol:              bool = False
+
+    @field_validator("occupation", mode="before")
+    @classmethod
+    def strip_occupation(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
     @field_validator("date_of_birth")
     @classmethod
     def dob_must_be_past(cls, v):
         if v >= date.today():
             raise ValueError("date_of_birth must be a past date")
+        return v
+
+    @field_validator(
+        "health_goals", "medical_conditions", "food_allergies",
+        "dietary_preferences", "fasting_days", "eating_habits",
+        mode="before"
+    )
+    @classmethod
+    def validate_bounded_list(cls, v):
+        """Defence-in-depth: explicitly enforce list size and item length."""
+        if v is None:
+            return v
+        if not isinstance(v, list):
+            raise ValueError("Must be a list")
+        if len(v) > 20:
+            raise ValueError("List must contain at most 20 items")
+        for item in v:
+            if isinstance(item, str) and len(item) > 100:
+                raise ValueError("Each item must be at most 100 characters")
         return v
 
 class ActivationRequest(BaseModel):

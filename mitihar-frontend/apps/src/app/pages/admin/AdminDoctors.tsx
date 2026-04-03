@@ -43,7 +43,7 @@ function OnboardModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && (onClose)} role="button" aria-label="Close dialog" tabIndex={0} />
       <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between p-5 border-b border-[#E5E7EB]">
           <p className="text-base font-semibold text-[#111827]">Onboard New Doctor</p>
@@ -56,53 +56,53 @@ function OnboardModal({ onClose }: { onClose: () => void }) {
           {/* Required fields */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">
+              <label htmlFor="doc-name" className="block text-xs font-medium text-[#374151] mb-1">
                 Full Name <span className="text-[#DC2626]">*</span>
               </label>
-              <input value={form.name} onChange={set('name')} placeholder="Dr. Priya Mehta"
+              <input value={form.name} id="doc-name" onChange={set('name')} placeholder="Dr. Priya Mehta"
                 className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">
+              <label htmlFor="doc-email" className="block text-xs font-medium text-[#374151] mb-1">
                 Email <span className="text-[#DC2626]">*</span>
               </label>
-              <input type="email" value={form.email} onChange={set('email')} placeholder="dr@clinic.com"
+              <input type="email" value={form.email} id="doc-email" onChange={set('email')} placeholder="dr@clinic.com"
                 className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#374151] mb-1">
+            <label htmlFor="doc-password" className="block text-xs font-medium text-[#374151] mb-1">
               Temporary Password <span className="text-[#DC2626]">*</span>
               <span className="text-[#9CA3AF] font-normal ml-1">(min 8 chars)</span>
             </label>
-            <input type="password" value={form.password} onChange={set('password')} placeholder="••••••••"
+            <input type="password" value={form.password} id="doc-password" onChange={set('password')} placeholder="••••••••"
               className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
           </div>
 
           {/* Optional fields */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">Specialization</label>
-              <input value={form.specialization} onChange={set('specialization')} placeholder="Dietitian"
+              <label htmlFor="doc-specialization" className="block text-xs font-medium text-[#374151] mb-1">Specialization</label>
+              <input value={form.specialization} id="doc-specialization" onChange={set('specialization')} placeholder="Dietitian"
                 className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">Phone</label>
-              <input value={form.phone} onChange={set('phone')} placeholder="+91 98765 43210"
+              <label htmlFor="doc-phone" className="block text-xs font-medium text-[#374151] mb-1">Phone</label>
+              <input value={form.phone} id="doc-phone" onChange={set('phone')} placeholder="+91 98765 43210"
                 className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">Clinic Name</label>
-              <input value={form.clinic_name} onChange={set('clinic_name')} placeholder="Wellness Clinic"
+              <label htmlFor="doc-clinic" className="block text-xs font-medium text-[#374151] mb-1">Clinic Name</label>
+              <input value={form.clinic_name} id="doc-clinic" onChange={set('clinic_name')} placeholder="Wellness Clinic"
                 className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">City</label>
-              <input value={form.city} onChange={set('city')} placeholder="Mumbai"
+              <label htmlFor="doc-city" className="block text-xs font-medium text-[#374151] mb-1">City</label>
+              <input id="doc-city" value={form.city} onChange={set('city')} placeholder="Mumbai"
                 className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
             </div>
           </div>

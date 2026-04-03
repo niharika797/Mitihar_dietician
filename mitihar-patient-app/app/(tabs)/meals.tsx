@@ -121,7 +121,7 @@ export default function MealsScreen() {
             .filter((m): m is Meal => !!m)
             .map((meal, i) => (
               <Pressable
-                key={i}
+                key={meal["Meal Type"]}
                 onPress={() => router.push({ pathname: "/meals/meal-detail", params: { date: todayKey(), type: meal["Meal Type"] } })}
                 style={s.mealCard}
               >

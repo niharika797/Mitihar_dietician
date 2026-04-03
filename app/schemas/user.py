@@ -25,17 +25,24 @@ class HealthCondition(str, Enum):
 
 class UserBase(BaseModel):
     email: EmailStr
-    name: str
-    age: Optional[int] = Field(None, gt=0)
-    gender: str
-    height: float = Field(..., gt=0)
-    weight: float = Field(..., gt=0)
+    name: str = Field(..., min_length=1, max_length=100)
+    age: Optional[int] = Field(None, gt=0, le=120)
+    gender: str = Field(..., max_length=20)
+    height: float = Field(..., gt=0, le=300)
+    weight: float = Field(..., gt=0, le=500)
     activity_level: ActivityLevel
     diet: DietType
     health_condition: HealthCondition
-    diabetes_status: Optional[str] = None
-    gym_goal: Optional[str] = None
-    region: Optional[str] = None
+    diabetes_status: Optional[str] = Field(default=None, max_length=50)
+    gym_goal: Optional[str] = Field(default=None, max_length=50)
+    region: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("name", "gender", "region", mode="before")
+    @classmethod
+    def strip_text_fields(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
     @field_validator("diabetes_status", mode="before")
     @classmethod
@@ -78,16 +85,23 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
-    name: Optional[str] = None
-    age: Optional[int] = Field(None, gt=0)
-    height: Optional[float] = Field(None, gt=0)
-    weight: Optional[float] = Field(None, gt=0)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    age: Optional[int] = Field(None, gt=0, le=120)
+    height: Optional[float] = Field(None, gt=0, le=300)
+    weight: Optional[float] = Field(None, gt=0, le=500)
     activity_level: Optional[ActivityLevel] = None
     diet: Optional[DietType] = None
     health_condition: Optional[HealthCondition] = None
-    diabetes_status: Optional[str] = None
-    gym_goal: Optional[str] = None
-    region: Optional[str] = None
+    diabetes_status: Optional[str] = Field(default=None, max_length=50)
+    gym_goal: Optional[str] = Field(default=None, max_length=50)
+    region: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("name", "diabetes_status", "gym_goal", "region", mode="before")
+    @classmethod
+    def strip_text_fields(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 class UserResponse(BaseModel):
     """Response model that maps Patient ORM fields to the API contract."""

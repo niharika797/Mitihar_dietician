@@ -22,15 +22,21 @@ const MAX_ATTEMPTS = 3;
 
 export default function BiometricGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
-  const { enabled, setLastUnlocked } = useBiometricStore();
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+  const { enabled, isReady: biometricReady, setLastUnlocked } = useBiometricStore();
 
   const [gateState, setGateState] = useState<GateState>("idle");
   const [attempts, setAttempts] = useState(0);
   const [hint, setHint]         = useState("");
 
-  // Decide gate state once auth+biometric state is known
+  // Only make the gate decision once BOTH stores have finished loading.
+  // Previously this effect depended on [isAuthenticated, enabled] separately,
+  // which caused a double-fire: first when bootstrap() finished (enabled=false →
+  // unlocked), then again when checkHardware() finished (enabled=true → locked).
+  // Now we wait for authLoading=false AND biometricReady=true before acting.
   useEffect(() => {
+    if (authLoading || !biometricReady) return;  // both must be settled first
+
     if (!isAuthenticated) {
       setGateState("unlocked"); // not logged in — let AuthGate handle routing
       return;
@@ -41,7 +47,7 @@ export default function BiometricGate({ children }: { children: React.ReactNode 
     }
     setGateState("locked");
     triggerPrompt();            // auto-show prompt on first lock
-  }, [isAuthenticated, enabled]);
+  }, [authLoading, biometricReady, isAuthenticated, enabled]);
 
   const triggerPrompt = useCallback(async () => {
     try {
@@ -51,7 +57,7 @@ export default function BiometricGate({ children }: { children: React.ReactNode 
         LocalAuth.AuthenticationType.FACIAL_RECOGNITION
       );
       const result = await LocalAuth.authenticateAsync({
-        promptMessage: "Unlock Mityahar",
+        promptMessage: "Unlock Mitihar",
         fallbackLabel: "Use Password",
         cancelLabel: "Cancel",
         disableDeviceFallback: false,
@@ -97,7 +103,7 @@ export default function BiometricGate({ children }: { children: React.ReactNode 
         </Svg>
       </View>
 
-      <Text style={s.appName}>Mityahar</Text>
+      <Text style={s.appName}>Mitihar</Text>
       <Text style={s.lockLabel}>🔒 App Locked</Text>
       <Text style={s.lockSub}>Verify your identity to continue</Text>
 

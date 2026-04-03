@@ -17,7 +17,14 @@ export default function DisclaimerScreen() {
 
   const submitMut = useMutation({
     mutationFn: async () => {
-      const payload = toPayload();
+      // toPayload() throws a plain Error if store data is invalid —
+      // catch it here so onError shows the real message via getApiError.
+      let payload;
+      try {
+        payload = toPayload();
+      } catch (e: any) {
+        throw new Error(e?.message ?? "Invalid profile data. Please go back and check your entries.");
+      }
       await submitOnboarding(payload);
       await acceptDisclaimer();
       return getMyProfile();

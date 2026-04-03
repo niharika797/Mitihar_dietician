@@ -32,6 +32,11 @@ export async function acceptDisclaimer() {
 }
 
 // ── POST /patients/activate ────────────────────────────────────────────────
+// Audit M-5: callers MUST store both tokens from the response in SecureStore:
+//   await SecureStore.setItemAsync(SECURE_KEYS.ACCESS_TOKEN,  result.access_token);
+//   await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, result.refresh_token);
+// Without this the patient's old refresh_token is used until it expires (7 days),
+// at which point silent refresh fails and the user is forcibly logged out.
 export async function activateSubscription(code: string): Promise<ActivateResponse> {
   const { data } = await api.post("/patients/activate", { code });
   return data;
@@ -71,9 +76,12 @@ export async function listDoctors(search?: string): Promise<PublicDoctor[]> {
   return data;
 }
 
-// ── POST /doctor/patients/{id}/request-renewal ────────────────────────────
-export async function requestRenewal(patientId: number) {
-  const { data } = await api.post(`/doctor/patients/${patientId}/request-renewal`);
+// ── POST /patients/request-renewal ───────────────────────────────────────
+// Audit C-5: was calling /doctor/patients/{id}/request-renewal which is
+// blocked by DoctorIsolationMiddleware for patient JWTs (always 403).
+// Patient ID is resolved server-side from the JWT — no path param needed.
+export async function requestRenewal() {
+  const { data } = await api.post(`/patients/request-renewal`);
   return data;
 }
 
@@ -90,4 +98,12 @@ export interface MyVisitResponse {
 export async function getMyVisit(): Promise<MyVisitResponse> {
   const { data } = await api.get("/patients/my-visit");
   return data;
+}
+
+// ── DELETE /users/me ───────────────────────────────────────────────────────
+// Patient self-delete with password confirmation.
+// Backend anonymises PII and hard-deletes all associated logs.
+// Throws on wrong password (401) or Google account (400).
+export async function deleteMyAccount(password: string): Promise<void> {
+  await api.delete("/users/me", { data: { password } });
 }

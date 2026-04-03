@@ -112,7 +112,7 @@ export function Sidebar({ role, userName, userRole, pendingCount = 0, pendingFoo
           <Leaf size={16} className="text-white" />
         </div>
         {!collapsed && (
-          <span className="text-sm font-semibold text-[#111827] tracking-tight">Mityahar</span>
+          <span className="text-sm font-semibold text-[#111827] tracking-tight">Mitihar</span>
         )}
       </div>
 

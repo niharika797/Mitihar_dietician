@@ -80,7 +80,7 @@ export default function WaterLogScreen() {
       {/* Glasses grid */}
       <View style={s.glassGrid}>
         {Array.from({ length: goal }, (_, i) => (
-          <Pressable key={i} onPress={() => logMut.mutate(i + 1)} style={s.glass}>
+          <Pressable key={`glass-${i}`} onPress={() => logMut.mutate(i + 1)} style={s.glass}>
             <Droplets size={22} color={i < water ? "#3B82F6" : "#D1D5DB"} fill={i < water ? "#DBEAFE" : "transparent"} />
           </Pressable>
         ))}
@@ -90,7 +90,7 @@ export default function WaterLogScreen() {
       <View style={s.tipsCard}>
         <Text style={s.tipsTitle}>💡 Hydration Tips</Text>
         {TIPS.map((tip, i) => (
-          <Text key={i} style={s.tipText}>• {tip}</Text>
+          <Text key={tip} style={s.tipText}>• {tip}</Text>
         ))}
       </View>
     </View>

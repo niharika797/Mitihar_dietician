@@ -157,16 +157,16 @@ export function FoodDatabase() {
                 {/* Inline reject form */}
                 {rejectOpenId === item.id && (
                   <div className="mt-3 pt-3 border-t border-[#F3F4F6]">
-                    <label className="block text-xs text-[#6B7280] mb-1.5">
+                    <label htmlFor="reject-reason" className="block text-xs text-[#6B7280] mb-1.5">
                       Rejection reason (optional):
                     </label>
                     <div className="flex gap-2">
                       <input
+                        id="reject-reason"
                         type="text"
                         value={rejectNote}
                         onChange={e => setRejectNote(e.target.value)}
                         placeholder="e.g. Nutritional values unverified"
-                        autoFocus
                         className="flex-1 h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
                       />
                       <button

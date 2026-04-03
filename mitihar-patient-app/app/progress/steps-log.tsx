@@ -103,8 +103,7 @@ export default function StepsLogScreen() {
             <View style={s.sheetHandle} />
             <Text style={s.sheetTitle}>Enter Steps</Text>
             <TextInput style={s.sheetInput} value={input} onChangeText={setInput}
-              keyboardType="number-pad" placeholder="8000" placeholderTextColor="#9CA3AF"
-              autoFocus />
+              keyboardType="number-pad" placeholder="8000" placeholderTextColor="#9CA3AF" />
             <Pressable style={[s.sheetBtn, !canSave && s.sheetBtnDis]}
               onPress={() => logMut.mutate(parseInt(input))} disabled={!canSave || logMut.isPending}>
               {logMut.isPending

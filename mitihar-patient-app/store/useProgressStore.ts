@@ -45,8 +45,9 @@ export const useProgressStore = create<ProgressState>((set) => ({
 
 // ── Selectors ──────────────────────────────────────────────────────────────
 // Use these to get the effective (optimistic-or-server) value in components.
+// Audit C-6: updated paths to match nested TodaySummary shape.
 export const selectWater = (s: ProgressState) =>
-  s.localWater ?? s.today?.water ?? 0;
+  s.localWater ?? s.today?.water_intake?.glasses ?? 0;
 
 export const selectSteps = (s: ProgressState) =>
-  s.localSteps ?? s.today?.steps ?? 0;
+  s.localSteps ?? s.today?.activity?.steps ?? 0;

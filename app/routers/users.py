@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..services.user_service import get_current_user, update_patient, get_patient_by_id
@@ -6,12 +7,15 @@ from ..models.db_models import Patient
 from ..schemas.user import UserUpdate
 from ..schemas.patients import PatientProfileResponse
 from ..core.database import get_db
+from ..core.limiter import limiter
+from ..core.security import verify_password
 
 router = APIRouter()
 
 
 @router.get("/me", response_model=PatientProfileResponse)
-async def get_user_profile(current_user: Patient = Depends(get_current_user)):
+@limiter.limit("100/minute")
+async def get_user_profile(request: Request, current_user: Patient = Depends(get_current_user)):
     """Get current user full profile — includes subscription, token, disclaimer status."""
     return current_user
 
@@ -126,3 +130,79 @@ async def update_user_profile(
             print(f"Failed to auto-generate diet plan: {e}")
 
     return updated
+
+# ─── DELETE /api/v1/users/me ──────────────────────────────────────────────────
+#
+# Patient self-delete — right to erasure, initiated by the patient themselves.
+# Requires password confirmation to prevent accidental or unauthorised deletion.
+#
+# What happens:
+#   1. Password is verified against the stored bcrypt hash.
+#   2. PII is anonymised (name, email, phone, health arrays).
+#   3. All associated data is hard-deleted: MealLog, ProgressLog,
+#      ClinicalNote, Recommendation.
+#   4. The patient row itself is kept for aggregate stats but is fully anonymised.
+#      The original email is freed so the same address can be re-registered.
+#
+# Google OAuth patients cannot use this endpoint — they have no real password.
+# They should contact support for manual erasure.
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
+@router.delete("/me")
+async def delete_my_account(
+    body: DeleteAccountRequest,
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import update as sa_update, delete as sa_delete
+    from ..models.db_models import MealLog, ProgressLog, ClinicalNote, Recommendation
+
+    patient_id = current_user.id
+
+    # ── Step 1: Reject Google OAuth accounts ─────────────────────────────
+    # Google patients have a random 64-char hex as their password — there is
+    # no real password to verify. Direct them to contact support instead.
+    if getattr(current_user, "google_id", None):
+        raise HTTPException(
+            status_code=400,
+            detail="This account uses Google Sign-In. Please contact support to delete it.",
+        )
+
+    # ── Step 2: Verify the password ───────────────────────────────────────
+    if not current_user.hashed_password or not verify_password(body.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect password. Please try again.",
+        )
+
+    # ── Step 3: Anonymise PII ─────────────────────────────────────────────
+    await session.execute(
+        sa_update(Patient)
+        .where(Patient.id == patient_id)
+        .values(
+            name=f"erased_{patient_id}",
+            email=f"erased_{patient_id}@deleted.local",
+            phone=None,
+            food_allergies=[],
+            medical_conditions=[],
+            dietary_preferences=[],
+            eating_habits=[],
+            fasting_days=[],
+            health_goals=[],
+            occupation=None,
+            subscription_status="inactive",
+            is_active=False,
+        )
+    )
+
+    # ── Step 4: Cascade delete all associated data ────────────────────────
+    await session.execute(sa_delete(MealLog).where(MealLog.patient_id == patient_id))
+    await session.execute(sa_delete(ProgressLog).where(ProgressLog.patient_id == patient_id))
+    await session.execute(sa_delete(ClinicalNote).where(ClinicalNote.patient_id == patient_id))
+    await session.execute(sa_delete(Recommendation).where(Recommendation.patient_id == patient_id))
+
+    await session.flush()
+    return {"message": "Account deleted successfully."}

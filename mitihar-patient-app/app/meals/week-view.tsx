@@ -57,7 +57,7 @@ export default function WeekViewScreen() {
           const sel = selectedIdx === i;
           const hasPlan = plan?.[date.toISOString().slice(0, 10)]?.length ?? 0;
           return (
-            <Pressable key={i} onPress={() => setSelectedIdx(i)} style={s.dayBtn}>
+            <Pressable key={date.toISOString().slice(0, 10)} onPress={() => setSelectedIdx(i)} style={s.dayBtn}>
               <Text style={s.dayLabel}>{DAY_LABELS[(i + 1) % 7]}</Text>
               <View style={[s.dayCircle, sel && s.dayCircleSel]}>
                 <Text style={[s.dayNum, sel && s.dayNumSel]}>{date.getDate()}</Text>
@@ -83,7 +83,7 @@ export default function WeekViewScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
           {ordered.map((meal, idx) => (
             <Pressable
-              key={idx}
+              key={meal["Meal Type"]}
               style={s.card}
               onPress={() => router.push({ pathname: "/meals/meal-detail", params: { date: selectedDate, type: meal["Meal Type"] } })}
             >

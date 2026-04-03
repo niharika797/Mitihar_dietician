@@ -150,7 +150,7 @@ export default function MealDetailScreen() {
             <Text style={s.sectionLabel}>INGREDIENTS</Text>
             <View style={s.listCard}>
               {items.map((item, i) => (
-                <View key={i} style={[s.listRow, i < items.length - 1 && s.listBorder]}>
+                <View key={`ingredient-${i}`} style={[s.listRow, i < items.length - 1 && s.listBorder]}>
                   <Text style={s.listBullet}>•</Text>
                   <Text style={s.listText}>{item}</Text>
                 </View>

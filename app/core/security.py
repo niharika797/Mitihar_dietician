@@ -6,7 +6,7 @@ Exports:
     get_current_patient, get_current_doctor, get_current_admin
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
@@ -51,7 +51,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     Always embeds: sub, role, user_type, token_type, exp, iat, nbf.
     """
     to_encode = data.copy()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
 
     to_encode.setdefault("role", "patient")
@@ -69,7 +69,7 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
     Carries minimal claims: only sub, role, and identifiers needed for re-issuance.
     """
     to_encode = data.copy()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES))
 
     to_encode.setdefault("role", "patient")
@@ -125,10 +125,12 @@ async def get_current_patient(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Decode JWT → verify role==patient → check is_active.
+    Decode JWT → verify role==patient → check is_active → optional email-verification gate
+    → reject tokens issued before the last password reset (stateless session invalidation).
     Subscription enforcement is handled by SubscriptionCheckMiddleware, not here.
     """
     from ..models.db_models import Patient  # avoid circular import
+    from datetime import timezone
 
     payload = _decode_jwt(token)
 
@@ -146,6 +148,27 @@ async def get_current_patient(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
     if not patient.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+
+    # T1-5: Email verification gate (only enforced when flag is True)
+    if settings.REQUIRE_EMAIL_VERIFICATION and not patient.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Check your inbox or request a new verification link.",
+        )
+
+    # T1-7: Stateless session invalidation — reject tokens issued before last password reset.
+    # Protects against a session thief continuing to use a stolen token after a password change.
+    if patient.password_changed_at is not None:
+        token_iat = payload.get("iat", 0)
+        changed_at_ts = patient.password_changed_at.replace(tzinfo=timezone.utc).timestamp() \
+            if patient.password_changed_at.tzinfo is None \
+            else patient.password_changed_at.timestamp()
+        if token_iat < changed_at_ts:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token invalidated by password change. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     return patient
 

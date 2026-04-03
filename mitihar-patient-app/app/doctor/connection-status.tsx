@@ -1,5 +1,7 @@
 import React, { useRef, useEffect } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, Animated, Clipboard } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
+import Clipboard from "@react-native-clipboard/clipboard";
 import { useRouter } from "expo-router";
 import { ChevronLeft, Copy, CheckCircle2 } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -42,7 +44,7 @@ export default function ConnectionStatusScreen() {
   const { profile, setProfile } = useAuthStore();
   const qc = useQueryClient();
   const prevStatus = useRef<string | null>(null);
-  const celebrateAnim = useRef(new Animated.Value(0)).current;
+  const celebrateAnim = useSharedValue(0);
 
   // ── Poll request status every 30s until accepted ──────────────────────
   const { data: reqStatus } = useQuery({
@@ -50,7 +52,6 @@ export default function ConnectionStatusScreen() {
     queryFn: getRequestStatus,
     enabled: !!profile,
     refetchInterval: (data) =>
-      // Stop polling once accepted (doctor side) or if subscription is active
       (data?.status === "accepted" || profile?.subscription_status === "active") ? false : 30_000,
     refetchIntervalInBackground: false,
   });
@@ -59,11 +60,7 @@ export default function ConnectionStatusScreen() {
   useEffect(() => {
     const current = reqStatus?.status;
     if (prevStatus.current === "pending" && current === "accepted") {
-      // Trigger celebratory animation
-      Animated.spring(celebrateAnim, {
-        toValue: 1, useNativeDriver: true, friction: 6,
-      }).start();
-      // Refresh profile from backend to get updated subscription_status
+      celebrateAnim.value = withSpring(1, { damping: 6 });
       getMyProfile().then((p) => {
         setProfile(p);
         qc.invalidateQueries({ queryKey: QUERY_KEYS.ME });
@@ -96,11 +93,9 @@ export default function ConnectionStatusScreen() {
     }
   };
 
-  // Celebration scale for newly-accepted state
-  const cardScale = celebrateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.03],
-  });
+  const cardAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + celebrateAnim.value * 0.03 }],
+  }));
 
   return (
     <View style={s.root}>
@@ -115,7 +110,7 @@ export default function ConnectionStatusScreen() {
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
         {/* Status card — animates on accept */}
-        <Animated.View style={{ width: "100%", transform: [{ scale: cardScale }] }}>
+        <Animated.View style={[{ width: "100%" }, cardAnimStyle]}>
           <View style={[s.statusCard, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
             <Text style={s.statusEmoji}>{cfg.emoji}</Text>
             <Text style={[s.statusTitle, { color: cfg.color }]}>{cfg.title}</Text>
@@ -141,7 +136,6 @@ export default function ConnectionStatusScreen() {
               {
                 label: "Expires",
                 value: (() => {
-                  // Use subscription_end_date if set, otherwise fall back to token_1_expiry
                   const raw = profile.subscription_end_date ?? profile.token_1_expiry;
                   if (!raw) return "—";
                   return new Date(raw).toLocaleDateString("en-IN", {
@@ -163,16 +157,12 @@ export default function ConnectionStatusScreen() {
           <View style={s.visitCard}>
             <Text style={s.visitCardTitle}>Visit Cycle (Token 2)</Text>
             <Text style={s.visitHint}>Share this code with your doctor at your clinic visit</Text>
-
-            {/* Token 2 display with copy button */}
             <View style={s.tokenRow}>
               <Text style={s.token2Text}>{visitData.token_2}</Text>
               <Pressable onPress={copyToken2} style={s.copyBtn} hitSlop={8}>
                 <Copy size={15} color="#1E7C45" />
               </Pressable>
             </View>
-
-            {/* Cycle stats */}
             <View style={s.visitStats}>
               {[
                 { label: "Visits this cycle", value: String(visitData.visit_counter) },
@@ -247,7 +237,6 @@ const s = StyleSheet.create({
   detailBorder:     { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   detailLabel:      { fontSize: 13, color: "#6B7280" },
   detailValue:      { fontSize: 13, fontWeight: "600", color: "#111827" },
-  // Visit / Token 2 card
   visitCard:        { width: "100%", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1.5, borderColor: "#DCFCE7", padding: 16, gap: 8 },
   visitCardTitle:   { fontSize: 14, fontWeight: "700", color: "#111827" },
   visitHint:        { fontSize: 12, color: "#6B7280", lineHeight: 18 },
@@ -259,7 +248,6 @@ const s = StyleSheet.create({
   visitStatBorder:  { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   visitStatLabel:   { fontSize: 12, color: "#6B7280" },
   visitStatValue:   { fontSize: 13, fontWeight: "600", color: "#111827" },
-  // CTAs
   ctaStack:         { width: "100%", gap: 10 },
   primaryBtn:       { width: "100%", height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
   primaryBtnText:   { fontSize: 16, fontWeight: "600", color: "#fff" },

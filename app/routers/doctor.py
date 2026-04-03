@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..core.database import get_db
+from ..core.limiter import limiter
 from ..core.security import get_current_doctor
 from ..services.token_service import generate_token_2, token_1_expiry_from_now, is_chargeable_visit
 from ..models.db_models import (
@@ -118,11 +119,12 @@ def _diff_meals(old_meals: list, new_meals: list) -> list[dict]:
 # ─── GET /api/v1/doctor/patients ──────────────────────────────────────────
 
 @router.get("/patients", response_model=PaginatedPatients)
+@limiter.limit("100/minute")
 async def list_patients(
     request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    search: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None, max_length=100),
     doctor: Doctor = Depends(get_current_doctor),
     session: AsyncSession = Depends(get_db),
 ):
@@ -241,9 +243,9 @@ async def override_patient_plan(
         old_meals = list(rec.meals or [])
         diffs = _diff_meals(old_meals, body.meals)
         if diffs:
-            # Fetch patient for context snapshot
+            # Fetch patient for context snapshot (ownership clause matches outer check)
             pat_result = await session.execute(
-                select(Patient).where(Patient.id == patient_id)
+                select(Patient).where(Patient.id == patient_id, Patient.doctor_id == did)
             )
             pat = pat_result.scalars().first()
             if pat:
@@ -747,7 +749,7 @@ async def add_meal_plan_note(
     updated_meals = []
     for meal in meals:
         meal = dict(meal)  # copy — JSONB dicts are immutable
-        if meal.get("Date") == body.meal_date and meal.get("Meal Type") == body.meal_type:
+        if meal.get("Date") == str(body.meal_date) and meal.get("Meal Type") == body.meal_type:
             meal["doctor_note"] = body.note
             found = True
         updated_meals.append(meal)
@@ -844,7 +846,7 @@ async def add_recipe(
         diet_type=body.diet_type,
         meal_time_tags=body.meal_time_tags,
         plan_type_tags=body.plan_type_tags,
-        ingredients=body.ingredients,
+        ingredients=[i.model_dump() for i in body.ingredients],  # IngredientItem → plain dict for JSONB
         region_tags=body.region_tags,
         doctor_id=doctor.id,
         # source differentiates library-only vs pending global approval
@@ -874,15 +876,19 @@ async def assign_recipe(
     """
     did = _doctor_id(request)
 
-    # Verify food item exists
+    # Verify food item exists and is accessible to this doctor:
+    # - Global verified items (is_verified=True) are accessible to all doctors
+    # - Unverified items are only accessible to the doctor who created them
     food_result = await session.execute(select(FoodItem).where(FoodItem.id == recipe_id))
     food = food_result.scalars().first()
     if food is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
+    if not food.is_verified and food.doctor_id != did:
+        raise HTTPException(status_code=403, detail="Recipe not accessible")
 
     # Build the meal object to inject
     new_meal = {
-        "Date": body.meal_date,
+        "Date": str(body.meal_date),  # date → str for JSONB compatibility
         "Meal Type": body.meal_type,
         "Menu Names": food.recipe_name,
         "Diet Type": food.diet_type,
@@ -1032,7 +1038,9 @@ def _find_dish(dish_name: str) -> dict | None:
 
 
 @router.post("/recipes/estimate")
+@limiter.limit("10/hour")
 async def estimate_recipe_nutrition(
+    request: Request,
     body: RecipeEstimateRequest,
     doctor: Doctor = Depends(get_current_doctor),
 ):
@@ -1117,6 +1125,7 @@ Required format:
 # ─── GET /api/v1/doctor/dashboard ─────────────────────────────────────────
 
 @router.get("/dashboard", response_model=DoctorDashboardStats)
+@limiter.limit("100/minute")
 async def get_dashboard(
     request: Request,
     doctor: Doctor = Depends(get_current_doctor),
@@ -1577,3 +1586,90 @@ async def get_pending_renewals(
         )
         for p in patients
     ]
+
+
+# ─── POST /api/v1/doctor/recipes/lookup ───────────────────────────────────────
+# Task 4 — Gemini nutrition fallback
+# When a doctor types a dish name not in the DB, this endpoint asks Gemini
+# to estimate the macros. Keys rotate round-robin across 4 API keys.
+
+import os, json, itertools, httpx
+from pydantic import BaseModel as _BM
+
+class RecipeLookupRequest(_BM):
+    food_name: str
+
+class RecipeLookupResponse(_BM):
+    food_name: str
+    calories: str
+    protein: str
+    carbs: str
+    fat: str
+    fiber: str
+    source: str = "gemini_estimate"
+
+# Build round-robin key cycle from env
+_gemini_keys = [
+    v for k, v in sorted(os.environ.items())
+    if k.startswith("GEMINI_API_KEY") and v.strip()
+]
+_key_cycle = itertools.cycle(_gemini_keys) if _gemini_keys else None
+
+_GEMINI_PROMPT = """You are a nutrition expert specializing in Indian food.
+Given the dish name below, estimate the nutritional values per standard single serving.
+Return ONLY a JSON object with these exact keys (all values as strings, numbers only):
+{{"calories": "...", "protein": "...", "carbs": "...", "fat": "...", "fiber": "..."}}
+No explanation, no markdown, no units in values — just the JSON object.
+
+Dish: {food_name}"""
+
+@router.post("/recipes/lookup", response_model=RecipeLookupResponse)
+async def gemini_recipe_lookup(
+    body: RecipeLookupRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+):
+    """
+    Estimate nutritional values for an unrecognised dish via Gemini.
+    Rotates across up to 4 API keys to stay within free tier rate limits.
+    Returns editable estimates — doctor should verify before saving.
+    """
+    if not _key_cycle:
+        raise HTTPException(status_code=503, detail="Gemini API keys not configured")
+
+    api_key = next(_key_cycle)
+    prompt  = _GEMINI_PROMPT.format(food_name=body.food_name.strip())
+
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.5-flash-lite:generateContent?key={api_key}"
+    )
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(url, json=payload)
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Gemini API error — try again")
+
+    try:
+        raw_text = (
+            resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        ).strip()
+        # Strip markdown fences if Gemini wraps in ```json ... ```
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[1]
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:]
+        data = json.loads(raw_text.strip())
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not parse Gemini response")
+
+    return RecipeLookupResponse(
+        food_name=body.food_name,
+        calories=str(data.get("calories", "0")),
+        protein=str(data.get("protein",  "0")),
+        carbs=str(data.get("carbs",    "0")),
+        fat=str(data.get("fat",      "0")),
+        fiber=str(data.get("fiber",   "0")),
+    )

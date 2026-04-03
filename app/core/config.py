@@ -27,10 +27,29 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Union[str, List[str]] = ["http://localhost:3000"]
 
     # ── External APIs ─────────────────────────────────────────────────────
+    # ── Redis (rate limiter storage) ────────────────────────────────────────
+    # Required for any deployment with --workers > 1.
+    # Example: redis://localhost:6379
+    REDIS_URL: Optional[str] = None
+
     GEMINI_API_KEY_1: Optional[str] = None
+    GEMINI_API_KEY_2: Optional[str] = None
+    GEMINI_API_KEY_3: Optional[str] = None
+    GEMINI_API_KEY_4: Optional[str] = None
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: Optional[str] = None
+
+    # ── Dev-only flags ────────────────────────────────────────────────────
+    # ALLOW_HARD_DELETE=True enables DELETE /admin/patients/{id}/hard-delete
+    # which physically removes the patient row (vs the DPDP anonymise).
+    # MUST be False in production — set True only in local .env for testing.
+    # ── Email verification gate ───────────────────────────────────
+    # False = allow login without verified email (current default for dev).
+    # Switch to True in production once real email sending is wired up (Phase 7).
+    REQUIRE_EMAIL_VERIFICATION: bool = False
+
+    ALLOW_HARD_DELETE: bool = False
 
     @field_validator("SECRET_KEY")
     @classmethod

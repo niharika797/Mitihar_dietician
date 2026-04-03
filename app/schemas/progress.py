@@ -1,39 +1,39 @@
 from pydantic import BaseModel, Field, model_validator
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 
 class MealLogCreate(BaseModel):
-    meal_type: str  # breakfast, lunch, dinner, snack
-    calories: float
-    protein: Optional[float] = 0
-    carbs: Optional[float] = 0
-    fat: Optional[float] = 0
-    fiber: Optional[float] = 0
+    meal_type: Literal["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner", "Snack"]
+    calories: float    = Field(..., ge=0, le=5000)
+    protein:  Optional[float] = Field(default=0, ge=0, le=500)
+    carbs:    Optional[float] = Field(default=0, ge=0, le=500)
+    fat:      Optional[float] = Field(default=0, ge=0, le=500)
+    fiber:    Optional[float] = Field(default=0, ge=0, le=200)
     recommendation_id: Optional[int] = Field(default=None)
     # ID of the recommendation this meal was taken from. Null for custom meals.
 
 class WaterLogCreate(BaseModel):
-    glasses: int
+    glasses: int = Field(..., ge=0, le=50)
 
 class StepsLogCreate(BaseModel):
-    steps: int
+    steps: int = Field(..., ge=0, le=100_000)
 
 class WeightLogCreate(BaseModel):
-    weight: float
+    weight: float = Field(..., gt=0, le=500)
 
 class ActivityLogCreate(BaseModel):
-    steps: int
-    calories_burned: Optional[float] = 0
-    activity_type: Optional[str] = "Walking"
+    steps: int = Field(..., ge=0, le=100_000)
+    calories_burned: Optional[float] = Field(default=0, ge=0, le=10_000)
+    activity_type: Optional[str] = Field(default="Walking", max_length=100)
 
 class MealLogUpdate(BaseModel):
-    meal_type: Optional[str] = None
-    calories: Optional[float] = None
-    protein: Optional[float] = None
-    carbs: Optional[float] = None
-    fat: Optional[float] = None
-    fiber: Optional[float] = None
-    notes: Optional[str] = None
+    meal_type: Optional[Literal["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner", "Snack"]] = None
+    calories: Optional[float] = Field(default=None, ge=0, le=5000)
+    protein: Optional[float] = Field(default=None, ge=0, le=500)
+    carbs: Optional[float] = Field(default=None, ge=0, le=500)
+    fat: Optional[float] = Field(default=None, ge=0, le=500)
+    fiber: Optional[float] = Field(default=None, ge=0, le=200)
+    notes: Optional[str] = Field(default=None, max_length=1000)
 
 class MealLogResponse(BaseModel):
     id: int

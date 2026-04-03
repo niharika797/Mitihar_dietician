@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Search, Users, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Search, Users, Loader2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { adminApi, AdminPatientView } from '../../../lib/adminApi';
 import { aqk } from '../../../lib/queryKeys';
 
@@ -24,24 +24,45 @@ function daysLeftLabel(expiry: string | null | undefined): React.ReactNode {
 }
 
 export function AdminPatients() {
+  // Live search input value (controlled) — kept separate from apiQuery
+  // so the input stays responsive while debounce is pending.
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [page, setPage] = useState(1);
+
+  // Single state object that drives the API call.
+  // Both the debounced search term and page are reset together
+  // so they can be updated in one setState instead of two.
+  const [apiQuery, setApiQuery] = useState({ search: '', page: 1 });
+
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounce search
+  // Confirmation dialog state — holds the patient to be erased, or null when closed
+  const [confirmPatient, setConfirmPatient] = useState<{ id: number; name: string } | null>(null);
+
+  const queryClient = useQueryClient();
+
+  // Erase mutation — calls DELETE /admin/patients/{id}
+  // On success: close dialog, invalidate all patient pages so table refreshes
+  const eraseMutation = useMutation({
+    mutationFn: (id: number) => adminApi.erasePatient(id),
+    onSuccess: () => {
+      setConfirmPatient(null);
+      queryClient.invalidateQueries({ queryKey: ['admin', 'patients'] });
+      queryClient.invalidateQueries({ queryKey: aqk.stats() });
+    },
+  });
+
+  // Debounce: one setState call updates both search term and page together
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      setDebouncedSearch(search);
-      setPage(1);
+      setApiQuery({ search, page: 1 });
     }, 350);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [search]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: aqk.patients(page, debouncedSearch),
-    queryFn: () => adminApi.listPatients(page, debouncedSearch),
+    queryKey: aqk.patients(apiQuery.page, apiQuery.search),
+    queryFn: () => adminApi.listPatients(apiQuery.page, apiQuery.search),
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   });
@@ -84,14 +105,14 @@ export function AdminPatients() {
           <div className="py-16 flex flex-col items-center">
             <Users size={32} className="text-[#D1D5DB] mb-3" />
             <p className="text-base font-medium text-[#374151]">
-              {debouncedSearch ? 'No patients match your search' : 'No patients found'}
+              {apiQuery.search ? 'No patients match your search' : 'No patients found'}
             </p>
           </div>
         ) : (
           <table className="w-full">
             <thead>
               <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB]">
-                {['Patient', 'Token 1', 'Days Left', 'User Type', 'Doctor ID', 'BMI', 'Subscription', 'Joined'].map(h => (
+                {['Patient', 'Token 1', 'Days Left', 'User Type', 'Doctor ID', 'BMI', 'Subscription', 'Joined', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280] whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -144,6 +165,16 @@ export function AdminPatients() {
                   <td className="px-4 py-4 text-xs text-[#9CA3AF] tabular-nums whitespace-nowrap">
                     {new Date(p.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </td>
+                  {/* Actions — erase patient (DPDP compliance anonymise) */}
+                  <td className="px-4 py-4">
+                    <button
+                      onClick={() => setConfirmPatient({ id: p.id, name: p.name })}
+                      title="Erase patient data"
+                      className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -155,30 +186,91 @@ export function AdminPatients() {
       {total > PAGE_SIZE && (
         <div className="flex items-center justify-between mt-4 px-1">
           <p className="text-sm text-[#6B7280]">
-            Page {page} of {totalPages} &middot; {total} total
+            Page {apiQuery.page} of {totalPages} &middot; {total} total
           </p>
           <div className="flex items-center gap-1">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            <button onClick={() => setApiQuery(q => ({ ...q, page: Math.max(1, q.page - 1) }))} disabled={apiQuery.page === 1}
               className="w-8 h-8 rounded border border-[#E5E7EB] flex items-center justify-center text-[#374151] hover:bg-[#F3F4F6] disabled:opacity-40">
               <ChevronLeft size={14} />
             </button>
             {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
               // Sliding window of 7 pages centered on current
               const half = 3;
-              let start = Math.max(1, page - half);
+              let start = Math.max(1, apiQuery.page - half);
               const end = Math.min(totalPages, start + 6);
               start = Math.max(1, end - 6);
               return start + i;
             }).filter(p => p >= 1 && p <= totalPages).map(p => (
-              <button key={p} onClick={() => setPage(p)}
+              <button key={p} onClick={() => setApiQuery(q => ({ ...q, page: p }))}
                 className={`w-8 h-8 rounded border text-sm transition-colors ${
-                  page === p ? 'bg-[#1E7C45] border-[#1E7C45] text-white' : 'border-[#E5E7EB] text-[#374151] hover:bg-[#F3F4F6]'
+                  apiQuery.page === p ? 'bg-[#1E7C45] border-[#1E7C45] text-white' : 'border-[#E5E7EB] text-[#374151] hover:bg-[#F3F4F6]'
                 }`}>{p}</button>
             ))}
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            <button onClick={() => setApiQuery(q => ({ ...q, page: Math.min(totalPages, q.page + 1) }))} disabled={apiQuery.page === totalPages}
               className="w-8 h-8 rounded border border-[#E5E7EB] flex items-center justify-center text-[#374151] hover:bg-[#F3F4F6] disabled:opacity-40">
               <ChevronRight size={14} />
             </button>
+          </div>
+        </div>
+      )}
+      {/* ── Erase confirmation dialog ─────────────────────────────────────────
+           What this does: anonymises PII and hard-deletes all associated
+           records (meal logs, progress, notes, plans). The patient row is
+           kept for aggregate stats but the email becomes erased_{id}@deleted.local
+           so the same email CAN be re-registered. This is DPDP Act compliance.
+        ────────────────────────────────────────────────────────────────────── */}
+      {confirmPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-[#FEF2F2] flex items-center justify-center flex-shrink-0">
+                <Trash2 size={18} className="text-[#DC2626]" />
+              </div>
+              <div>
+                <p className="text-base font-semibold text-[#111827]">Erase patient data?</p>
+                <p className="text-sm text-[#6B7280]">This cannot be undone</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-[#374151] mb-1">
+              You are about to erase all data for:
+            </p>
+            <p className="text-sm font-semibold text-[#111827] mb-4 truncate">
+              {confirmPatient.name} <span className="text-[#9CA3AF] font-normal">(ID {confirmPatient.id})</span>
+            </p>
+
+            <ul className="text-xs text-[#6B7280] space-y-1 mb-6 list-disc list-inside">
+              <li>Name and email will be anonymised</li>
+              <li>All meal logs, progress and notes deleted</li>
+              <li>Diet plans removed</li>
+              <li>Original email freed for re-registration</li>
+            </ul>
+
+            {eraseMutation.isError && (
+              <p className="text-xs text-[#DC2626] mb-3">
+                Something went wrong. Please try again.
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setConfirmPatient(null); eraseMutation.reset(); }}
+                disabled={eraseMutation.isPending}
+                className="flex-1 h-9 rounded-md border border-[#E5E7EB] text-sm text-[#374151] hover:bg-[#F9FAFB] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => eraseMutation.mutate(confirmPatient.id)}
+                disabled={eraseMutation.isPending}
+                className="flex-1 h-9 rounded-md bg-[#DC2626] text-white text-sm font-medium hover:bg-[#B91C1C] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {eraseMutation.isPending
+                  ? <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Erasing…</>
+                  : 'Yes, erase data'
+                }
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -3,15 +3,18 @@
  * Manages biometric unlock preference, persisted in SecureStore.
  *
  * State:
- *   enabled         — whether user has turned on biometric unlock
+ *   enabled           — whether user has turned on biometric unlock
  *   hardwareAvailable — device has fingerprint/face sensor
- *   enrolled        — user has biometrics enrolled in device settings
- *   lastUnlocked    — timestamp of last successful biometric unlock
+ *   enrolled          — user has biometrics enrolled in device settings
+ *   lastUnlocked      — timestamp of last successful biometric unlock
+ *   isReady           — true once checkHardware() has completed (regardless of result)
  *
  * Flow:
  *   1. On app start, checkHardware() is called to probe device capabilities
- *   2. If user enables biometric in settings, setEnabled(true) persists it
- *   3. BiometricGate reads `enabled` and shows prompt when app resumes
+ *   2. BiometricGate waits for BOTH isReady=true AND authStore.isLoading=false
+ *      before making any gate decision — this prevents the double-prompt race
+ *      where the gate fires once with enabled=false then again with enabled=true
+ *   3. If user enables biometric in settings, setEnabled(true) persists it
  *   4. Successful unlock sets lastUnlocked; failed unlock routes to login
  */
 import { create } from "zustand";
@@ -24,6 +27,7 @@ interface BiometricState {
   hardwareAvailable: boolean;
   enrolled: boolean;
   lastUnlocked: number | null;   // Date.now() of last success
+  isReady: boolean;              // true once checkHardware() has finished
 
   // Actions
   setEnabled: (val: boolean) => Promise<void>;
@@ -36,6 +40,7 @@ export const useBiometricStore = create<BiometricState>((set) => ({
   hardwareAvailable: false,
   enrolled: false,
   lastUnlocked: null,
+  isReady: false,
 
   setEnabled: async (val) => {
     await SecureStore.setItemAsync(BIOMETRIC_KEY, val ? "1" : "0");
@@ -57,9 +62,10 @@ export const useBiometricStore = create<BiometricState>((set) => ({
         enrolled: isEnrolled,
         // Only enable if device supports it AND user previously turned it on
         enabled: hasHW && isEnrolled && savedPref === "1",
+        isReady: true,   // signal that hardware check is fully complete
       });
     } catch {
-      set({ hardwareAvailable: false, enrolled: false, enabled: false });
+      set({ hardwareAvailable: false, enrolled: false, enabled: false, isReady: true });
     }
   },
 }));

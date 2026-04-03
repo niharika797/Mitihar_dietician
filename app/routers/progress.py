@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.limiter import limiter
@@ -406,7 +407,6 @@ async def get_my_ratings(
     Used by the patient app to restore 👍/👎 button state on load.
     """
     from ..models.db_models import MealRating
-    from sqlalchemy import select
     result = await session.execute(
         select(MealRating)
         .where(MealRating.patient_id == current_user.id)

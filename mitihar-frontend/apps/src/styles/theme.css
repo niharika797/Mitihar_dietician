@@ -144,6 +144,20 @@
   --radius-xl: var(--radius-xl);
 }
 
+/* ── Accessibility: Reduced motion (WCAG 2.3.3) ─────────────────────────────
+   Respects the OS-level "Reduce Motion" setting. Disables or shortens
+   animations from the `motion` library and CSS transitions globally.
+   This is a progressive enhancement — users without this preference
+   see full animations. ──────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -69,3 +69,28 @@ mitihar-frontend/apps/tsconfig.tsbuildinfo
 
 # ── Design / Screens ──────────────────────────────────────────────────────────
 Phone screens/
+
+# ── Local variants ────────────────────────────────────────────────────────────
+*.local
+
+# ── Demo / audit credential store ─────────────────────────────────────────────
+credentials/
+
+# ── Checkpoint files (scripts, idempotent — no secrets but large/noisy) ───────
+scripts/rename_checkpoint.json
+
+# Internal docs and dev artifacts
+docs/
+logs/
+credentials/
+SPRINT_*.md
+MITIHAR_GUIDEBOOK.md
+RL_Roadmap.md
+Task_List.md
+implementation_plan.md
+walkthrough.md
+journal.txt
+test_results_latest.txt
+MITYAHAR_PREPRODUCTION_AUDIT.md
+rename_checkpoint.json
+scripts/*.md

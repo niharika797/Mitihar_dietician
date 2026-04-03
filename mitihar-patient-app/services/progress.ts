@@ -7,7 +7,7 @@ export async function getTodaySummary(): Promise<TodaySummary> {
   return data;
 }
 
-// ── POST /progress/meal ────────────────────────────────────────────────────
+// ── POST /progress/log/meal ────────────────────────────────────────────────────
 export interface LogMealPayload {
   meal_type: string;
   calories_consumed: number;
@@ -20,7 +20,7 @@ export interface LogMealPayload {
 }
 
 export async function logMeal(payload: LogMealPayload): Promise<MealLogEntry> {
-  const { data } = await api.post("/progress/meal", payload);
+  const { data } = await api.post("/progress/log/meal", payload); // Audit C-3: backend route is /log/meal, not /meal
   return data;
 }
 

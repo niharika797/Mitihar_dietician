@@ -37,7 +37,11 @@ export async function getShoppingList(): Promise<ShoppingListResponse> {
 }
 
 // ── POST /meal-plan/shopping-list/toggle ──────────────────────────────────
-export async function toggleShoppingItem(ingredient_name: string) {
-  const { data } = await api.post("/meal-plan/shopping-list/toggle", { ingredient_name });
+// Audit C-4: backend reads query params (not JSON body), and at_home is a required param.
+// Callers must now pass the desired at_home boolean explicitly.
+export async function toggleShoppingItem(ingredient_name: string, at_home: boolean) {
+  const { data } = await api.post("/meal-plan/shopping-list/toggle", null, {
+    params: { ingredient_name, at_home },
+  });
   return data;
 }

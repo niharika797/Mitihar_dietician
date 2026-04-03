@@ -40,7 +40,7 @@ export function TopBar({ breadcrumbs, notifications, userName, userRole, onSearc
       {/* Breadcrumb */}
       <nav className="flex-1 flex items-center gap-1.5 text-sm">
         {breadcrumbs.map((crumb, i) => (
-          <React.Fragment key={i}>
+          <React.Fragment key={crumb.to ?? crumb.label}>
             {i > 0 && <span className="text-[#D1D5DB]">/</span>}
             <span className={i === breadcrumbs.length - 1 ? 'text-[#111827] font-medium' : 'text-[#6B7280]'}>
               {crumb.label}

@@ -18,9 +18,11 @@ import { useAuthStore } from '../stores/authStore';
 
 // Base URL is read from VITE_API_URL env var (set in mitihar-frontend/apps/.env).
 // Falls back to localhost for local dev. Never hardcode a production URL here.
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8001/api/v1'; // Audit C-1: fallback must match backend port 8001
 
-export const apiClient = axios.create({
+// Named export intentionally removed — all consumers use the default import.
+// Keeping both caused react-doctor's "duplicate export" warning.
+const apiClient = axios.create({
   baseURL: BASE_URL,
   withCredentials: true,
   headers: {

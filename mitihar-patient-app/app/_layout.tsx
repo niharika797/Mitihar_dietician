@@ -1,6 +1,18 @@
 import "../global.css";
 import React, { useEffect, useState } from "react";
+import { LogBox } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
+
+// Suppress the dev-mode-only Android activity lifecycle race in expo-keep-awake.
+// expo-router internally calls useKeepAwake(); if the Android Activity is
+// destroyed during hot-reload / backgrounding, the native call is rejected.
+// This is harmless in development and does not occur in production builds.
+if (__DEV__) {
+  LogBox.ignoreLogs([
+    "ExpoKeepAwake.activate",
+    "The current activity is no longer available",
+  ]);
+}
 import { useAuthStore } from "../store/useAuthStore";
 import { useBiometricStore } from "../store/useBiometricStore";
 import { StatusBar } from "expo-status-bar";
@@ -17,7 +29,6 @@ import { ToastProvider } from "../components/shared";
 import SplashAnimation from "../components/SplashAnimation";
 import BiometricGate from "../components/BiometricGate";
 
-// Keep native splash visible until we manually hide it after our animation
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
@@ -26,21 +37,58 @@ const queryClient = new QueryClient({
   },
 });
 
+// ── Onboarding completion check ────────────────────────────────────────────
+// A profile is considered fully onboarded ONLY when disclaimer_accepted_at is
+// set on the server. This is the single authoritative signal.
+//
+// The old height_cm > 0 && weight_kg > 0 fallback has been intentionally
+// removed — registration now sends height=0, weight=0 so that fallback would
+// have fired immediately for every new account and skipped onboarding.
+import type { PatientProfile } from "../types";
+function isOnboardingComplete(profile: PatientProfile | null): boolean {
+  if (!profile) return false;
+  return !!profile.disclaimer_accepted_at;
+}
+
+// ── AuthGate — the single source of truth for post-auth routing ────────────
+//
+// DESIGN RULE: AuthGate is the ONLY place that calls router.replace after
+// authentication state changes. login.tsx and register.tsx only mutate store
+// state; they never navigate themselves. This eliminates the race condition
+// where both AuthGate and the auth screens fought over router.replace.
+//
+// Routing matrix:
+//   unauthenticated + not in (auth)/(onboarding)  → /(auth)/login
+//   authenticated   + in (auth)                   →
+//       profile complete   → /(tabs)
+//       profile incomplete → /(onboarding)/personal-info
+//   all other cases                               → no-op (stay put)
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, profile } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (isLoading) return;
-    const inAuth = segments[0] === "(auth)";
+
+    const inAuth       = segments[0] === "(auth)";
     const inOnboarding = segments[0] === "(onboarding)";
+
     if (!isAuthenticated && !inAuth && !inOnboarding) {
+      // Not logged in and not already heading to auth — send to login
       router.replace("/(auth)/login");
-    } else if (isAuthenticated && inAuth) {
-      router.replace("/(tabs)");
+      return;
     }
-  }, [isAuthenticated, isLoading, segments]);
+
+    if (isAuthenticated && inAuth) {
+      // Just authenticated (login or register) — decide destination based on profile
+      if (isOnboardingComplete(profile)) {
+        router.replace("/(tabs)");
+      } else {
+        router.replace("/(onboarding)/personal-info");
+      }
+    }
+  }, [isAuthenticated, isLoading, profile, segments]);
 
   return <>{children}</>;
 }
@@ -56,29 +104,23 @@ export default function RootLayout() {
     Inter_700Bold,
   });
 
-  // Controls whether our custom JS splash is still showing
   const [splashDone, setSplashDone] = useState(false);
 
-  // Bootstrap auth + biometric hardware check in parallel on mount
   useEffect(() => {
     bootstrap();
     checkHardware();
   }, []);
 
-  // Hide the NATIVE splash as soon as fonts are ready — our JS splash takes over
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync();
   }, [fontsLoaded]);
 
-  // Don't render anything until fonts are loaded (avoids FOUC)
   if (!fontsLoaded) return null;
 
-  // Show our animated JS splash until the animation calls onFinish()
   if (!splashDone) {
     return <SplashAnimation onFinish={() => setSplashDone(true)} />;
   }
 
-  // ── Screen transition presets ──────────────────────────────────────────
   const SLIDE = {
     headerShown: false,
     animation: "slide_from_right",
@@ -95,42 +137,28 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        {/* BiometricGate — shows fingerprint lock screen when enabled */}
         <BiometricGate>
           <AuthGate>
             <Stack screenOptions={{ headerShown: false }}>
-              {/* ── Route groups ───────────────────────────────────────── */}
               <Stack.Screen name="(auth)"       options={{ headerShown: false, animation: "fade" }} />
               <Stack.Screen name="(onboarding)" options={{ headerShown: false, animation: "slide_from_right" }} />
               <Stack.Screen name="(tabs)"       options={{ headerShown: false, animation: "fade" }} />
-
-              {/* ── Doctor connection flow ──────────────────────────── */}
               <Stack.Screen name="doctor/find-doctor"       options={SLIDE} />
               <Stack.Screen name="doctor/activate"          options={SLIDE} />
               <Stack.Screen name="doctor/connection-status" options={SLIDE} />
-
-              {/* ── Home extras ─────────────────────────────────────── */}
               <Stack.Screen name="home/notifications" options={SLIDE} />
-
-              {/* ── Meal plan screens ────────────────────────────────── */}
               <Stack.Screen name="meals/meal-detail"    options={SLIDE} />
               <Stack.Screen name="meals/week-view"      options={SLIDE} />
               <Stack.Screen name="meals/shopping-list"  options={SLIDE} />
               <Stack.Screen name="meals/plan-history"   options={SLIDE} />
               <Stack.Screen name="meals/plan-empty"     options={SLIDE} />
-
-              {/* ── Meal logging ─────────────────────────────────────── */}
               <Stack.Screen name="log/log-meal"      options={MODAL} />
               <Stack.Screen name="log/log-from-plan" options={MODAL} />
               <Stack.Screen name="log/edit-log"      options={MODAL} />
-
-              {/* ── Progress detail screens ──────────────────────────── */}
               <Stack.Screen name="progress/weight-log" options={SLIDE} />
               <Stack.Screen name="progress/water-log"  options={SLIDE} />
               <Stack.Screen name="progress/steps-log"  options={SLIDE} />
               <Stack.Screen name="progress/charts"     options={SLIDE} />
-
-              {/* ── Profile settings screens ─────────────────────────── */}
               <Stack.Screen name="profile/edit-profile"   options={SLIDE} />
               <Stack.Screen name="profile/notifications"  options={SLIDE} />
               <Stack.Screen name="profile/account"        options={SLIDE} />

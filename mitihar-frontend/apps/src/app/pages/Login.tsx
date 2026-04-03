@@ -161,7 +161,7 @@ export function Login() {
             <Leaf size={22} className="text-white" />
           </div>
           <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">
-            Mityahar
+            Mitihar
           </h1>
           <p className="text-sm text-[#6B7280] mt-1">
             Clinical Nutrition Dashboard
@@ -187,7 +187,7 @@ export function Login() {
               >
                 <InputOTPGroup>
                   {[0, 1, 2, 3, 4, 5].map((i) => (
-                    <InputOTPSlot key={i} index={i} />
+                    <InputOTPSlot key={`otp-slot-${i}`} index={i} />
                   ))}
                 </InputOTPGroup>
               </InputOTP>
@@ -257,17 +257,18 @@ export function Login() {
               className="bg-white border border-[#E5E7EB] rounded-xl p-6 shadow-[0_1px_3px_0_rgb(0_0_0/0.1)]"
             >
               <div className="mb-4">
-                <label className="block text-sm font-medium text-[#374151] mb-1.5">
+                <label htmlFor="login-email" className="block text-sm font-medium text-[#374151] mb-1.5">
                   Email address
                 </label>
                 <input
+                  id="login-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={
                     role === 'doctor'
-                      ? 'doctor@mityahar.in'
-                      : 'admin@mityahar.in'
+                      ? 'doctor@mitihar.in'
+                      : 'admin@mitihar.in'
                   }
                   required
                   className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent transition"
@@ -275,11 +276,12 @@ export function Login() {
               </div>
 
               <div className="mb-5">
-                <label className="block text-sm font-medium text-[#374151] mb-1.5">
+                <label htmlFor="login-password" className="block text-sm font-medium text-[#374151] mb-1.5">
                   Password
                 </label>
                 <div className="relative">
                   <input
+                    id="login-password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -324,41 +326,44 @@ export function Login() {
               </button>
             </form>
 
-            {/* Quick demo access — pre-fills credentials for local testing */}
-            <div className="mt-4 p-4 rounded-lg bg-[#F0FDF4] border border-[#DCFCE7]">
-              <p className="text-xs font-medium text-[#15803d] mb-2">
-                Quick dev access
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setRole('doctor');
-                    setEmail('testdoctor@mityahar.com');
-                    setPassword('doctor1234');
-                    loginMutation.reset();
-                  }}
-                  className="flex-1 h-7 rounded text-xs bg-white border border-[#DCFCE7] text-[#15803d] hover:bg-[#DCFCE7] transition-colors"
-                >
-                  Doctor
-                </button>
-                <button
-                  onClick={() => {
-                    setRole('admin');
-                    setEmail('admin@mityahar.com');
-                    setPassword('admin1234');
-                    loginMutation.reset();
-                  }}
-                  className="flex-1 h-7 rounded text-xs bg-white border border-[#DCFCE7] text-[#15803d] hover:bg-[#DCFCE7] transition-colors"
-                >
-                  Admin
-                </button>
+            {/* Quick dev access — only rendered in dev builds (Vite strips this in production).
+                Credentials are read from .env (VITE_DEV_*) — never hardcoded in source. */}
+            {import.meta.env.DEV && (
+              <div className="mt-4 p-4 rounded-lg bg-[#F0FDF4] border border-[#DCFCE7]">
+                <p className="text-xs font-medium text-[#15803d] mb-2">
+                  Quick dev access
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setRole('doctor');
+                      setEmail(import.meta.env.VITE_DEV_DOCTOR_EMAIL ?? '');
+                      setPassword(import.meta.env.VITE_DEV_DOCTOR_PASSWORD ?? '');
+                      loginMutation.reset();
+                    }}
+                    className="flex-1 h-7 rounded text-xs bg-white border border-[#DCFCE7] text-[#15803d] hover:bg-[#DCFCE7] transition-colors"
+                  >
+                    Doctor
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRole('admin');
+                      setEmail(import.meta.env.VITE_DEV_ADMIN_EMAIL ?? '');
+                      setPassword(import.meta.env.VITE_DEV_ADMIN_PASSWORD ?? '');
+                      loginMutation.reset();
+                    }}
+                    className="flex-1 h-7 rounded text-xs bg-white border border-[#DCFCE7] text-[#15803d] hover:bg-[#DCFCE7] transition-colors"
+                  >
+                    Admin
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
 
         <p className="text-center text-xs text-[#9CA3AF] mt-6">
-          © 2026 Mityahar Health Technologies
+          © 2026 Mitihar Health Technologies
         </p>
       </div>
     </div>
