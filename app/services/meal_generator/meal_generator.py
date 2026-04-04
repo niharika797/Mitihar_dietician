@@ -426,7 +426,11 @@ class MealGenerator:
                             # ── Upgrade 3B: skip pantry staples ──────────
                             if ing.get("is_pantry_staple"):
                                 continue
-                            amt = float(ing["amount_g"]) * factor
+                            raw_amt = ing.get("amount_g") or ing.get("quantity") or 0
+                            try:
+                                amt = float(raw_amt) * factor
+                            except (ValueError, TypeError):
+                                amt = 0.0
                             meal_option["Ingredients Scaling"][name] = round(meal_option["Ingredients Scaling"].get(name, 0) + amt, 2)
                     
                     if not slot_failed and meal_option["Menu Names"]:
