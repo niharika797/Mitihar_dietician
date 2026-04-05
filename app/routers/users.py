@@ -147,6 +147,37 @@ async def update_user_profile(
 # Google OAuth patients cannot use this endpoint — they have no real password.
 # They should contact support for manual erasure.
 
+class NotificationPreferencesBody(BaseModel):
+    preferences: dict
+
+
+@router.get("/me/notification-preferences")
+async def get_notification_preferences(
+    current_user: Patient = Depends(get_current_user),
+):
+    """Return the patient's saved notification preference flags."""
+    return current_user.notification_preferences or {}
+
+
+@router.post("/me/notification-preferences")
+async def update_notification_preferences(
+    body: NotificationPreferencesBody,
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Merge incoming preference flags into the patient's notification_preferences JSONB."""
+    from sqlalchemy import update as sa_update
+
+    merged = {**(current_user.notification_preferences or {}), **body.preferences}
+    await session.execute(
+        sa_update(Patient)
+        .where(Patient.id == current_user.id)
+        .values(notification_preferences=merged)
+    )
+    await session.flush()
+    return merged
+
+
 class DeleteAccountRequest(BaseModel):
     password: str
 

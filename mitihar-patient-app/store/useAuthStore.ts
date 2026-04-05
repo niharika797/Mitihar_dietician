@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
-import { SECURE_KEYS } from "../lib/axios";
+import axiosInstance, { SECURE_KEYS } from "../lib/axios";
 import type { PatientProfile } from "../types";
 import { getMyProfile } from "../services/profile";
 
@@ -71,6 +71,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   setProfile: (profile) => set({ profile }),
 
   logout: async () => {
+    try {
+      await axiosInstance.post('/auth/register-fcm-token', { fcm_token: null });
+    } catch (_) {}
     await SecureStore.deleteItemAsync(SECURE_KEYS.ACCESS_TOKEN);
     await SecureStore.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
     // Clear biometric preference from BOTH SecureStore (persisted) AND the

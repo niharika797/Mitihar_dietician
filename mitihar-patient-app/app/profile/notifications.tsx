@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet, Switch, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
-import * as SecureStore from "expo-secure-store";
+import api from "../../lib/axios";
 
 type NotifSetting = { id: string; label: string; sub: string; value: boolean };
 
@@ -15,24 +15,20 @@ const DEFAULTS: NotifSetting[] = [
   { id: "promotions",      label: "Tips & Promotions",   sub: "Health tips and app feature updates",        value: false },
 ];
 
-const STORAGE_KEY = "mityahar_notif_settings";
-
 export default function NotificationsScreen() {
   const router = useRouter();
   const [settings, setSettings] = useState<NotifSetting[]>(DEFAULTS);
   const [loading, setLoading] = useState(true);
 
-  // Load persisted settings on mount
+  // Load preferences from backend on mount
   useEffect(() => {
-    SecureStore.getItemAsync(STORAGE_KEY)
-      .then(raw => {
-        if (raw) {
-          const saved: Record<string, boolean> = JSON.parse(raw);
-          setSettings(prev => prev.map(s => ({
-            ...s,
-            value: saved[s.id] !== undefined ? saved[s.id] : s.value,
-          })));
-        }
+    api.get<Record<string, boolean>>("/users/me/notification-preferences")
+      .then(res => {
+        const saved = res.data ?? {};
+        setSettings(prev => prev.map(s => ({
+          ...s,
+          value: saved[s.id] !== undefined ? saved[s.id] : s.value,
+        })));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -43,7 +39,7 @@ export default function NotificationsScreen() {
       const next = prev.map(s => s.id === id ? { ...s, value: !s.value } : s);
       const toSave: Record<string, boolean> = {};
       next.forEach(s => { toSave[s.id] = s.value; });
-      SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(toSave)).catch(() => {});
+      api.post("/users/me/notification-preferences", { preferences: toSave }).catch(() => {});
       return next;
     });
   };
@@ -83,7 +79,6 @@ export default function NotificationsScreen() {
 
       <Text style={s.footer}>
         Push notification permissions are managed via your device settings.
-        {"\n"}Actual push delivery requires FCM setup (coming soon).
       </Text>
     </View>
   );

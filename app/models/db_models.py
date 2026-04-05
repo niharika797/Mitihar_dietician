@@ -206,6 +206,7 @@ class Patient(Base):
 
     # ── FCM push notifications ──────────────────────────────────────────────
     fcm_token             = Column(String(512), nullable=True)
+    notification_preferences = Column(JSONB, nullable=True, default={})
     # Device FCM token — updated on every login, cleared on logout.
     # NULL means patient has not granted notification permission or is logged out.
 

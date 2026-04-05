@@ -1,5 +1,5 @@
 import "../global.css";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { LogBox } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 
@@ -14,6 +14,12 @@ if (__DEV__) {
   ]);
 }
 import { useAuthStore } from "../store/useAuthStore";
+import {
+  requestPermissions,
+  getFCMToken,
+  sendTokenToBackend,
+  setupNotificationListeners,
+} from "../lib/notifications";
 import { useBiometricStore } from "../store/useBiometricStore";
 import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -89,6 +95,27 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       }
     }
   }, [isAuthenticated, isLoading, profile, segments]);
+
+  // FCM setup — fire-and-forget after any successful auth, cleaned up on logout
+  const fcmCleanupRef = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      fcmCleanupRef.current?.();
+      fcmCleanupRef.current = undefined;
+      return;
+    }
+    (async () => {
+      try {
+        const granted = await requestPermissions();
+        if (!granted) return;
+        const token = await getFCMToken();
+        if (token) await sendTokenToBackend(token);
+        fcmCleanupRef.current = setupNotificationListeners(router);
+      } catch (e) {
+        console.warn('FCM setup failed silently', e);
+      }
+    })();
+  }, [isAuthenticated]);
 
   return <>{children}</>;
 }
