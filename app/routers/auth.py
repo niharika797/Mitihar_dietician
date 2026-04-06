@@ -184,22 +184,21 @@ async def register(
                 "doctor_connected": False,
             }
 
-        code_row.is_used = True
-        code_row.used_by_patient_id = patient_id
-        code_row.used_at = now
-
+        # Link the patient to the doctor now, but do NOT consume the code or
+        # activate the subscription yet. Consumption happens at /patients/activate
+        # after onboarding + disclaimer complete. This ensures a network failure
+        # at the final step cannot strand the patient with a burned code.
         await session.execute(
             sa_update(PatientModel)
             .where(PatientModel.id == patient_id)
             .values(
                 doctor_id=code_row.doctor_id,
                 user_type="doctor_assigned",
-                subscription_status="active",
             )
         )
         await session.flush()
         return {
-            "message": "Registered and connected to doctor successfully.",
+            "message": "Registered and connected to doctor successfully. Complete onboarding then activate your subscription.",
             "doctor_connected": True,
         }
 

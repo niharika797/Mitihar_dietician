@@ -39,12 +39,25 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 # ─── Daily cron: flag expiring patients ───────────────────────────────────────
 async def _flag_expiring_patients() -> None:
     """Mark patients whose token_1_expiry is within 4 days as expiring_soon=True."""
-    from sqlalchemy import update
+    from sqlalchemy import update, select
     from .models.db_models import Patient
+    from .services.notification_service import notify_sub_expiring
     now = datetime.now(timezone.utc)
     warning_cutoff = now + timedelta(days=4)
     async with AsyncSessionLocal() as session:
         try:
+            # Fetch patients about to be newly flagged so we can notify them
+            newly_expiring_result = await session.execute(
+                select(Patient).where(
+                    Patient.token_1_active == True,
+                    Patient.token_1_expiry != None,
+                    Patient.token_1_expiry <= warning_cutoff,
+                    Patient.token_1_expiry > now,
+                    Patient.expiring_soon == False,
+                )
+            )
+            newly_expiring = newly_expiring_result.scalars().all()
+
             await session.execute(
                 update(Patient)
                 .where(
@@ -67,6 +80,14 @@ async def _flag_expiring_patients() -> None:
             )
             await session.commit()
             _log.info("[cron] expiring_soon flags updated")
+
+            # Fire FCM notifications — fire-and-forget, never block cron
+            for pat in newly_expiring:
+                try:
+                    days_left = max(0, (pat.token_1_expiry - now).days)
+                    notify_sub_expiring(pat, days_left)
+                except Exception:
+                    pass
         except Exception as exc:
             await session.rollback()
             _log.error(f"[cron] flag_expiring_patients failed: {exc}", exc_info=True)

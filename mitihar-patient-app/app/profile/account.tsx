@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet, Alert, Switch, Modal, TextInput, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, Trash2, Shield, LogOut, Fingerprint, Eye, EyeOff } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Trash2, Shield, LogOut, Fingerprint, Eye, EyeOff, KeyRound } from "lucide-react-native";
 import { useMutation } from "@tanstack/react-query";
 import { logoutPatient } from "../../services/auth";
-import { deleteMyAccount } from "../../services/profile";
+import { deleteMyAccount, activateSubscription } from "../../services/profile";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useBiometricStore } from "../../store/useBiometricStore";
 import { useToast } from "../../components/shared";
@@ -14,6 +14,8 @@ export default function AccountScreen() {
   const { showToast } = useToast();
   const logout = useAuthStore(s => s.logout);
   const profile = useAuthStore(s => s.profile);
+  const setTokens = useAuthStore(s => s.setTokens);
+  const setProfile = useAuthStore(s => s.setProfile);
   const { enabled, hardwareAvailable, enrolled, setEnabled, checkHardware } = useBiometricStore();
 
   // Probe device capabilities on mount
@@ -24,6 +26,24 @@ export default function AccountScreen() {
     onSettled: () => {
       logout();
       router.replace("/(auth)/login");
+    },
+  });
+
+  // ── Activate subscription state ───────────────────────────────────────────
+  const [activateModalVisible, setActivateModalVisible] = useState(false);
+  const [activateCode, setActivateCode]                 = useState("");
+  const [activateError, setActivateError]               = useState("");
+
+  const activateMut = useMutation({
+    mutationFn: () => activateSubscription(activateCode.trim().toUpperCase()),
+    onSuccess: async (result) => {
+      await setTokens(result.access_token, result.refresh_token);
+      setProfile(result.patient);
+      setActivateModalVisible(false);
+      showToast("Subscription activated!", "success");
+    },
+    onError: (err: any) => {
+      setActivateError(err?.response?.data?.detail ?? "Invalid or already-used code. Please try again.");
     },
   });
 
@@ -112,6 +132,28 @@ export default function AccountScreen() {
           <ChevronRight size={16} color="#9CA3AF" />
         </Pressable>
 
+        {/* Activate Subscription — only shown for inactive patients */}
+        {profile?.subscription_status === "inactive" && (
+          <Pressable
+            style={[s.actionRow, s.actionBorder]}
+            onPress={() => {
+              setActivateCode("");
+              setActivateError("");
+              activateMut.reset();
+              setActivateModalVisible(true);
+            }}
+          >
+            <View style={s.actionLeft}>
+              <KeyRound size={16} color="#1E7C45" />
+              <View>
+                <Text style={[s.actionLabel, { color: "#1E7C45" }]}>Activate Subscription</Text>
+                <Text style={s.actionSub}>Enter your doctor's code</Text>
+              </View>
+            </View>
+            <ChevronRight size={16} color="#9CA3AF" />
+          </Pressable>
+        )}
+
         {/* Biometric toggle — only shown if hardware exists */}
         {hardwareAvailable && (
           <View style={s.actionRow}>
@@ -150,6 +192,65 @@ export default function AccountScreen() {
         </Pressable>
         <Text style={s.dangerSub}>This will permanently remove all your data.</Text>
       </View>
+
+      {/* ── Activate subscription modal ────────────────────────────────────── */}
+      <Modal
+        visible={activateModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !activateMut.isPending && setActivateModalVisible(false)}
+      >
+        <View style={s.overlay}>
+          <View style={s.modalCard}>
+            <View style={s.modalHeader}>
+              <View style={[s.modalIconWrap, { backgroundColor: "#F0FDF4" }]}>
+                <KeyRound size={18} color="#1E7C45" />
+              </View>
+              <View>
+                <Text style={s.modalTitle}>Activate Subscription</Text>
+                <Text style={s.modalSub}>Enter the code from your doctor</Text>
+              </View>
+            </View>
+
+            <View style={[s.pwWrap, activateError ? { borderColor: "#DC2626" } : null]}>
+              <TextInput
+                style={s.pwInput}
+                placeholder="e.g. ASHOK1"
+                placeholderTextColor="#9CA3AF"
+                value={activateCode}
+                onChangeText={t => { setActivateCode(t); setActivateError(""); }}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                editable={!activateMut.isPending}
+              />
+            </View>
+
+            {activateError !== "" && (
+              <Text style={s.pwError}>{activateError}</Text>
+            )}
+
+            <View style={s.modalActions}>
+              <Pressable
+                style={s.modalCancelBtn}
+                onPress={() => { setActivateModalVisible(false); activateMut.reset(); }}
+                disabled={activateMut.isPending}
+              >
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[s.modalDeleteBtn, { backgroundColor: "#1E7C45" }, (!activateCode.trim() || activateMut.isPending) && s.modalDeleteBtnDisabled]}
+                onPress={() => activateMut.mutate()}
+                disabled={!activateCode.trim() || activateMut.isPending}
+              >
+                {activateMut.isPending
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.modalDeleteText}>Activate</Text>
+                }
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Password confirmation modal ─────────────────────────────────────
            Shown after the user confirms intent in the Alert above.

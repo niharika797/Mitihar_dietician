@@ -121,7 +121,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  const bootstrap    = useAuthStore(s => s.bootstrap);
+  const bootstrap     = useAuthStore(s => s.bootstrap);
+  const isLoading     = useAuthStore(s => s.isLoading);
   const checkHardware = useBiometricStore(s => s.checkHardware);
 
   const [fontsLoaded] = useFonts({
@@ -138,11 +139,15 @@ export default function RootLayout() {
     checkHardware();
   }, []);
 
+  // Keep the native splash visible until BOTH fonts are loaded AND bootstrap
+  // has finished. This closes the race window where the user could navigate to
+  // (auth)/register while isLoading=true (AuthGate disabled), then get bounced
+  // to onboarding the moment bootstrap resolves with isAuthenticated=true.
   useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync();
-  }, [fontsLoaded]);
+    if (fontsLoaded && !isLoading) SplashScreen.hideAsync();
+  }, [fontsLoaded, isLoading]);
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded || isLoading) return null;
 
   if (!splashDone) {
     return <SplashAnimation onFinish={() => setSplashDone(true)} />;

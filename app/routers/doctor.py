@@ -457,6 +457,14 @@ async def accept_request(
             _logger.error(f"Diet plan auto-gen failed on accept for patient {req.patient_id}: {exc}", exc_info=True)
             # Non-blocking — patient can generate from the app
 
+    # ── FCM: notify patient that doctor accepted ──────────────────────────
+    try:
+        from ..services.notification_service import notify_doctor_accepted
+        if patient:
+            notify_doctor_accepted(patient, doctor.name)
+    except Exception:
+        pass  # fire-and-forget — never block accept flow
+
     return {"message": "Request accepted", "patient_id": req.patient_id}
 
 
@@ -1490,6 +1498,13 @@ async def approve_renewal(
         session, actor_id=did, actor_role="doctor",
         action="approve_renewal", entity_type="patient", entity_id=patient_id,
     )
+
+    # ── FCM: notify patient that renewal was approved ─────────────────────
+    try:
+        from ..services.notification_service import notify_renewal_approved
+        notify_renewal_approved(patient, doctor.name)
+    except Exception:
+        pass  # fire-and-forget
 
     return RenewalApproveResponse(
         message=f"Renewal approved for patient {patient.name}.",

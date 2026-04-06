@@ -200,7 +200,9 @@ async def activate_subscription(
             detail="Invalid, expired, or already-used subscription code",
         )
 
-    # Mark code consumed
+    # Consume the code exactly once — this is the only correct place to do so.
+    # Registration validated the code but deliberately left it unconsumed so a
+    # network failure at this final step cannot strand the patient with a burned code.
     code_row.is_used = True
     code_row.used_by_patient_id = patient.id
     code_row.used_at = now

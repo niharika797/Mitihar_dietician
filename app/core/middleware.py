@@ -47,11 +47,20 @@ _SUBSCRIPTION_PREFIXES = (
     f"{settings.API_V1_STR}/meal-plan",
     f"{settings.API_V1_STR}/progress",
     f"{settings.API_V1_STR}/diet-plans",
+    f"{settings.API_V1_STR}/patients",
 )
 
 _AUTH_PREFIXES = (
     f"{settings.API_V1_STR}/auth",
     f"{settings.API_V1_STR}/doctors/auth",
+)
+
+# Onboarding endpoints must always pass through regardless of subscription status —
+# a newly registered patient has sub_status=inactive and needs these to complete setup.
+_ONBOARDING_EXCLUSIONS = (
+    f"{settings.API_V1_STR}/patients/onboarding",
+    f"{settings.API_V1_STR}/patients/disclaimer",
+    f"{settings.API_V1_STR}/patients/activate",
 )
 
 
@@ -66,6 +75,9 @@ class SubscriptionCheckMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         if any(path.startswith(p) for p in _AUTH_PREFIXES):
+            return await call_next(request)
+
+        if any(path.startswith(p) for p in _ONBOARDING_EXCLUSIONS):
             return await call_next(request)
 
         if not any(path.startswith(p) for p in _SUBSCRIPTION_PREFIXES):

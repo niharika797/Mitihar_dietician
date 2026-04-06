@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { Picker } from "@react-native-picker/picker";
 import { OnboardingShell } from "../../components/shared";
 import { useOnboardingStore } from "../../store/useOnboardingStore";
+import { useAuthStore } from "../../store/useAuthStore";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAYS   = Array.from({ length: 31 }, (_, i) => String(i + 1));
@@ -30,7 +31,13 @@ export default function PersonalInfoScreen() {
   };
 
   return (
-    <OnboardingShell step={1} totalSteps={8} title="Personal Information" onContinue={handleContinue} continueDisabled={!canContinue} onBack={() => router.replace("/(auth)/login")}>
+    <OnboardingShell step={1} totalSteps={8} title="Personal Information" onContinue={handleContinue} continueDisabled={!canContinue} onBack={async () => {
+      // Log out before navigating back. Without this, isAuthenticated stays true
+      // and AuthGate immediately bounces the user back to onboarding, creating
+      // an infinite redirect loop with no exit.
+      await useAuthStore.getState().logout();
+      router.replace("/(auth)/login");
+    }}>
       <View style={s.form}>
         {/* DOB pickers */}
         <View>

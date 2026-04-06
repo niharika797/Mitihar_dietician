@@ -17,6 +17,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: false,
     bundleIdentifier: "com.mitihar.patient",
+    googleServicesFile: "./GoogleService-Info.plist",
   },
   android: {
     adaptiveIcon: {
@@ -24,6 +25,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#1E7C45",
     },
     package: "com.mitihar.patient",
+    googleServicesFile: "./google-services.json",
   },
   web: {
     bundler: "metro",
@@ -34,6 +36,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-router",
     "expo-secure-store",
     "expo-image",
+    "expo-notifications",
     [
       "expo-build-properties",
       {

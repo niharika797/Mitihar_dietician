@@ -1,7 +1,14 @@
 import React, { useRef, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
-import Clipboard from "@react-native-clipboard/clipboard";
+// @react-native-clipboard/clipboard requires a native build; not available in Expo Go.
+// Lazy-require with fallback so the module loads in both environments.
+let Clipboard: { setString: (text: string) => void } | null = null;
+try {
+  Clipboard = require("@react-native-clipboard/clipboard").default;
+} catch {
+  Clipboard = null;
+}
 import { useRouter } from "expo-router";
 import { ChevronLeft, Copy, CheckCircle2 } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -88,7 +95,7 @@ export default function ConnectionStatusScreen() {
   // Copy token 2 to clipboard
   const copyToken2 = () => {
     if (visitData?.token_2) {
-      Clipboard.setString(visitData.token_2);
+      Clipboard?.setString(visitData.token_2);
       showToast("Token 2 copied!", "success");
     }
   };

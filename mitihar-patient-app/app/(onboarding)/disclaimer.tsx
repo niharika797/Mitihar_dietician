@@ -1,18 +1,19 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import { useMutation } from "@tanstack/react-query";
 import { OnboardingShell, useToast } from "../../components/shared";
 import { useOnboardingStore } from "../../store/useOnboardingStore";
 import { useAuthStore } from "../../store/useAuthStore";
-import { submitOnboarding, acceptDisclaimer, getMyProfile } from "../../services/profile";
+import { submitOnboarding, acceptDisclaimer, activateSubscription, getMyProfile } from "../../services/profile";
 import { getApiError } from "../../lib/getApiError";
 
 export default function DisclaimerScreen() {
   const router = useRouter();
   const { showToast } = useToast();
   const { toPayload, reset } = useOnboardingStore();
-  const { setProfile } = useAuthStore();
+  const { setProfile, setTokens } = useAuthStore();
   const [accepted, setAccepted] = useState(false);
 
   const submitMut = useMutation({
@@ -27,6 +28,23 @@ export default function DisclaimerScreen() {
       }
       await submitOnboarding(payload);
       await acceptDisclaimer();
+
+      // If the patient registered with a doctor code, activate their subscription now.
+      // This is the only correct place — after onboarding + disclaimer, before redirect.
+      const pendingCode = await SecureStore.getItemAsync("mityahar_pending_doctor_code");
+      if (pendingCode) {
+        try {
+          const result = await activateSubscription(pendingCode);
+          // Update both tokens so the patient's next request carries sub_status=active.
+          await setTokens(result.access_token, result.refresh_token);
+        } catch (_) {
+          // Code expired or already used — don't crash the onboarding flow.
+          // Patient lands as inactive and can retry from Account → Activate Subscription.
+        } finally {
+          await SecureStore.deleteItemAsync("mityahar_pending_doctor_code");
+        }
+      }
+
       return getMyProfile();
     },
     onSuccess: (profile) => {

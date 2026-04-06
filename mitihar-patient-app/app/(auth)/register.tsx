@@ -6,6 +6,7 @@ import {
 import { useRouter } from "expo-router";
 import { ChevronLeft, Eye, EyeOff, Plus } from "lucide-react-native";
 import { useMutation } from "@tanstack/react-query";
+import * as SecureStore from "expo-secure-store";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useToast } from "../../components/shared";
 import { registerPatient } from "../../services/auth";
@@ -45,14 +46,12 @@ export default function RegisterScreen() {
         name: name.trim(),
         email: email.trim(),
         password,
-        gender: "Other",        // onboarding fills the rest
-        height: 0,              // zero signals "not yet onboarded" — isOnboardingComplete() checks disclaimer_accepted_at only
-        weight: 0,              // zero signals "not yet onboarded"
-        activity_level: "LA",
-        diet: "Vegetarian",
-        health_condition: "Healthy",
         ...(doctorCode.trim() ? { doctor_code: doctorCode.trim() } : {}),
       });
+      // Persist code so disclaimer.tsx can activate the subscription after onboarding.
+      if (doctorCode.trim()) {
+        await SecureStore.setItemAsync("mityahar_pending_doctor_code", doctorCode.trim());
+      }
       // Auto-login after register
       return loginPatient(email.trim(), password);
     },

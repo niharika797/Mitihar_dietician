@@ -61,9 +61,33 @@ class UserBase(BaseModel):
         return v
 
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel):
+    """
+    Registration schema — only email/name/password are required.
+    Profile fields have sensible defaults for the DB's NOT NULL columns;
+    real values are collected during the onboarding step.
+    """
+    email: EmailStr
+    name: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=8)
     doctor_code: Optional[str] = Field(default=None)
+    gender: str = Field(default="Other", max_length=20)
+    height: float = Field(default=0, ge=0, le=300)
+    weight: float = Field(default=0, ge=0, le=500)
+    activity_level: ActivityLevel = Field(default=ActivityLevel.LIGHTLY_ACTIVE)
+    diet: DietType = Field(default=DietType.VEGETARIAN)
+    health_condition: HealthCondition = Field(default=HealthCondition.HEALTHY)
+    age: Optional[int] = Field(None, gt=0, le=120)
+    diabetes_status: Optional[str] = Field(default=None, max_length=50)
+    gym_goal: Optional[str] = Field(default=None, max_length=50)
+    region: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def strip_name(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
     @field_validator("password")
     @classmethod

@@ -98,9 +98,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         const profile = await getMyProfile();
         set({ isAuthenticated: true, profile, isLoading: false });
       } catch {
-        // Token exists but profile fetch failed (network, expired token, etc.)
-        // Still mark authenticated — axios interceptor handles refresh
-        set({ isAuthenticated: true, isLoading: false });
+        // Profile fetch failed (expired tokens or transient network error).
+        // Treat as unauthenticated — the axios interceptor already wiped any
+        // expired tokens before this catch was reached. Setting true here
+        // would leave AuthGate in a false-positive authenticated state that
+        // routes users to onboarding without them ever submitting the form.
+        set({ isAuthenticated: false, isLoading: false });
       }
     } catch {
       set({ isAuthenticated: false, isLoading: false });
