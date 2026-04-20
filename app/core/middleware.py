@@ -52,7 +52,6 @@ _SUBSCRIPTION_PREFIXES = (
 
 _AUTH_PREFIXES = (
     f"{settings.API_V1_STR}/auth",
-    f"{settings.API_V1_STR}/doctors/auth",
 )
 
 # Onboarding endpoints must always pass through regardless of subscription status —
@@ -122,9 +121,6 @@ class DoctorIsolationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         doctor_prefix = f"{settings.API_V1_STR}/doctor"
-
-        if path.startswith(f"{settings.API_V1_STR}/doctors/auth"):
-            return await call_next(request)
 
         if not path.startswith(doctor_prefix):
             return await call_next(request)
@@ -198,7 +194,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
             "font-src 'self' fonts.gstatic.com data:; "
             "img-src 'self' data: blob:; "
-            "connect-src 'self' http://localhost:8000 http://localhost:5173; "
+            f"connect-src 'self' {' '.join(settings.CORS_ORIGINS)}; "
             "form-action 'self'; "
             "frame-ancestors 'none'; "
             "base-uri 'self'"
@@ -238,9 +234,9 @@ class AdminIPWhitelistMiddleware(BaseHTTPMiddleware):
         if not path.startswith(admin_prefix):
             return await call_next(request)
 
-        # Skip the login route (admin needs to authenticate first)
-        if path.startswith(f"{admin_prefix}/login") or path.startswith(f"{settings.API_V1_STR}/auth"):
-            return await call_next(request)
+        # Admin login lives on the auth router (/api/v1/auth/admin/login), already
+        # excluded by the outer gate above which only fires on /api/v1/admin paths.
+        # No additional skip needed here.
 
         token = _extract_token(request)
         if token is None:

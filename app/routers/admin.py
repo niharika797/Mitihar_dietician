@@ -680,7 +680,7 @@ async def get_consultations(
 ):
     """
     Platform-wide consultation stats.
-    Per-doctor: patient count, visits this month, revenue (×₹1200), royalty (×6%).
+    Per-doctor: patient count, visits this month, revenue (×₹1500), royalty (2% per contract Art. IV).
     """
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
@@ -709,8 +709,8 @@ async def get_consultations(
         consultations_this_month = int(visits_result.scalar() or 0)
         total_consultations += consultations_this_month
 
-        revenue = consultations_this_month * 1200
-        royalty = round(revenue * 0.06, 2)
+        revenue = consultations_this_month * 1500
+        royalty = round(revenue * 0.02, 2)
 
         per_doctor.append({
             "doctor_id": doc.id,
@@ -725,8 +725,8 @@ async def get_consultations(
     return {
         "month": month_start.strftime("%B %Y"),
         "total_consultations_this_month": total_consultations,
-        "total_revenue": total_consultations * 1200,
-        "total_royalty": round(total_consultations * 1200 * 0.06, 2),
+        "total_revenue": total_consultations * 1500,
+        "total_royalty": round(total_consultations * 1500 * 0.02, 2),
         "per_doctor": per_doctor,
     }
 
@@ -738,27 +738,81 @@ async def get_annual_consultations(
     admin=Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
-    """Year-to-date totals and royalty split (2% × 3 team members)."""
+    """
+    Financial-year totals (Apr 1 – Mar 31) with per-doctor tier assignments.
+    Royalty: 2% of total appointment fees per doctor (Art. IV.1), split equally
+    among 3 team members (Art. III.3c).
+    """
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
-    year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    result = await session.execute(
+    # Indian financial year: Apr 1 → Mar 31
+    if now.month >= 4:
+        fy_start = now.replace(month=4, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        fy_start = now.replace(year=now.year - 1, month=4, day=1, hour=0, minute=0, second=0, microsecond=0)
+    fy_label = f"FY {fy_start.year}–{fy_start.year + 1}"
+
+    def _tier(usage: int) -> dict:
+        INITIAL = 250_000
+        if usage <= 100:
+            fee = 250_000
+        elif usage <= 200:
+            fee = 300_000
+        elif usage <= 400:
+            fee = 400_000
+        else:
+            fee = 500_000
+        return {"annual_fee": fee, "differential_owed": fee - INITIAL}
+
+    # Platform-wide total
+    total_result = await session.execute(
         select(func.sum(PatientVisit.visit_counter)).where(
-            PatientVisit.cycle_start >= year_start
+            PatientVisit.cycle_start >= fy_start
         )
     )
-    ytd_consultations = int(result.scalar() or 0)
-    ytd_revenue = ytd_consultations * 1200
-    ytd_royalty_pool = round(ytd_revenue * 0.06, 2)
+    ytd_consultations = int(total_result.scalar() or 0)
+    ytd_revenue = ytd_consultations * 1500
+    ytd_royalty_pool = round(ytd_revenue * 0.02, 2)
+
+    # Per-doctor breakdown with tier assignments
+    doctors_result = await session.execute(
+        select(Doctor).where(Doctor.is_active == True)
+    )
+    doctors = doctors_result.scalars().all()
+
+    per_doctor_annual = []
+    for doc in doctors:
+        dr_result = await session.execute(
+            select(func.sum(PatientVisit.visit_counter)).where(
+                PatientVisit.doctor_id == doc.id,
+                PatientVisit.cycle_start >= fy_start,
+            )
+        )
+        usage = int(dr_result.scalar() or 0)
+        tier = _tier(usage)
+        doc_revenue = usage * 1500
+        per_doctor_annual.append({
+            "doctor_id": doc.id,
+            "doctor_name": doc.name,
+            "annual_usage_instances": usage,
+            "annual_fee": tier["annual_fee"],
+            "differential_owed": tier["differential_owed"],
+            "fy_revenue_generated": doc_revenue,
+            "fy_royalty": round(doc_revenue * 0.02, 2),
+        })
 
     return {
-        "year": now.year,
+        "financial_year": fy_label,
+        "fy_start": fy_start.date().isoformat(),
         "ytd_consultations": ytd_consultations,
         "ytd_revenue": ytd_revenue,
-        "royalty_pool_6pct": ytd_royalty_pool,
-        "royalty_per_member_2pct": round(ytd_royalty_pool / 3, 2),
+        # Field names kept for frontend compatibility; values now reflect the
+        # correct 2% contractual rate (Art. IV.1) rather than the prior 6%.
+        "royalty_pool_6pct": ytd_royalty_pool,          # misnamed legacy key — value is now 2%
+        "royalty_per_member_2pct": round(ytd_royalty_pool / 3, 2),  # misnamed — value is 0.67% per doctor
         "team_members": 3,
+        "per_doctor_annual": per_doctor_annual,
     }
 
 

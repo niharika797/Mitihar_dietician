@@ -4,11 +4,11 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, ChevronRight, Droplets, Footprints } from "lucide-react-native";
+import { Bell, CalendarClock, ChevronRight, Droplets, Footprints } from "lucide-react-native";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getTodaySummary, logWater, logSteps, logMeal, rateMeal, getMyRatings, getStreak, MealRating } from "../../services/progress"; // Audit C-6: added getStreak
 import { getWeeklyPlan } from "../../services/meals";
-import { getRequestStatus, getMyProfile } from "../../services/profile";
+import { getRequestStatus, getMyProfile, getMyVisit } from "../../services/profile";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore, selectWater, selectSteps } from "../../store/useProgressStore";
 import { ProgressRing, MacroRow, BottomSheet, useToast } from "../../components/shared";
@@ -109,6 +109,67 @@ function DoctorStatusBanner({ subscriptionStatus, doctorId, reqStatus, onNavigat
   }
   return null;
 }
+// ── NextVisitCard ──────────────────────────────────────────────────────────────
+// Shows the patient's upcoming 15-day follow-up date derived from cycle_start.
+// Only rendered when the patient has an active doctor subscription.
+function NextVisitCard({ cycleStart }: { cycleStart: string }) {
+  const followUp = new Date(cycleStart);
+  followUp.setDate(followUp.getDate() + 15);
+  const now = new Date();
+  const diffMs = followUp.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  const dateStr = followUp.toLocaleDateString("en-IN", {
+    weekday: "short", day: "numeric", month: "long",
+  });
+
+  let statusText: string;
+  let statusColor: string;
+  let bgColor: string;
+  let borderColor: string;
+
+  if (diffDays < 0) {
+    statusText = "Overdue — please visit your doctor";
+    statusColor = "#DC2626";
+    bgColor = "#FEF2F2";
+    borderColor = "#FECACA";
+  } else if (diffDays === 0) {
+    statusText = "Today — time for your follow-up!";
+    statusColor = "#D97706";
+    bgColor = "#FFFBEB";
+    borderColor = "#FDE68A";
+  } else if (diffDays <= 3) {
+    statusText = `In ${diffDays} day${diffDays === 1 ? "" : "s"} — coming up soon`;
+    statusColor = "#D97706";
+    bgColor = "#FFFBEB";
+    borderColor = "#FDE68A";
+  } else {
+    statusText = `In ${diffDays} days`;
+    statusColor = "#166534";
+    bgColor = "#F0FDF4";
+    borderColor = "#DCFCE7";
+  }
+
+  return (
+    <View style={[nv.card, { backgroundColor: bgColor, borderColor }]}>
+      <View style={nv.iconRow}>
+        <CalendarClock size={18} color={statusColor} />
+        <Text style={[nv.title, { color: statusColor }]}>NEXT FOLLOW-UP</Text>
+      </View>
+      <Text style={nv.date}>{dateStr}</Text>
+      <Text style={[nv.status, { color: statusColor }]}>{statusText}</Text>
+    </View>
+  );
+}
+
+const nv = StyleSheet.create({
+  card:    { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 20 },
+  iconRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
+  title:   { fontSize: 11, fontWeight: "600", letterSpacing: 1 },
+  date:    { fontSize: 17, fontWeight: "700", color: "#111827", marginBottom: 2 },
+  status:  { fontSize: 12 },
+});
+
 export default function HomeScreen() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -174,6 +235,14 @@ export default function HomeScreen() {
   const { data: plan } = useQuery({
     queryKey: QUERY_KEYS.WEEK_PLAN,
     queryFn: getWeeklyPlan,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const isActiveWithDoctor = profile?.subscription_status === "active" && !!profile?.doctor_id;
+  const { data: visitData } = useQuery({
+    queryKey: QUERY_KEYS.MY_VISIT,
+    queryFn: getMyVisit,
+    enabled: isActiveWithDoctor,
     staleTime: 1000 * 60 * 10,
   });
 
@@ -337,6 +406,10 @@ export default function HomeScreen() {
             reqStatus={reqStatus}
             onNavigate={(path) => router.push(path as any)}
           />
+
+          {visitData?.has_visit && visitData.cycle_start && (
+            <NextVisitCard cycleStart={visitData.cycle_start} />
+          )}
                 </View>
       </ScrollView>
 

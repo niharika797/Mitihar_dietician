@@ -85,7 +85,7 @@ export async function getFCMToken(): Promise<string | null> {
       });
     }
 
-    const tokenData = await N.getExpoPushTokenAsync();
+    const tokenData = await N.getDevicePushTokenAsync();
     return tokenData.data ?? null;
   } catch {
     return null;

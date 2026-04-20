@@ -16,7 +16,7 @@ export interface RegisterPayload {
 }
 
 export async function registerPatient(payload: RegisterPayload) {
-  const { data } = await api.post("/auth/register", payload);
+  const { data } = await api.post("/auth/register", { ...payload, gdpr_consent: true });
   // Audit W-3: backend returns { message, doctor_connected } only — no user_id field.
   // Removed user_id from cast to prevent callers from reading undefined as a number.
   return data as { message: string; doctor_connected: boolean };

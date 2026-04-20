@@ -145,7 +145,25 @@ async def register(
     If no doctor_code: standalone patient with inactive subscription.
     """
     from ..models.db_models import SubscriptionCode, Patient as PatientModel
-    from datetime import datetime, timezone as _tz
+    from datetime import datetime, timezone as _tz, date as _date
+
+    # ── Compliance checks ────────────────────────────────────────────────────
+    if not user_data.gdpr_consent:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept the data collection policy to register."
+        )
+    if user_data.date_of_birth:
+        today = _date.today()
+        age = today.year - user_data.date_of_birth.year - (
+            (today.month, today.day) < (user_data.date_of_birth.month, user_data.date_of_birth.day)
+        )
+        if age < 18:
+            raise HTTPException(
+                status_code=400,
+                detail="You must be 18 or older to use Mityahar."
+            )
+    # ─────────────────────────────────────────────────────────────────────────
     from sqlalchemy import update as sa_update
 
     data = user_data.model_dump()
@@ -580,6 +598,7 @@ async def refresh_token(
 
 class GoogleTokenRequest(BaseModel):
     id_token: str
+    gdpr_consent: bool | None = None  # required only for first-time signup
 
 
 @router.post("/google/verify")
@@ -642,6 +661,11 @@ async def google_verify(
             await session.flush()
 
     if patient is None:
+        if not body.gdpr_consent:
+            raise HTTPException(
+                status_code=400,
+                detail="You must accept the data collection policy to register.",
+            )
         import secrets as _secrets
         new_patient_id = await create_patient(
             session,

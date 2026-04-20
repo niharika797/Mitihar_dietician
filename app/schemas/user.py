@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, Field
 from typing import Optional
 from enum import Enum
+from datetime import date
 
 
 class ActivityLevel(str, Enum):
@@ -71,6 +72,8 @@ class UserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=8)
     doctor_code: Optional[str] = Field(default=None)
+    date_of_birth: Optional[date] = Field(default=None)
+    gdpr_consent: bool = Field(..., description="User must explicitly accept data collection to register")
     gender: str = Field(default="Other", max_length=20)
     height: float = Field(default=0, ge=0, le=300)
     weight: float = Field(default=0, ge=0, le=500)

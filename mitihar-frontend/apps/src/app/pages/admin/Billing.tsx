@@ -44,13 +44,13 @@ function ConsultationsTab() {
       {/* YTD royalty split */}
       {annual && (
         <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 mb-6">
-          <p className="text-base font-medium text-[#111827] mb-4">Year-to-Date Royalty Split — {annual.year}</p>
+          <p className="text-base font-medium text-[#111827] mb-4">Financial Year Royalty Split — {annual.financial_year ?? annual.year}</p>
           <div className="grid grid-cols-4 gap-4">
             {[
-              { label: 'YTD Consultations', value: annual.ytd_consultations },
-              { label: 'YTD Revenue', value: `₹${annual.ytd_revenue?.toLocaleString('en-IN')}` },
-              { label: 'Royalty Pool (6%)', value: `₹${annual.royalty_pool_6pct?.toLocaleString('en-IN')}` },
-              { label: 'Per Member (2%)', value: `₹${annual.royalty_per_member_2pct?.toLocaleString('en-IN')}` },
+              { label: 'FY Consultations', value: annual.ytd_consultations },
+              { label: 'FY Revenue', value: `₹${annual.ytd_revenue?.toLocaleString('en-IN')}` },
+              { label: 'Royalty Pool (2%)', value: `₹${annual.royalty_pool_6pct?.toLocaleString('en-IN')}` },
+              { label: 'Per Member (0.67%)', value: `₹${annual.royalty_per_member_2pct?.toLocaleString('en-IN')}` },
             ].map(s => (
               <div key={s.label} className="bg-[#F0FDF4] rounded-lg p-4">
                 <p className="text-xs text-[#6B7280] mb-1">{s.label}</p>

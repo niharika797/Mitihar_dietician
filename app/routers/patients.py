@@ -33,13 +33,15 @@ def _derive_age(dob: date) -> int:
 
 async def _generate_plan_background(patient_id: int, user_data: dict, age: int) -> None:
     """
-    Fire-and-forget plan generation — runs AFTER the onboarding response is
-    already delivered to the client so the HTTP request never times out.
-    Opens its own DB session to avoid sharing the request-scoped session.
+    Fire-and-forget plan generation.
+    Runs in a dedicated thread (see _launch_plan_background) so that
+    CPU-heavy pandas/numpy work and synchronous Firebase calls never block
+    the main uvicorn event loop — which would stall all concurrent requests.
+    Each invocation gets its own asyncio event loop isolated from the server's.
     """
     import logging
     _log = logging.getLogger(__name__)
-    from ..core.database import AsyncSessionLocal  # local import to keep top-level clean
+    from ..core.database import AsyncSessionLocal
     async with AsyncSessionLocal() as bg_session:
         try:
             from ..services.diet_plan_service import DietPlanService
@@ -51,7 +53,6 @@ async def _generate_plan_background(patient_id: int, user_data: dict, age: int) 
                 _log.info(f"Background: diet plan generated for patient {patient_id}")
                 try:
                     from ..services.notification_service import notify_plan_ready
-                    # fetch the patient row to pass to the notifier
                     from sqlalchemy import select as _select
                     from ..models.db_models import Patient as _Patient
                     result = await bg_session.execute(_select(_Patient).where(_Patient.id == patient_id))
@@ -62,6 +63,20 @@ async def _generate_plan_background(patient_id: int, user_data: dict, age: int) 
                     _log.debug(f"notify_plan_ready failed silently: {notif_exc}")
         except Exception as exc:
             _log.error(f"Background plan generation failed for patient {patient_id}: {exc}", exc_info=True)
+
+
+def _launch_plan_background(patient_id: int, user_data: dict, age: int) -> None:
+    """
+    Sync wrapper that runs _generate_plan_background in a brand-new event loop
+    inside a daemon thread.  Starlette calls sync BackgroundTasks in a thread-
+    pool executor, so this never touches the server's event loop.
+    """
+    import asyncio as _asyncio
+    loop = _asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_generate_plan_background(patient_id, user_data, age))
+    finally:
+        loop.close()
 
 
 @router.post("/onboarding", response_model=PatientProfileResponse)
@@ -133,19 +148,30 @@ async def onboard_patient(
     updated = result.scalars().first()
 
     # ── Create initial PatientVisit row (Token 2) if doctor is assigned ──
+    # Guard: only insert when no row exists for this (patient, doctor) pair.
+    # Without this check every re-call of the idempotent onboarding endpoint
+    # would mint a fresh token_2, reset cycle_expiry +30 days, and orphan the
+    # prior billing cycle — effectively letting patients extend for free.
     if updated.doctor_id:
-        from datetime import timezone as _tz
-        now = datetime.now(_tz.utc)
-        pv = PatientVisit(
-            patient_id=updated.id,
-            doctor_id=updated.doctor_id,
-            token_2=generate_token_2(),
-            cycle_start=now,
-            cycle_expiry=now + timedelta(days=30),
-            visit_counter=0,
+        existing_pv = await session.execute(
+            select(PatientVisit).where(
+                PatientVisit.patient_id == updated.id,
+                PatientVisit.doctor_id == updated.doctor_id,
+            )
         )
-        session.add(pv)
-        await session.flush()
+        if existing_pv.scalars().first() is None:
+            from datetime import timezone as _tz
+            now = datetime.now(_tz.utc)
+            pv = PatientVisit(
+                patient_id=updated.id,
+                doctor_id=updated.doctor_id,
+                token_2=generate_token_2(),
+                cycle_start=now,
+                cycle_expiry=now + timedelta(days=30),
+                visit_counter=0,
+            )
+            session.add(pv)
+            await session.flush()
     # ── Schedule plan generation as a background task ────────────────────
     # Runs AFTER the 200 response is sent — the client never waits for it.
     user_data = {
@@ -165,7 +191,7 @@ async def onboard_patient(
         "medical_conditions": list(updated.medical_conditions or []),
         "age": age,
     }
-    background_tasks.add_task(_generate_plan_background, updated.id, user_data, age)
+    background_tasks.add_task(_launch_plan_background, updated.id, user_data, age)
 
     return updated
 
@@ -190,7 +216,7 @@ async def activate_subscription(
             SubscriptionCode.code == body.code,
             SubscriptionCode.is_used == False,
             SubscriptionCode.expires_at > now,
-        )
+        ).with_for_update()
     )
     code_row = result.scalars().first()
 

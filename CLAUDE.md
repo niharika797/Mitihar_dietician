@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 venv\Scripts\activate
 
 # Run backend
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload --port 8001 --host 0.0.0.0
 
 # Run all tests (requires live DB at localhost:5432)
 python tests/full_backend_test.py
@@ -155,3 +155,32 @@ REDIS_URL=             # Required for multi-worker deployments
 - `mitihar-frontend/apps/` has unverified changes from Sprint 5 (`PlanTab.tsx` rewrite). Run `pnpm dev` and check browser console for TypeScript errors around `patientMealsPerDay` prop before editing.
 - Dish rename script (`scripts/rename_dishes_gemini.py`) is ~22% complete (~440/2137 dishes). Checkpoint at `rename_checkpoint.json`; safe to re-run.
 
+
+
+---
+
+## Working Agreement
+
+At the end of every task or session, Claude must update the **Current State** section below with:
+- What was completed this session
+- Anything broken, blocked, or pending
+- The single most important next action
+
+Do NOT summarize the whole project — only what changed. Keep it tight.
+
+---
+
+## Current State
+
+> _This section is maintained by Claude. Last updated: 2026-04-20_
+
+**Completed this session:**
+- Ultrareview fixes: duplicate `PatientVisit` guard, TOCTOU `.with_for_update()` on `/activate`, CSP built from `CORS_ORIGINS`, dead middleware skip rules removed, Google OAuth `gdpr_consent` gate
+- Contract gap fixes: consultation fee Rs 1,200 → Rs 1,500 (`admin.py`, `doctor.py`), royalty rate 6% → 2% (`admin.py`), annual billing year boundary Jan 1 → Apr 1 (Indian financial year), per-doctor tier assignment + differential in `/admin/consultations/annual`, "Next Visit" follow-up card on patient Home tab (`index.tsx`)
+
+**Pending / Blocked:**
+- `mitihar-frontend/apps/` Sprint 5 changes unverified (`PlanTab.tsx` rewrite — check `patientMealsPerDay` prop)
+- Dish rename script ~22% complete (`rename_checkpoint.json`), safe to re-run
+- `Billing.tsx` annual section still uses legacy field names (`royalty_pool_6pct`, `royalty_per_member_2pct`) — values are now correct (2% / 0.67%), labels updated in UI
+
+**Next action:** Run `pnpm dev` in `mitihar-frontend/apps/` and verify no TypeScript errors before any frontend work.

@@ -1255,8 +1255,8 @@ async def record_patient_visit(
 
     Charging rules (see token_service.is_chargeable_visit):
       - First visit within 15 days of Token 1 activation → FREE (included in ₹800/mo)
-      - First visit after 15-day grace period → ₹1,200
-      - Subsequent visits > 15 days since last charge → ₹1,200
+      - First visit after 15-day grace period → ₹1,500
+      - Subsequent visits > 15 days since last charge → ₹1,500
       - Subsequent visits ≤ 15 days since last charge → FREE (follow-up grace)
     """
     from ..services.audit_service import log_action
@@ -1322,7 +1322,7 @@ async def record_patient_visit(
     )
 
     if charged:
-        msg = f"Visit verified and charged (₹1,200). Total visits this cycle: {pv.visit_counter}"
+        msg = f"Visit verified and charged (₹1,500). Total visits this cycle: {pv.visit_counter}"
     elif pv.visit_counter == 0:
         msg = "Visit verified — free initial consultation (within 15-day grace period after subscription)."
     else:
