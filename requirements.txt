@@ -1,6 +1,6 @@
 fastapi
+google-auth
 uvicorn
-motor
 pydantic
 python-jose[cryptography]
 passlib[bcrypt]
@@ -16,8 +16,11 @@ pytest
 httpx
 python-dotenv
 slowapi
+pyotp
 sqlalchemy
 asyncpg
 greenlet
 alembic
 psycopg2-binary
+apscheduler
+firebase-admin

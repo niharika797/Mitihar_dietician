@@ -1,12 +1,19 @@
-from typing import Dict, List, Optional
-from datetime import datetime
-from ..models.diet_plan import DietPlan, Meal
-from ..core.config import settings
-from motor.motor_asyncio import AsyncIOMotorClient
-from enum import Enum
-from sqlalchemy.ext.asyncio import AsyncSession
+"""
+Diet-plan service — PostgreSQL via AsyncSession + Recommendation ORM.
+"""
 
+from typing import Dict, Optional
+from datetime import datetime, date
+
+from sqlalchemy import select, update as sa_update
+from sqlalchemy.ext.asyncio import AsyncSession
+from enum import Enum
+
+from ..schemas.diet_plan import DietPlanResponse as DietPlan
+from ..models.db_models import Recommendation
+from ..core.config import settings
 from .meal_generator.meal_generator import meal_generator
+
 
 class ActivityLevel(str, Enum):
     SEDENTARY = "S"
@@ -22,7 +29,7 @@ class DietType(str, Enum):
 class HealthCondition(str, Enum):
     HEALTHY = "Healthy"
     DIABETIC = "Diabetic-Friendly"
-    GYM="Gym-Friendly"
+    GYM = "Gym-Friendly"
 
 class region(str, Enum):
     East = "East"
@@ -30,52 +37,180 @@ class region(str, Enum):
     West = "West"
     North = "North"
     none = "none"
-# Service class for diet plan generation and storage
+
+
 class DietPlanService:
-    def __init__(self):
-        self._mongo_client = None
 
-    @property
-    def diet_plans(self):
-        if self._mongo_client is None:
-            self._mongo_client = AsyncIOMotorClient(settings.MONGO_URI)
-        return self._mongo_client[settings.DATABASE_NAME].diet_plans
-
+    # ------------------------------------------------------------------
+    # Generation (unchanged — delegates to meal_generator)
+    # ------------------------------------------------------------------
 
     async def generate_diet_plan(self, user_data: Dict, session: AsyncSession) -> DietPlan:
-        """Generate personalized diet plan using nutritional science principles."""
-        # Validate inputs
-        # Use the singleton meal_generator instance
+        """Generate personalised diet plan using nutritional science principles."""
+        # ── Cross-week variety: load food IDs from last 2 plans ─────────────
+        try:
+            past_result = await session.execute(
+                select(Recommendation.used_food_ids)
+                .where(
+                    Recommendation.patient_id == int(user_data["id"]),
+                    Recommendation.used_food_ids.isnot(None),
+                )
+                .order_by(Recommendation.created_at.desc())
+                .limit(2)
+            )
+            prior_ids: set[int] = set()
+            for row in past_result.all():
+                if row[0]:
+                    prior_ids.update(int(x) for x in row[0])
+            if prior_ids:
+                user_data = {**user_data, "prior_used_food_ids": list(prior_ids)}
+        except Exception:
+            pass  # Non-fatal — generation proceeds without cross-week memory
+
         meal_plan = await meal_generator.generate_meal_plan(user_data, session)
         return DietPlan(
-            user_id=user_data["id"],
+            user_id=str(user_data["id"]),
             created_at=datetime.now(),
             meals=meal_plan.get("meals", []),
-            ingredient_checklist=meal_plan.get("ingredient_checklist", [])
+            ingredient_checklist=meal_plan.get("ingredient_checklist", []),
+            used_food_ids=meal_plan.get("used_food_ids", []),
+            version=1,
         )
 
+    # ------------------------------------------------------------------
+    # CRUD — PostgreSQL recommendations table
+    # ------------------------------------------------------------------
 
-
-    # Keep existing CRUD methods (store_diet_plan, get_diet_plan, etc.)
-    async def store_diet_plan(self, diet_plan: DietPlan) -> str:
-        """Store diet plan in database."""
-        result = await self.diet_plans.insert_one(diet_plan.dict())
-        return str(result.inserted_id)
-
-    async def get_diet_plan(self, user_id: str) -> DietPlan:
-        """Retrieve diet plan for a user."""
-        plan = await self.diet_plans.find_one({"user_id": user_id})
-        return DietPlan(**plan) if plan else None
-
-    async def update_diet_plan(self, user_id: str, updated_plan: DietPlan) -> bool:
-        """Update existing diet plan."""
-        result = await self.diet_plans.update_one(
-            {"user_id": user_id},
-            {"$set": updated_plan.model_dump(exclude={"id"})}
+    async def store_diet_plan(self, diet_plan: DietPlan, *, session: AsyncSession) -> int:
+        """
+        Soft-delete any existing active plan, then insert a new one.
+        New plan version = previous version + 1 (so version history is trackable).
+        Returns the new recommendation id.
+        """
+        # Find current active plan to read its version before soft-deleting
+        existing_result = await session.execute(
+            select(Recommendation)
+            .where(
+                Recommendation.patient_id == int(diet_plan.user_id),
+                Recommendation.is_active == True,
+            )
+            .order_by(Recommendation.created_at.desc())
+            .limit(1)
         )
-        return result.modified_count > 0
-    
-    async def delete_diet_plan(self, user_id: str) -> bool:
-        """Delete a diet plan for a user."""
-        result = await self.diet_plans.delete_one({"user_id": user_id})
-        return result.deleted_count > 0
+        existing = existing_result.scalars().first()
+
+        next_version = 1
+        if existing is not None:
+            next_version = (existing.version or 1) + 1
+            existing.is_active = False  # soft-delete previous plan
+            await session.flush()
+
+        rec = Recommendation(
+            patient_id=int(diet_plan.user_id),
+            week_start_date=date.today(),
+            meals=diet_plan.meals,
+            ingredient_checklist=diet_plan.ingredient_checklist,
+            used_food_ids=diet_plan.used_food_ids,
+            is_active=True,
+            version=next_version,
+        )
+        session.add(rec)
+        await session.flush()
+        return rec.id
+
+    async def get_diet_plan(self, patient_id_str: str, *, session: AsyncSession) -> Optional[DietPlan]:
+        """Return the active recommendation for a patient as a DietPlan."""
+        result = await session.execute(
+            select(Recommendation)
+            .where(
+                Recommendation.patient_id == int(patient_id_str),
+                Recommendation.is_active == True,
+            )
+            .order_by(Recommendation.created_at.desc())
+            .limit(1)
+        )
+        rec = result.scalars().first()
+        if rec is None:
+            return None
+        return DietPlan(
+            user_id=str(rec.patient_id),
+            created_at=rec.created_at,
+            meals=rec.meals or [],
+            ingredient_checklist=rec.ingredient_checklist or [],
+            version=rec.version or 1,
+        )
+
+    async def update_diet_plan(self, patient_id_str: str, updated_plan: DietPlan, *, session: AsyncSession) -> bool:
+        """Update the active recommendation's meals and checklist."""
+        result = await session.execute(
+            select(Recommendation)
+            .where(
+                Recommendation.patient_id == int(patient_id_str),
+                Recommendation.is_active == True,
+            )
+            .order_by(Recommendation.created_at.desc())
+            .limit(1)
+        )
+        rec = result.scalars().first()
+        if rec is None:
+            return False
+        rec.meals = updated_plan.meals
+        rec.ingredient_checklist = updated_plan.ingredient_checklist
+        await session.flush()
+        return True
+
+    async def delete_diet_plan(self, patient_id_str: str, *, session: AsyncSession) -> bool:
+        """Soft-delete: set is_active = false on the current recommendation."""
+        result = await session.execute(
+            select(Recommendation)
+            .where(
+                Recommendation.patient_id == int(patient_id_str),
+                Recommendation.is_active == True,
+            )
+            .order_by(Recommendation.created_at.desc())
+            .limit(1)
+        )
+        rec = result.scalars().first()
+        if rec is None:
+            return False
+        rec.is_active = False
+        await session.flush()
+        return True
+
+    async def get_plan_history(
+        self,
+        patient_id_str: str,
+        *,
+        session: AsyncSession,
+        limit: int = 10,
+    ) -> list[dict]:
+        """
+        Return all past (inactive) recommendations for a patient, newest first.
+        Each entry includes week_start_date, created_at, generated_by, version.
+        Meals/checklist are excluded from history list for performance.
+        """
+        result = await session.execute(
+            select(
+                Recommendation.id,
+                Recommendation.week_start_date,
+                Recommendation.created_at,
+                Recommendation.generated_by,
+                Recommendation.version,
+                Recommendation.is_active,
+            )
+            .where(Recommendation.patient_id == int(patient_id_str))
+            .order_by(Recommendation.created_at.desc())
+            .limit(limit)
+        )
+        rows = result.all()
+        return [
+            {
+                "id": r.id,
+                "week_start_date": str(r.week_start_date) if r.week_start_date else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "generated_by": r.generated_by,
+                "version": r.version,
+                "is_active": r.is_active,
+            }
+            for r in rows
+        ]

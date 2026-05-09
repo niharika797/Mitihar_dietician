@@ -3,34 +3,22 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
-from motor.motor_asyncio import AsyncIOMotorClient
-from .config import settings
-
-client: AsyncIOMotorClient = None
-
-async def connect_to_mongodb():
-    global client
-    client = AsyncIOMotorClient(settings.MONGO_URI)
-    print("Connected to MongoDB")
-
-async def close_mongodb_connection():
-    global client
-    if client:
-        client.close()
-        print("Closed MongoDB connection")
-
-def get_database():
-    return client[settings.DATABASE_NAME]
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://admin:mityahar_dev@localhost:5432/mityahar_db"
-)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set. "
+        "Copy .env.example to .env and fill in the database credentials."
+    )
 
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True,
+    pool_size=20,
+    max_overflow=20,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True,
 )
 
 AsyncSessionLocal = async_sessionmaker(

@@ -1,11 +1,12 @@
 # app/routers/diet_plans.py
 import logging
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Dict
 from ..services.diet_plan_service import DietPlanService
 from ..services.user_service import get_current_user
-from ..models.user import UserInDB
-from ..models.diet_plan import DietPlan
+from ..models.db_models import Patient
+from ..schemas.diet_plan import DietPlanResponse as DietPlan
 from ..core.exceptions import DietPlanNotFoundException
 from ..services.meal_generator.meal_generator import meal_generator  # Use singleton
 from datetime import datetime
@@ -58,9 +59,12 @@ def _validate_generated_plan(diet_plan: DietPlan, user_diet: str) -> str | None:
 
 
 @router.get("/my-plan", response_model=DietPlan)
-async def get_my_diet_plan(current_user: UserInDB = Depends(get_current_user)):
+async def get_my_diet_plan(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
     """Get the current user's diet plan, always including ingredient_checklist."""
-    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
+    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
     if not diet_plan:
         raise DietPlanNotFoundException()
 
@@ -78,9 +82,12 @@ async def get_my_diet_plan(current_user: UserInDB = Depends(get_current_user)):
 
 
 @router.get("/today", response_model=DietPlan)
-async def get_today_meals(current_user: UserInDB = Depends(get_current_user)):
+async def get_today_meals(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
     """Get today's meals from the user's diet plan."""
-    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
+    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
     if not diet_plan:
         raise DietPlanNotFoundException()
 
@@ -109,8 +116,8 @@ async def get_today_meals(current_user: UserInDB = Depends(get_current_user)):
 @limiter.limit("10/hour")
 async def generate_diet_plan(
     request: Request,
-    current_user: UserInDB = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db)
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
 ):
     """
     Generate a new 7-day diet plan for the current user.
@@ -120,16 +127,39 @@ async def generate_diet_plan(
     all attempts fail — never HTTP 500.
     """
     # Block if user already has an active plan
-    existing_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
+    existing_plan = await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
     if existing_plan:
-        raise HTTPException(
-            status_code=400,
-            detail="Diet plan already exists for this user",
-        )
+        # Delete the old plan so a fresh one can be generated (history preserved in DB by versioning)
+        await diet_plan_service.delete_diet_plan(str(current_user.id), session=session)
 
-    user_diet = getattr(current_user, "diet", "vegetarian") or "vegetarian"
+    user_diet = current_user.diet_type or "Vegetarian"
     MAX_ATTEMPTS = 3
     last_error = "Unknown generation error"
+
+    # Build user_data dict that meal_generator expects
+    user_data = {
+        "id": str(current_user.id),
+        "email": current_user.email,
+        "name": current_user.name,
+        "gender": current_user.gender,
+        "height": float(current_user.height_cm),
+        "weight": float(current_user.weight_kg),
+        "activity_level": current_user.activity_level,
+        "diet": current_user.diet_type,
+        "health_condition": current_user.health_condition or "Healthy",
+        "region": current_user.region or "North",
+        "nonveg_meals_per_week": current_user.nonveg_meals_per_week or 3,
+        "health_goals": list(current_user.health_goals or []),
+        "medical_conditions": list(current_user.medical_conditions or []),
+        # medical_conditions drives PCOS/Thyroid macro overrides in calculations.py
+        # Derive age from date_of_birth; fallback 30 if not set
+        "age": (
+            date.today().year - current_user.date_of_birth.year
+            - ((date.today().month, date.today().day) <
+               (current_user.date_of_birth.month, current_user.date_of_birth.day))
+            if current_user.date_of_birth else 30
+        ),
+    }
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
@@ -138,12 +168,9 @@ async def generate_diet_plan(
                 f"for user {current_user.id} (diet={user_diet})"
             )
 
-            diet_plan = await diet_plan_service.generate_diet_plan(
-                current_user.model_dump(), session
-            )
+            diet_plan = await diet_plan_service.generate_diet_plan(user_data, session)
 
             # If ingredient_checklist came back empty, try to regenerate it
-            # before validation so we don't waste a full retry on a trivial issue
             checklist = getattr(diet_plan, "ingredient_checklist", None) or []
             if not checklist:
                 meals = getattr(diet_plan, "meals", []) or []
@@ -163,7 +190,7 @@ async def generate_diet_plan(
                 continue  # Retry
 
             # Valid plan — persist and return
-            await diet_plan_service.store_diet_plan(diet_plan)
+            await diet_plan_service.store_diet_plan(diet_plan, session=session)
             logger.info(
                 f"Diet plan generated and stored successfully on attempt {attempt} "
                 f"for user {current_user.id}"
@@ -194,11 +221,12 @@ async def generate_diet_plan(
 @router.put("/update", response_model=DietPlan)
 async def update_diet_plan(
     updated_plan: DietPlan,
-    current_user: UserInDB = Depends(get_current_user),
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
 ):
     """Update the current user's diet plan."""
     success = await diet_plan_service.update_diet_plan(
-        str(current_user.id), updated_plan
+        str(current_user.id), updated_plan, session=session
     )
     if not success:
         raise DietPlanNotFoundException()
@@ -219,9 +247,12 @@ async def update_diet_plan(
         404: {"description": "Diet plan not found"},
     },
 )
-async def delete_diet_plan(current_user: UserInDB = Depends(get_current_user)):
+async def delete_diet_plan(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
     """Delete the current user's diet plan."""
-    success = await diet_plan_service.delete_diet_plan(str(current_user.id))
+    success = await diet_plan_service.delete_diet_plan(str(current_user.id), session=session)
     if not success:
         raise DietPlanNotFoundException()
     return {"message": "Diet plan deleted successfully"}
@@ -241,13 +272,14 @@ async def delete_diet_plan(current_user: UserInDB = Depends(get_current_user)):
     },
 )
 async def get_ingredient_checklist_today(
-    current_user: UserInDB = Depends(get_current_user),
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
 ):
     """
     Get the ingredient checklist for today's meals only.
     Returns an empty list [] if no diet plan is found (valid empty state).
     """
-    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
+    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
     if not diet_plan:
         return []
 
@@ -273,12 +305,15 @@ async def get_ingredient_checklist_today(
         }
     },
 )
-async def get_weekly_ingredients(current_user: UserInDB = Depends(get_current_user)):
+async def get_weekly_ingredients(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
     """
     Get the weekly ingredient checklist for all meals.
     Returns an empty list [] if no diet plan is found (valid empty state).
     """
-    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id))
+    diet_plan = await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
     if not diet_plan:
         return []
 

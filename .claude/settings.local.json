@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude plugin:*)",
+      "Bash(claude mcp:*)",
+      "Bash(venv/Scripts/python.exe -m alembic revision --autogenerate -m \"add_notification_preferences_to_patients\")",
+      "Bash(venv/Scripts/python.exe -m alembic upgrade head)",
+      "Bash(venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000)",
+      "Bash(venv/Scripts/python.exe tests/full_backend_test.py)",
+      "Bash(ts\")",
+      "Bash(xargs grep:*)"
+    ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true
+  }
+}

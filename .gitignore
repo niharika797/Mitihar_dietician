@@ -1,4 +1,4 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
@@ -8,30 +8,89 @@ __pycache__/
 dist/
 build/
 
-# Virtual Environment
+# ── Virtual Environment ───────────────────────────────────────────────────────
 venv/
 .venv/
 env/
 
-# Environment Variables
+# ── Environment Variables & Secrets ─────────────────────────────────────────────────────
+# NEVER commit .env files containing real secrets.
 .env
+.env.*
+!.env.example
+mitihar-patient-app/.env
+mitihar-patient-app/.env.*
+!mitihar-patient-app/.env.example
+mitihar-frontend/apps/.env
+mitihar-frontend/apps/.env.*
+!mitihar-frontend/apps/.env.example
 
-# IDEs
+# ── IDEs ──────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 
-# Testing & Coverage
+# ── Testing & Coverage ────────────────────────────────────────────────────────
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# MongoDB
-*.bson
+# ── Credential & key files ───────────────────────────────────────────────────
+client_secret_*.json
+*service_account*.json
+*firebase_service_account*.json
+google-services.json
+GoogleService-Info.plist
+credentials.json
+*.pem
+*.p12
+*.key
+
+# ── Frontend — Node / pnpm ────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+*.pnpm-debug.log*
+mitihar-frontend/.pnpm-store/
+
+# ── Frontend — Build outputs ──────────────────────────────────────────────────
+mitihar-frontend/apps/dist/
+mitihar-frontend/apps/.vite/
+mitihar-frontend/apps/build/
+
+# ── Frontend — Type cache ─────────────────────────────────────────────────────
+mitihar-frontend/apps/tsconfig.tsbuildinfo
+
+# ── Design / Screens ──────────────────────────────────────────────────────────
+Phone screens/
+
+# ── Local variants ────────────────────────────────────────────────────────────
+*.local
+
+# ── Demo / audit credential store ─────────────────────────────────────────────
+credentials/
+
+# ── Checkpoint files (scripts, idempotent — no secrets but large/noisy) ───────
+scripts/rename_checkpoint.json
+
+# Internal docs and dev artifacts
+docs/
+logs/
+credentials/
+SPRINT_*.md
+MITIHAR_GUIDEBOOK.md
+RL_Roadmap.md
+Task_List.md
+implementation_plan.md
+walkthrough.md
+journal.txt
+test_results_latest.txt
+MITYAHAR_PREPRODUCTION_AUDIT.md
+rename_checkpoint.json
+scripts/*.md

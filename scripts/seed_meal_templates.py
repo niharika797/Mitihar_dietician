@@ -8,7 +8,14 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..'
 
 from app.models.db_models import MealTemplate
 
-DATABASE_URL = "postgresql+psycopg2://admin:mityahar_dev@localhost:5432/mityahar_db"
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set. Add it to your .env file.")
+DATABASE_URL = DATABASE_URL.replace("+asyncpg", "+psycopg2")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -30,7 +37,7 @@ SNACK_SLOTS = [
     {"slot_type": "snack_item", "calorie_pct": 1.0, "required": True},
 ]
 
-MEAL_TIMES = ["Breakfast", "Lunch", "Dinner", "Morning_Snack"]
+MEAL_TIMES = ["Breakfast", "Lunch", "Dinner", "Morning_Snack", "Evening_Snack"]
 REGIONS = ["North", "South", "East", "West"]
 DIET_TYPES = ["Vegetarian", "Non-Vegetarian", "Eggetarian"]
 PLAN_TYPES = ["Healthy", "Diabetic-Friendly", "Gym-Friendly"]
@@ -40,7 +47,7 @@ def get_slots_for_meal(meal_time: str) -> list[dict]:
         return BREAKFAST_SLOTS
     elif meal_time in ["Lunch", "Dinner"]:
         return LUNCH_DINNER_SLOTS
-    elif meal_time == "Morning_Snack":
+    elif meal_time in ["Morning_Snack", "Evening_Snack"]:
         return SNACK_SLOTS
     return []
 

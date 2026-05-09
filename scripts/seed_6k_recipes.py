@@ -31,8 +31,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.models.db_models import FoodItem
 
 # ── Config ────────────────────────────────────────────────────────────────────
-USDA_API_KEY  = os.getenv("USDA_API_KEY",  "uo7qIJasjbhAa77L7h455qdAvtwXg3l2U9TjaUZ8")
-DATABASE_URL  = os.getenv("DATABASE_URL",  "postgresql+psycopg2://admin:mityahar_dev@localhost:5432/mityahar_db")
+USDA_API_KEY  = os.getenv("USDA_API_KEY")
+if not USDA_API_KEY:
+    raise RuntimeError(
+        "USDA_API_KEY is not set. Add it to your .env file before running this script.\n"
+        "Get a free key at: https://fdc.nal.usda.gov/api-key-signup.html"
+    )
+DATABASE_URL  = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is not set. Add it to your .env file.")
 CSV_PATH      = Path(__file__).parent.parent / "6000+ Indian Food Recipes Dataset" / "IndianFoodDatasetCSV.csv"
 CONFIDENCE_THRESHOLD = 0.55   # min fraction of ingredients matched to accept recipe
 BATCH_SIZE    = 100            # print progress every N recipes
@@ -331,7 +338,6 @@ def main():
             diet_raw  = str(row.get("Diet", "")).strip().lower()
             servings  = int(row.get("Servings", 4))
             ing_str   = str(row.get("TranslatedIngredients", ""))
-            instr     = str(row.get("TranslatedInstructions", ""))
 
             diet_type      = DIET_MAP.get(diet_raw, "Vegetarian")
             slot_type      = COURSE_TO_SLOT.get(course.lower(), "grain")
@@ -371,7 +377,6 @@ def main():
                 meal_time_tags      = meal_time_tags,
                 plan_type_tags      = PLAN_TYPE_TAGS_DEFAULT,
                 ingredients         = nutrition["ingredients"],
-                instructions        = instr[:2000] if instr else "",
                 source              = "6k_dataset",
                 is_verified         = False,
             )
