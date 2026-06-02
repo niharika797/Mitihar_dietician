@@ -177,6 +177,7 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 **Completed this session:**
 - Ultrareview fixes: duplicate `PatientVisit` guard, TOCTOU `.with_for_update()` on `/activate`, CSP built from `CORS_ORIGINS`, dead middleware skip rules removed, Google OAuth `gdpr_consent` gate
 - Contract gap fixes: consultation fee Rs 1,200 → Rs 1,500 (`admin.py`, `doctor.py`), royalty rate 6% → 2% (`admin.py`), annual billing year boundary Jan 1 → Apr 1 (Indian financial year), per-doctor tier assignment + differential in `/admin/consultations/annual`, "Next Visit" follow-up card on patient Home tab (`index.tsx`)
+- Docs updated: `docs/Task_List.md` (business model corrected, Next Visit card added, task count updated), `docs/SECURITY_AUDIT.md` (ultrareview fixes documented)
 
 **Pending / Blocked:**
 - `mitihar-frontend/apps/` Sprint 5 changes unverified (`PlanTab.tsx` rewrite — check `patientMealsPerDay` prop)

@@ -94,3 +94,24 @@ test_results_latest.txt
 MITYAHAR_PREPRODUCTION_AUDIT.md
 rename_checkpoint.json
 scripts/*.md
+
+# Expo cache
+.expo/
+mitihar-patient-app/.expo/
+
+# Local databases
+*.sqlite
+*.db
+
+# Sensitive local contracts/agreements
+contract/
+
+# Local tools and generated output
+.playwright-mcp/
+graphify-out/
+app/graphify-out/
+
+# Backup and temporary scripts
+scripts/backup_food_items.py
+
+

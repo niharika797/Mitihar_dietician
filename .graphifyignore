@@ -1,0 +1,17 @@
+venv/
+node_modules/
+.git/
+__pycache__/
+.pytest_cache/
+*.zip
+*.log
+credentials/
+mitihar-patient-app/node_modules/
+mitihar-frontend/apps/dist/
+mitihar-frontend/apps/.vite/
+scripts/rename_checkpoint.json
+rename_checkpoint.json
+rename_dishes_backup.json
+firebase_service_account.json
+google-services.json
+GoogleService-Info.plist
