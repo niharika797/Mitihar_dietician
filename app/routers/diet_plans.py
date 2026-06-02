@@ -19,6 +19,8 @@ from ..core.limiter import limiter
 logger = logging.getLogger(__name__)
 diet_plan_service = DietPlanService()
 
+EXPECTED_MEAL_COUNT = 7 * 3  # 7 days × 3 meal types (Breakfast, Lunch, Dinner)
+
 
 def _validate_generated_plan(diet_plan: DietPlan, user_diet: str) -> str | None:
     """
@@ -28,9 +30,9 @@ def _validate_generated_plan(diet_plan: DietPlan, user_diet: str) -> str | None:
     meals = getattr(diet_plan, "meals", None) or []
     checklist = getattr(diet_plan, "ingredient_checklist", None) or []
 
-    # 1. Must have exactly 35 meals (7 days × 5 meal types × 1 option)
-    if len(meals) != 35:
-        return f"Expected 35 meals, got {len(meals)}"
+    # 1. Must have exactly 21 meals (7 days × 3 meal types × 1 option)
+    if len(meals) != EXPECTED_MEAL_COUNT:
+        return f"Expected {EXPECTED_MEAL_COUNT} meals, got {len(meals)}"
 
     # 2. Every meal must have a Date field
     missing_date = [i for i, m in enumerate(meals) if not m.get("Date")]

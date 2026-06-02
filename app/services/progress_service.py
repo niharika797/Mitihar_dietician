@@ -115,7 +115,7 @@ async def calculate_adherence(
         )
     )
     patient_row = patient_result.first()
-    meals_per_day_target = patient_row.meals_per_day if patient_row else 5
+    meals_per_day_target = patient_row.meals_per_day if patient_row else 3
 
     # Count logged recommended meals per day
     result = await session.execute(

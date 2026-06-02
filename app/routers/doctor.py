@@ -851,6 +851,8 @@ async def add_recipe(
         carbs_per_serving=body.carbs_per_serving,
         fat_per_serving=body.fat_per_serving,
         fiber_per_serving=body.fiber_per_serving,
+        serving_weight_g=body.serving_weight_g,
+        sodium_per_serving=body.sodium_per_serving,
         diet_type=body.diet_type,
         meal_time_tags=body.meal_time_tags,
         plan_type_tags=body.plan_type_tags,

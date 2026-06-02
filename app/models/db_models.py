@@ -165,7 +165,7 @@ class Patient(Base):
     medical_conditions    = Column(JSONB, default=[])
     food_allergies        = Column(JSONB, default=[])
     dietary_preferences   = Column(JSONB, default=[])
-    meals_per_day         = Column(Integer, default=5)
+    meals_per_day         = Column(Integer, default=3)
     fasting_days          = Column(JSONB, default=[])
     sleep_hours           = Column(Numeric, nullable=True)
     water_glasses         = Column(Integer, default=8)
@@ -367,12 +367,16 @@ class SubscriptionCode(Base):
     is_used            = Column(Boolean, default=False)
     used_by_patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
     used_at            = Column(DateTime(timezone=True), nullable=True)
+    # Three-state lifecycle: AVAILABLE → RESERVED → CONSUMED
+    # reserved_by set at registration; used_by_patient_id set at activation
+    reserved_by        = Column(Integer, ForeignKey("patients.id"), nullable=True)
+    reserved_at        = Column(DateTime(timezone=True), nullable=True)
     expires_at         = Column(DateTime(timezone=True), nullable=True)
     created_at         = Column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
     doctor             = relationship("Doctor", back_populates="subscription_codes")
-    used_by_patient    = relationship("Patient")
+    used_by_patient    = relationship("Patient", foreign_keys=[used_by_patient_id])
 
 
 # ---------------------------------------------------------------------------
@@ -619,4 +623,27 @@ class PendingVisitApproval(Base):
     __table_args__ = (
         Index("idx_pva_patient", "patient_id"),
         Index("idx_pva_status",  "status"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# PatientMealConfig  (doctor TDEE split override per patient)
+# ---------------------------------------------------------------------------
+
+class PatientMealConfig(Base):
+    __tablename__ = "patient_meal_config"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id          = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"),
+                                 nullable=False, unique=True)
+    meal_split_override = Column(JSONB, nullable=True)
+    # {"breakfast_pct": 25, "lunch_pct": 35, "dinner_pct": 25} when set.
+    # NULL = use system defaults. Application layer enforces the three values sum to 85.
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    patient             = relationship("Patient")
+
+    __table_args__ = (
+        Index("idx_pmc_patient", "patient_id"),
     )

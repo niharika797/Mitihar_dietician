@@ -151,6 +151,8 @@ class FoodItemSummary(BaseModel):
     carbs_per_serving: float
     fat_per_serving: float
     fiber_per_serving: float
+    serving_weight_g: Optional[float] = None
+    sodium_per_serving: Optional[float] = None
     diet_type: str
     meal_time_tags: list[str]
     plan_type_tags: list[str]
@@ -187,6 +189,8 @@ class RecipeCreateRequest(BaseModel):
     diet_type:         Literal["Vegetarian", "Non-Vegetarian", "Eggetarian"]
     meal_time_tags:    BoundedTagList = Field(default_factory=list)
     plan_type_tags:    BoundedTagList = Field(default=["Healthy", "Diabetic-Friendly", "Gym-Friendly"])
+    serving_weight_g:  float = Field(..., gt=0, le=10000)
+    sodium_per_serving: Optional[float] = Field(default=None, ge=0, le=10000)
     ingredients:       Annotated[list[IngredientItem], Field(max_length=50)] = Field(default_factory=list)
     region_tags:       BoundedTagList = Field(default_factory=list)
     submit_to_global: bool = Field(

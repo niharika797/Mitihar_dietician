@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, case as sa_case, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db_models import MealTemplate, FoodItem
+from app.models.db_models import MealTemplate, FoodItem, PatientMealConfig
 from .calculations import calculate_bmi, calculate_bmr, calculate_tdee, calculate_macronutrients
 
 logger = logging.getLogger(__name__)
@@ -22,16 +22,14 @@ BLOCKLIST_PATTERNS = [
 ]
 PROTECTED_SLOTS = ["grain", "dal_protein", "main_dish", "sabzi"]
 
+DEFAULT_SPLIT = {"Breakfast": 0.25, "Lunch": 0.35, "Dinner": 0.25}
+
 class MealPlanTargets(BaseModel):
     """
     Container for all nutritional targets of a meal plan.
     """
     targets: Dict
     meal_targets: Dict
-    protein_targets: Dict
-    carb_targets: Dict
-    fiber_targets: Dict
-    fat_targets: Dict
     user_data: Dict
     meal_history: Dict[str, set] = {}
 
@@ -40,9 +38,7 @@ class MealPlanTargets(BaseModel):
         if not self.meal_history:
             self.meal_history = {
                 "Breakfast": set(),
-                "MorningSnacks": set(),
                 "Lunch": set(),
-                "EveningSnacks": set(),
                 "Dinner": set()
             }
 
@@ -55,9 +51,7 @@ class MealGenerator:
         # Initialize meal history tracking template
         self._default_history = {
             "Breakfast": set(),
-            "MorningSnacks": set(),
             "Lunch": set(),
-            "EveningSnacks": set(),
             "Dinner": set()
         }
 
@@ -106,162 +100,42 @@ class MealGenerator:
             "fat": fat
         }
 
-    def _calculate_meal_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        tdee = targets["tdee"]
-        plan = user_data.get("health_condition", "Healthy")
-        if plan == "Healthy":
-            return {
-                "Breakfast": tdee * 0.25,
-                "MorningSnacks": tdee * 0.05,
-                "Lunch": tdee * 0.30,
-                "EveningSnacks": tdee * 0.05,
-                "Dinner": tdee * 0.25,
-            }
-        elif plan == "Gym-Friendly":
-            return {
-                "Breakfast": tdee * 0.25,
-                "MorningSnacks": tdee * 0.05,
-                "Lunch": tdee * 0.35,
-                "EveningSnacks": tdee * 0.05,   
-                "Dinner": tdee * 0.30,
-            }
-        else:  # Diabetic-Friendly
-            return {
-                    "Breakfast": tdee * 0.25,
-                    "MorningSnacks": tdee * 0.05,
-                    "Lunch": tdee * 0.35,
-                    "EveningSnacks": tdee * 0.05,
-                    "Dinner": tdee * 0.30,
-            }
-
-    def _calculate_protein_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        protein = targets["protein"]
-        plan = user_data.get("health_condition", "Healthy")
-        if plan == "Healthy":
-            return {
-                "Breakfast": protein * 0.25,
-                "MorningSnacks": protein * 0.10,
-                "Lunch": protein * 0.30,
-                "EveningSnacks": protein * 0.10,
-                "Dinner": protein * 0.25,
-            }
-        elif plan == "Gym-Friendly":
-            return {
-                "Breakfast": protein * 0.30,
-                "MorningSnacks": protein * 0.10,
-                "Lunch": protein * 0.25,
-                "EveningSnacks": protein * 0.10,
-                "Dinner": protein * 0.25,
-            }
-        else:  # Diabetic-Friendly
-            return {
-                "Breakfast": protein * 0.30,
-                "MorningSnacks": protein * 0.10,
-                "Lunch": protein * 0.25,
-                "EveningSnacks": protein * 0.10,
-                "Dinner": protein * 0.25,
-            }
-
-    def _calculate_carb_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        carbs = targets["carbs"]
-        plan = user_data.get("health_condition", "Healthy")
-        if plan == "Healthy":
-            return {
-                "Breakfast": carbs * 0.25,
-                "MorningSnacks": carbs * 0.10,
-                "Lunch": carbs * 0.30,
-                "EveningSnacks": carbs * 0.10,
-                "Dinner": carbs * 0.25,
-            }
-        elif plan == "Gym-Friendly":
-            return {
-                    "Breakfast": carbs * 0.30,
-                "MorningSnacks": carbs * 0.10,
-                "Lunch": carbs * 0.25,
-                "EveningSnacks": carbs * 0.10,
-                "Dinner": carbs * 0.30,
-            }
-        else:  # Diabetic-Friendly
-            return {
-                "Breakfast": carbs * 0.30,
-                "MorningSnacks": carbs * 0.10,
-                "Lunch": carbs * 0.25,
-                "EveningSnacks": carbs * 0.10,
-                "Dinner": carbs * 0.30,
-            }
-
-    def _calculate_fiber_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        fiber = targets["fiber"]
-        plan = user_data.get("health_condition", "Healthy")
-        if plan == "Healthy":
-            return {
-                "Breakfast": fiber * 0.25,
-                "MorningSnacks": fiber * 0.10,
-                "Lunch": fiber * 0.30,
-                "EveningSnacks": fiber * 0.10,
-                "Dinner": fiber * 0.25,
-            }
-        elif plan == "Gym-Friendly":
-            return {
-                "Breakfast": fiber * 0.30,
-                "MorningSnacks": fiber * 0.10,
-                "Lunch": fiber * 0.35,
-                "EveningSnacks": fiber * 0.10, 
-                "Dinner": fiber * 0.30,
-            }
-        else:  # Diabetic-Friendly
-            return {
-                "Breakfast": fiber * 0.30,
-                "MorningSnacks": fiber * 0.10,
-                "Lunch": fiber * 0.35,
-                "EveningSnacks": fiber * 0.10,
-                "Dinner": fiber * 0.30,
-            }
-
-    def _calculate_fat_targets(self, user_data: Dict, targets: Dict) -> Dict:
-        fat = targets["fat"]
-        plan = user_data.get("health_condition", "Healthy")
-        if plan == "Healthy":
-            return {
-                "Breakfast": fat * 0.25,
-                "MorningSnacks": fat * 0.10,
-                "Lunch": fat * 0.30,
-                "EveningSnacks": fat * 0.10,
-                "Dinner": fat * 0.25,
-            }
-        elif plan == "Gym-Friendly":
-            return {
-                "Breakfast": fat * 0.30,
-                "MorningSnacks": fat * 0.10,
-                "Lunch": fat * 0.35,
-                "EveningSnacks": fat * 0.10,
-                "Dinner": fat * 0.30, 
-            }
-        else:  # Diabetic-Friendly
-            return {
-                "Breakfast": fat * 0.25,
-                "MorningSnacks": fat * 0.10,
-                "Lunch": fat * 0.30,
-                "EveningSnacks": fat * 0.10,
-                "Dinner": fat * 0.25,
-            }
-
     async def generate_meal_plan(self, user_data: Dict, session: AsyncSession) -> Dict:
         if "start_date" not in user_data:
             user_data["start_date"] = datetime.now().strftime("%Y-%m-%d")
             
         targets = self._calculate_targets(user_data)
+
+        effective_tdee = targets["tdee"] * 0.85
+
+        split = DEFAULT_SPLIT
+        patient_id = user_data.get("id")
+        if patient_id:
+            result = await session.execute(
+                select(PatientMealConfig).where(PatientMealConfig.patient_id == int(patient_id))
+            )
+            config = result.scalar_one_or_none()
+            if config and config.meal_split_override:
+                o = config.meal_split_override
+                split = {
+                    "Breakfast": o["breakfast_pct"] / 100,
+                    "Lunch":     o["lunch_pct"] / 100,
+                    "Dinner":    o["dinner_pct"] / 100,
+                }
+
+        meal_targets_calc = {
+            "Breakfast": effective_tdee * split["Breakfast"],
+            "Lunch":     effective_tdee * split["Lunch"],
+            "Dinner":    effective_tdee * split["Dinner"],
+        }
+
         ctx = MealPlanTargets(
             targets=targets,
-            meal_targets=self._calculate_meal_targets(user_data, targets),
-            protein_targets=self._calculate_protein_targets(user_data, targets),
-            carb_targets=self._calculate_carb_targets(user_data, targets),
-            fiber_targets=self._calculate_fiber_targets(user_data, targets),
-            fat_targets=self._calculate_fat_targets(user_data, targets),
+            meal_targets=meal_targets_calc,
             user_data=user_data
         )
 
-        meal_types = ["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner"]
+        meal_types = ["Breakfast", "Lunch", "Dinner"]
         organized_meals = []
         
         start_date = datetime.strptime(user_data["start_date"], "%Y-%m-%d")
@@ -271,13 +145,10 @@ class MealGenerator:
         diet_type = self._normalize_diet_label(raw_diet)
         plan_type = user_data.get("health_condition", "Healthy")
 
-        # Map morning/evening snacks to Morning_Snack for DB querying
         meal_time_mapping = {
-            "Breakfast":    "Breakfast",
-            "Lunch":        "Lunch",
-            "Dinner":       "Dinner",
-            "MorningSnacks": "Morning_Snack",
-            "EveningSnacks": "Evening_Snack",   # separate pool from morning snack
+            "Breakfast": "Breakfast",
+            "Lunch":     "Lunch",
+            "Dinner":    "Dinner",
         }
 
         daily_used_ids  = set()   # HARD block — cleared every day, no same dish twice per day
@@ -381,7 +252,8 @@ class MealGenerator:
                         "Menu Names": [],
                         "Ingredients Scaling": {},
                     }
-                    
+                    dishes = []
+
                     slot_failed = False
                     for slot in template.slots:
                         slot_type = slot["slot_type"]
@@ -415,6 +287,37 @@ class MealGenerator:
                         factor = max(0.5, min(3.0, factor))
 
                         meal_option["Menu Names"].append(food_item.recipe_name)
+                        dish_ingredients: list = []
+                        try:
+                            for _ing in (food_item.ingredients or []):
+                                if not isinstance(_ing, dict):
+                                    continue
+                                if _ing.get("is_pantry_staple"):
+                                    continue
+                                _name = _ing.get("name") or ""
+                                if not _name:
+                                    continue
+                                _raw = _ing.get("amount_g") or _ing.get("quantity") or 0
+                                try:
+                                    _amt = round(float(_raw) * factor, 1)
+                                except (ValueError, TypeError):
+                                    _amt = 0.0
+                                if _amt > 0:
+                                    dish_ingredients.append({"name": _name, "amount_g": _amt})
+                        except Exception as _exc:
+                            logger.warning(f"dish_ingredients build failed for food_item {food_item.id}: {_exc}")
+                            dish_ingredients = []
+                        dishes.append({
+                            "food_id":      food_item.id,
+                            "recipe_name":  food_item.recipe_name,
+                            "slot_type":    food_item.slot_type,
+                            "calories":     float(food_item.cal_per_serving),
+                            "protein":      float(food_item.protein_per_serving),
+                            "carbs":        float(food_item.carbs_per_serving),
+                            "fat":          float(food_item.fat_per_serving),
+                            "fiber":        float(food_item.fiber_per_serving) if food_item.fiber_per_serving else 0.0,
+                            "ingredients":  dish_ingredients,
+                        })
                         meal_option["Total Calories"] += float(food_item.cal_per_serving) * factor
                         meal_option["Total Protein"] += float(food_item.protein_per_serving) * factor
                         meal_option["Total Carbs"] += float(food_item.carbs_per_serving) * factor
@@ -434,6 +337,7 @@ class MealGenerator:
                             meal_option["Ingredients Scaling"][name] = round(meal_option["Ingredients Scaling"].get(name, 0) + amt, 2)
                     
                     if not slot_failed and meal_option["Menu Names"]:
+                        meal_option["dishes"] = dishes
                         meal_option["Menu Names"] = " + ".join(meal_option["Menu Names"])
                         meal_option["Total Calories"] = round(meal_option["Total Calories"], 2)
                         meal_option["Total Protein"] = round(meal_option["Total Protein"], 2)
@@ -471,7 +375,7 @@ class MealGenerator:
     @staticmethod
     def _diet_fallback_chain(user_diet: str, meal_time: str) -> list[str]:
         """Return ordered list of diet_types to try for a given slot."""
-        if meal_time in ("Breakfast", "Morning_Snack", "Evening_Snack"):
+        if meal_time == "Breakfast":
             if user_diet in ("Non-Vegetarian", "Eggetarian"):
                 return ["Eggetarian", "Vegetarian"]
             return ["Vegetarian"]
