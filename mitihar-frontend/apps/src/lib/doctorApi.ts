@@ -184,6 +184,8 @@ export interface FoodItemSummary {
   id: number;
   recipe_name: string;
   slot_type: string;
+  serving_weight_g: number | null;
+  sodium_per_serving: number | null;
   cal_per_serving: number;
   protein_per_serving: number;
   carbs_per_serving: number;
@@ -214,6 +216,8 @@ export interface RecipeCreateBody {
   carbs_per_serving: number;
   fat_per_serving: number;
   fiber_per_serving: number;
+  serving_weight_g: number;
+  sodium_per_serving?: number;
   diet_type: string;
   meal_time_tags: string[];
   plan_type_tags: string[];
@@ -368,7 +372,7 @@ export const doctorApi = {
     apiClient.post<BulkRenewalResponse>('/doctor/patients/approve-all-renewals').then(r => r.data),
 
   getPendingRenewals: () =>
-    apiClient.get<PendingRenewalItem[]>('/doctor/patients/pending-renewals').then(r => r.data),
+    apiClient.get<PendingRenewalItem[]>('/doctor/pending-renewals').then(r => r.data),
 
   // Audit C-8: was calling /recipes/lookup (path does not exist → 404) with field
   // food_name (wrong field name). Correct route is /recipes/estimate with dish_name.

@@ -202,6 +202,8 @@ interface AddForm {
   carbs: string;
   fat: string;
   fiber: string;
+  amount_g: string;
+  sodium: string;
   diet_type: string;
   meal_time: string;
   region: string;
@@ -215,6 +217,8 @@ const EMPTY_FORM: AddForm = {
   carbs: '',
   fat: '',
   fiber: '',
+  amount_g: '',
+  sodium: '',
   diet_type: 'Vegetarian',
   meal_time: 'Breakfast',
   region: '',
@@ -235,9 +239,13 @@ function RecipeCard({ recipe, onAssign }: RecipeCardProps) {
           <span className="text-xs text-[#6B7280]">{recipe.slot_type} · {recipe.diet_type}</span>
           <p className="text-sm font-medium text-[#111827] mt-0.5">{recipe.recipe_name}</p>
         </div>
-        {!recipe.is_verified && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A] flex-shrink-0 ml-2">
-            Pending
+        {recipe.is_verified ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803d] border border-[#BBF7D0] flex-shrink-0 ml-2">
+            Verified
+          </span>
+        ) : (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280] border border-[#E5E7EB] flex-shrink-0 ml-2">
+            Unverified
           </span>
         )}
       </div>
@@ -292,7 +300,10 @@ function AddRecipeForm({ onSuccess, onCancel }: AddRecipeFormProps) {
       recipe_name: form.recipe_name, slot_type: form.slot_type,
       cal_per_serving: Number(form.calories), protein_per_serving: Number(form.protein),
       carbs_per_serving: Number(form.carbs), fat_per_serving: Number(form.fat),
-      fiber_per_serving: Number(form.fiber) || 0, diet_type: form.diet_type,
+      fiber_per_serving: Number(form.fiber) || 0,
+      serving_weight_g: Number(form.amount_g),
+      sodium_per_serving: form.sodium ? Number(form.sodium) : undefined,
+      diet_type: form.diet_type,
       meal_time_tags: form.meal_time ? [form.meal_time] : [], plan_type_tags: ['Healthy'],
       ingredients: [], region_tags: form.region ? [form.region] : [],
     }),
@@ -402,6 +413,24 @@ function AddRecipeForm({ onSuccess, onCancel }: AddRecipeFormProps) {
                 placeholder="0" className={macroInputClass(aiHighlighted && key !== 'fiber')} />
             </div>
           ))}
+          <div>
+            <label htmlFor="recipe-amount-g" className="block text-sm font-medium text-[#374151] mb-1.5">
+              Serving Size (grams) <span className="text-[#DC2626] ml-0.5">*</span>
+            </label>
+            <input id="recipe-amount-g" required type="number" min={1} value={form.amount_g}
+              onChange={e => setForm(p => ({ ...p, amount_g: e.target.value }))}
+              placeholder="e.g. 150"
+              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent" />
+          </div>
+          <div>
+            <label htmlFor="recipe-sodium" className="block text-sm font-medium text-[#374151] mb-1.5">
+              Sodium (mg per serving)
+            </label>
+            <input id="recipe-sodium" type="number" min={0} value={form.sodium}
+              onChange={e => setForm(p => ({ ...p, sodium: e.target.value }))}
+              placeholder="0"
+              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent" />
+          </div>
         </div>
         <div className="flex gap-3">
           <button type="submit" disabled={addMutation.isPending}
