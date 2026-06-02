@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { storage } from "../lib/storage";
 import type { OnboardingWizardState, OnboardingPayload, Gender, ActivityLevel, DietType, Region, PacePreference } from "../types";
 
 const DEFAULT_STATE: OnboardingWizardState = {
@@ -39,48 +41,63 @@ interface OnboardingStore {
   toPayload: () => OnboardingPayload;
 }
 
-export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
-  data: DEFAULT_STATE,
-
-  update: (partial) =>
-    set((s) => ({ data: { ...s.data, ...partial } })),
-
-  reset: () => set({ data: DEFAULT_STATE }),
-
-  toPayload: (): OnboardingPayload => {
-    const d = get().data;
-    const dob = `${d.dob_year}-${d.dob_month.padStart(2, "0")}-${d.dob_day.padStart(2, "0")}`;
-    const parsedHeight = parseFloat(d.height_cm);
-    const parsedWeight = parseFloat(d.weight_kg);
-    const parsedTarget = parseFloat(d.target_weight_kg);
-
-    if (!isFinite(parsedHeight) || parsedHeight <= 0) throw new Error("Invalid height value");
-    if (!isFinite(parsedWeight) || parsedWeight <= 0) throw new Error("Invalid weight value");
-
-    return {
-      date_of_birth:         dob,
-      gender:                d.gender as Gender,
-      height_cm:             parsedHeight,
-      weight_kg:             parsedWeight,
-      activity_level:        ACTIVITY_MAP[d.activity_level] ?? "LA",
-      diet_type:             d.diet_type as DietType,
-      region:                d.region as Region,
-      health_condition:      d.health_condition,
-      target_weight_kg:      isFinite(parsedTarget) ? parsedTarget : undefined,
-      health_goals:          d.health_goals,
-      medical_conditions:    d.medical_conditions,
-      food_allergies:        d.food_allergies,
-      dietary_preferences:   d.dietary_preferences,
-      meals_per_day:         parseInt(d.meals_per_day) as 3 | 5,
-      fasting_days:          d.fasting_days,
-      sleep_hours:           d.sleep_hours,
-      water_glasses:         d.water_glasses,
-      occupation:            d.occupation,
-      smoking:               d.smoking,
-      alcohol:               d.alcohol,
-      nonveg_meals_per_week: d.nonveg_meals_per_week,
-      pace_preference:       d.goal_pace as PacePreference,
-      eating_habits:         d.eating_habits,
-    };
-  },
+const storageAdapter = createJSONStorage(() => ({
+  getItem: (name: string) => storage.getItemAsync(name),
+  setItem: (name: string, value: string) => storage.setItemAsync(name, value),
+  removeItem: (name: string) => storage.deleteItemAsync(name),
 }));
+
+export const useOnboardingStore = create<OnboardingStore>()(
+  persist(
+    (set, get) => ({
+      data: DEFAULT_STATE,
+
+      update: (partial) =>
+        set((s) => ({ data: { ...s.data, ...partial } })),
+
+      reset: () => set({ data: DEFAULT_STATE }),
+
+      toPayload: (): OnboardingPayload => {
+        const d = get().data;
+        const dob = `${d.dob_year}-${d.dob_month.padStart(2, "0")}-${d.dob_day.padStart(2, "0")}`;
+        const parsedHeight = parseFloat(d.height_cm);
+        const parsedWeight = parseFloat(d.weight_kg);
+        const parsedTarget = parseFloat(d.target_weight_kg);
+
+        if (!isFinite(parsedHeight) || parsedHeight <= 0) throw new Error("Invalid height value");
+        if (!isFinite(parsedWeight) || parsedWeight <= 0) throw new Error("Invalid weight value");
+
+        return {
+          date_of_birth:         dob,
+          gender:                d.gender as Gender,
+          height_cm:             parsedHeight,
+          weight_kg:             parsedWeight,
+          activity_level:        ACTIVITY_MAP[d.activity_level] ?? "LA",
+          diet_type:             d.diet_type as DietType,
+          region:                d.region as Region,
+          health_condition:      d.health_condition,
+          target_weight_kg:      isFinite(parsedTarget) ? parsedTarget : undefined,
+          health_goals:          d.health_goals,
+          medical_conditions:    d.medical_conditions,
+          food_allergies:        d.food_allergies,
+          dietary_preferences:   d.dietary_preferences,
+          meals_per_day:         parseInt(d.meals_per_day) as 3 | 5,
+          fasting_days:          d.fasting_days,
+          sleep_hours:           d.sleep_hours,
+          water_glasses:         d.water_glasses,
+          occupation:            d.occupation,
+          smoking:               d.smoking,
+          alcohol:               d.alcohol,
+          nonveg_meals_per_week: d.nonveg_meals_per_week,
+          pace_preference:       d.goal_pace as PacePreference,
+          eating_habits:         d.eating_habits,
+        };
+      },
+    }),
+    {
+      name: "mityahar_onboarding",
+      storage: storageAdapter,
+      partialize: (state) => ({ data: state.data }),
+    },
+  )
+);

@@ -1,6 +1,6 @@
 /**
  * useBiometricStore.ts
- * Manages biometric unlock preference, persisted in SecureStore.
+ * Manages biometric unlock preference, persisted in storage.
  *
  * State:
  *   enabled           — whether user has turned on biometric unlock
@@ -18,7 +18,7 @@
  *   4. Successful unlock sets lastUnlocked; failed unlock routes to login
  */
 import { create } from "zustand";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "../lib/storage";
 
 const BIOMETRIC_KEY = "mityahar_biometric_enabled";
 
@@ -43,7 +43,7 @@ export const useBiometricStore = create<BiometricState>((set) => ({
   isReady: false,
 
   setEnabled: async (val) => {
-    await SecureStore.setItemAsync(BIOMETRIC_KEY, val ? "1" : "0");
+    await storage.setItemAsync(BIOMETRIC_KEY, val ? "1" : "0");
     set({ enabled: val });
   },
 
@@ -55,7 +55,7 @@ export const useBiometricStore = create<BiometricState>((set) => ({
       const [hasHW, isEnrolled, savedPref] = await Promise.all([
         LocalAuth.hasHardwareAsync(),
         LocalAuth.isEnrolledAsync(),
-        SecureStore.getItemAsync(BIOMETRIC_KEY),
+        storage.getItemAsync(BIOMETRIC_KEY),
       ]);
       set({
         hardwareAvailable: hasHW,

@@ -25,11 +25,12 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
 }
 
-const MEAL_SLOTS = [
-  { id: "breakfast", emoji: "🌅", label: "Breakfast", time: "08:00 AM" },
-  { id: "lunch",     emoji: "☀️",  label: "Lunch",     time: "01:00 PM" },
-  { id: "dinner",    emoji: "🌙",  label: "Dinner",    time: "08:00 PM" },
-];
+const MEAL_ORDER = ["Breakfast","Lunch","Dinner"];
+const MEAL_META: Record<string, { emoji: string; time: string }> = {
+  "Breakfast": { emoji: "🌅", time: "08:00 AM" },
+  "Lunch":     { emoji: "☀️",  time: "01:00 PM" },
+  "Dinner":    { emoji: "🌙", time: "08:00 PM" },
+};
 
 
 // ── HomeHeader ─────────────────────────────────────────────────────────────────
@@ -279,12 +280,12 @@ export default function HomeScreen() {
   const mealMut = useMutation({
     mutationFn: (meal: Meal) =>
       logMeal({
-        meal_type: meal["Meal Type"].toLowerCase(),
-        calories_consumed: meal["Total Calories"],
-        protein_g: meal["Total Protein"],
-        carbs_g:   meal["Total Carbs"],
-        fat_g:     meal["Total Fat"],
-        fiber_g:   meal["Total Fiber"],
+        meal_type: meal["Meal Type"],
+        calories: meal["Total Calories"],
+        protein: meal["Total Protein"],
+        carbs:   meal["Total Carbs"],
+        fat:     meal["Total Fat"],
+        fiber:   meal["Total Fiber"],
       }),
     onSuccess: (_, meal) => {
       setLoggedMeals(p => ({ ...p, [meal["Meal Type"]]: true }));
@@ -356,33 +357,33 @@ export default function HomeScreen() {
             </Pressable>
           </View>
           <View style={[s.card, { padding: 0, overflow: "hidden" }]}>
-            {MEAL_SLOTS.map((slot, i) => {
-              const meal = todayMeals.find(m =>
-                m["Meal Type"].toLowerCase().includes(slot.id)
-              );
-              const logged = loggedMeals[slot.label] ?? false;
-              return (
-                <View key={slot.id} style={[s.mealRow, i < MEAL_SLOTS.length - 1 && s.mealBorder, logged && s.mealLogged]}>
-                  <View style={s.mealLeft}>
-                    <Text style={s.mealCheck}>{logged ? "✓" : "○"}</Text>
-                    <View>
-                      <Text style={s.mealSlot}>{slot.emoji} {slot.label} · {slot.time}</Text>
-                      <Text style={s.mealName} numberOfLines={1}>
-                        {meal ? meal["Menu Names"] : "—"}
-                      </Text>
+            {MEAL_ORDER
+              .map(t => todayMeals.find(m => m["Meal Type"] === t))
+              .filter((m): m is Meal => !!m)
+              .map((meal, i, arr) => {
+                const mealType = meal["Meal Type"];
+                const { emoji, time } = MEAL_META[mealType] ?? { emoji: "🍽️", time: "" };
+                const logged = loggedMeals[mealType] ?? false;
+                return (
+                  <View key={mealType} style={[s.mealRow, i < arr.length - 1 && s.mealBorder, logged && s.mealLogged]}>
+                    <View style={s.mealLeft}>
+                      <Text style={s.mealCheck}>{logged ? "✓" : "○"}</Text>
+                      <View>
+                        <Text style={s.mealSlot}>{emoji} {mealType} · {time}</Text>
+                        <Text style={s.mealName} numberOfLines={1}>{meal["Menu Names"]}</Text>
+                      </View>
+                    </View>
+                    <View style={s.mealRight}>
+                      <Text style={s.mealCal}>{meal["Total Calories"]} cal</Text>
+                      {!logged && (
+                        <Pressable onPress={() => setLogSheet(mealType)} style={s.logBtn}>
+                          <Text style={s.logBtnText}>Log</Text>
+                        </Pressable>
+                      )}
                     </View>
                   </View>
-                  <View style={s.mealRight}>
-                    {meal && <Text style={s.mealCal}>{meal["Total Calories"]} cal</Text>}
-                    {!logged && meal && (
-                      <Pressable onPress={() => setLogSheet(slot.label)} style={s.logBtn}>
-                        <Text style={s.logBtnText}>Log</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
+                );
+              })}
           </View>
 
           {/* ── Quick log ── */}

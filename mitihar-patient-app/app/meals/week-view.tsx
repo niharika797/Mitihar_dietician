@@ -9,7 +9,7 @@ import { MacroRow } from "../../components/shared";
 import type { Meal } from "../../types";
 
 const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const MEAL_ORDER = ["Breakfast","Morning Snack","Lunch","Evening Snack","Dinner"];
+const MEAL_ORDER = ["Breakfast","Lunch","Dinner"];
 
 function getWeekDates(): Date[] {
   const today = new Date();

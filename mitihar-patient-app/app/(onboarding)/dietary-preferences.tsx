@@ -112,7 +112,7 @@ export default function DietaryPreferencesScreen() {
         <View>
           <Text style={s.sectionLabel}>Meals Per Day</Text>
           <View style={s.mealsRow}>
-            {[{ v: "3", l: "3 meals" }, { v: "5", l: "5 meals (with snacks)" }].map(o => (
+            {[{ v: "3", l: "3 meals" }].map(o => (
               <Pressable key={o.v} onPress={() => setMeals(o.v)} style={[s.mealBtn, meals === o.v && s.mealBtnSel]}>
                 <Text style={[s.mealText, meals === o.v && s.mealTextSel]}>{o.l}</Text>
               </Pressable>

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "../../lib/storage";
 import { useMutation } from "@tanstack/react-query";
 import { OnboardingShell, useToast } from "../../components/shared";
 import { useOnboardingStore } from "../../store/useOnboardingStore";
@@ -31,7 +31,7 @@ export default function DisclaimerScreen() {
 
       // If the patient registered with a doctor code, activate their subscription now.
       // This is the only correct place — after onboarding + disclaimer, before redirect.
-      const pendingCode = await SecureStore.getItemAsync("mityahar_pending_doctor_code");
+      const pendingCode = await storage.getItemAsync("mityahar_pending_doctor_code");
       if (pendingCode) {
         try {
           const result = await activateSubscription(pendingCode);
@@ -41,7 +41,7 @@ export default function DisclaimerScreen() {
           // Code expired or already used — don't crash the onboarding flow.
           // Patient lands as inactive and can retry from Account → Activate Subscription.
         } finally {
-          await SecureStore.deleteItemAsync("mityahar_pending_doctor_code");
+          await storage.deleteItemAsync("mityahar_pending_doctor_code");
         }
       }
 

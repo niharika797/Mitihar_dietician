@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, TextInput,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Droplets, Footprints, Plus } from "lucide-react-native";
 import { BarChart } from "react-native-gifted-charts";
 import { QUERY_KEYS } from "../../lib/queryKeys";
-import { getTodaySummary, logWater, logSteps, logWeight, getWeightHistory } from "../../services/progress";
+import { getTodaySummary, logWater, logSteps, logWeight, getWeightHistory, getStreak } from "../../services/progress";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore, selectWater, selectSteps } from "../../store/useProgressStore";
 import { BottomSheet, useToast } from "../../components/shared";
@@ -18,7 +19,7 @@ export default function ProgressScreen() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const profile = useAuthStore(s => s.profile);
-  const { setLocalWater, setLocalSteps, hydrateWeightHistory, appendWeightEntry } = useProgressStore();
+  const { setLocalWater, setLocalSteps, hydrateSummary, hydrateWeightHistory, appendWeightEntry } = useProgressStore();
 
   const [waterSheet,  setWaterSheet]  = useState(false);
   const [stepsSheet,  setStepsSheet]  = useState(false);
@@ -43,13 +44,25 @@ export default function ProgressScreen() {
     queryFn: () => getWeightHistory(30),
   });
 
+  const { data: streakData } = useQuery({
+    queryKey: QUERY_KEYS.STREAK,
+    queryFn: getStreak,
+    staleTime: 1000 * 60 * 5,
+  });
+
   React.useEffect(() => { if (weightData) hydrateWeightHistory(weightData); }, [weightData]);
+  React.useEffect(() => { if (today) hydrateSummary(today); }, [today]);
+
+  useFocusEffect(useCallback(() => {
+    qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY });
+    qc.invalidateQueries({ queryKey: QUERY_KEYS.WEIGHT_HISTORY(30) });
+  }, [qc]));
 
   const currentWeight = localWeight ?? profile?.weight_kg ?? 0;
   const targetWeight  = profile?.target_weight_kg ?? 0;
   const waterPct  = Math.min(100, Math.round((water / 8) * 100));
   const stepsPct  = Math.min(100, Math.round((steps / 8000) * 100));
-  const streak    = today?.streak ?? 0;
+  const streak    = streakData?.streak_days ?? 0;
 
   // chart data — last 7 weight entries (guard: weightHistory may be undefined on first load)
   const chartData: BarData[] = (Array.isArray(weightHistory) ? weightHistory : []).slice(-7).map(e => ({
@@ -166,7 +179,7 @@ export default function ProgressScreen() {
             <Text style={s.streakSub}>Keep logging every day</Text>
             <View style={s.dotRow}>
               {STREAK_DOTS.map((done, i) => (
-                <View key={STREAK_LABELS[i]} style={s.dotCol}>
+                <View key={i} style={s.dotCol}>
                   <Text style={s.dotLabel}>{STREAK_LABELS[i]}</Text>
                   <View style={[s.dot, done && s.dotDone]} />
                 </View>

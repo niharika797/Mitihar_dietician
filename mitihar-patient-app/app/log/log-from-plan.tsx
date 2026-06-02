@@ -28,12 +28,12 @@ export default function LogFromPlanScreen() {
 
   const saveMut = useMutation({
     mutationFn: () => logMeal({
-      meal_type:         (type ?? "lunch").toLowerCase(),
-      calories_consumed: parseFloat(calories) || 0,
-      protein_g:         parseFloat(protein)  || undefined,
-      carbs_g:           parseFloat(carbs)    || undefined,
-      fat_g:             parseFloat(fat)      || undefined,
-      fiber_g:           parseFloat(fiber)    || undefined,
+      meal_type: (type ?? "Lunch"),
+      calories:  parseFloat(calories) || 0,
+      protein:   parseFloat(protein)  || undefined,
+      carbs:     parseFloat(carbs)    || undefined,
+      fat:       parseFloat(fat)      || undefined,
+      fiber:     parseFloat(fiber)    || undefined,
       notes:             notes || undefined,
     }),
     onSuccess: () => {

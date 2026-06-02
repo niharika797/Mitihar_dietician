@@ -124,6 +124,23 @@ export interface OnboardingWizardState {
 }
 
 // ── Meal Plan ─────────────────────────────────────────────────────────────
+export interface DishIngredient {
+  name: string;
+  amount_g: number;
+}
+
+export interface Dish {
+  food_id: number;
+  recipe_name: string;
+  slot_type: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  ingredients?: DishIngredient[];
+}
+
 export interface Meal {
   Date: string;
   "Meal Type": string;
@@ -135,8 +152,10 @@ export interface Meal {
   "Total Fat": number;
   "Total Fiber": number;
   doctor_note?: string;
-  food_id?: number | null;
+  food_id?: number | null;        // legacy field — pre-Session 11 plans only
   recommendation_id?: number | null;
+  dishes?: Dish[];                // Session 11+: per-dish breakdown with food_id
+  "Ingredients Scaling"?: Record<string, number>;
 }
 
 // ── Meal Ratings (Phase 8 Tier 0) ─────────────────────────────────────────
@@ -162,11 +181,11 @@ export interface PlanHistoryItem {
 }
 
 export interface ShoppingItem {
-  ingredient_name: string;
+  ingredient: string;
   quantity: number;
   unit: string;
   category: string;
-  at_home: boolean; // Audit W-5: was have_at_home — backend uses key "at_home"
+  at_home: boolean;
 }
 
 export interface ShoppingListResponse {

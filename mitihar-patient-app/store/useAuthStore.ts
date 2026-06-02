@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "../lib/storage";
 import axiosInstance, { SECURE_KEYS } from "../lib/axios";
 import type { PatientProfile } from "../types";
 import { getMyProfile } from "../services/profile";
@@ -51,21 +51,21 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
 
   setTokens: async (accessToken, refreshToken) => {
-    await SecureStore.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, accessToken);
-    await SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
+    await storage.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, accessToken);
+    await storage.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
     set({ isAuthenticated: true });
   },
 
   loginSuccess: (accessToken, refreshToken, profile) => {
     // Fire-and-forget storage writes — UI never needs to await them
-    SecureStore.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, accessToken);
-    SecureStore.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
+    storage.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, accessToken);
+    storage.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, refreshToken);
     // Single commit — AuthGate always sees both fields in one render
     set({ isAuthenticated: true, profile });
   },
 
   updateAccessToken: async (accessToken) => {
-    await SecureStore.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, accessToken);
+    await storage.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, accessToken);
   },
 
   setProfile: (profile) => set({ profile }),
@@ -74,13 +74,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await axiosInstance.post('/auth/register-fcm-token', { fcm_token: null });
     } catch (_) {}
-    await SecureStore.deleteItemAsync(SECURE_KEYS.ACCESS_TOKEN);
-    await SecureStore.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
+    await storage.deleteItemAsync(SECURE_KEYS.ACCESS_TOKEN);
+    await storage.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
     // Clear biometric preference from BOTH SecureStore (persisted) AND the
     // in-memory Zustand store. Without clearing in-memory state, a new
     // registration in the same app session would inherit enabled=true and
     // trigger the biometric gate for a brand-new account that never set it up.
-    await SecureStore.deleteItemAsync("mityahar_biometric_enabled");
+    await storage.deleteItemAsync("mityahar_biometric_enabled");
     const { useBiometricStore } = await import("./useBiometricStore");
     useBiometricStore.setState({ enabled: false });
     set({ isAuthenticated: false, profile: null });
@@ -88,7 +88,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   bootstrap: async () => {
     try {
-      const token = await SecureStore.getItemAsync(SECURE_KEYS.ACCESS_TOKEN);
+      const token = await storage.getItemAsync(SECURE_KEYS.ACCESS_TOKEN);
       if (!token) {
         set({ isAuthenticated: false, isLoading: false });
         return;

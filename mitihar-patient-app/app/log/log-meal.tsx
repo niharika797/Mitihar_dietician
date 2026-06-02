@@ -11,7 +11,7 @@ import { useToast } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { useProgressStore } from "../../store/useProgressStore";
 
-const MEAL_TYPES = ["Breakfast", "Morning Snack", "Lunch", "Evening Snack", "Dinner"];
+const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"];
 
 export default function LogMealScreen() {
   const router = useRouter();
@@ -31,12 +31,12 @@ export default function LogMealScreen() {
 
   const saveMut = useMutation({
     mutationFn: () => logMeal({
-      meal_type:         mealType.toLowerCase(),
-      calories_consumed: parseFloat(calories),
-      protein_g:         protein ? parseFloat(protein) : undefined,
-      carbs_g:           carbs   ? parseFloat(carbs)   : undefined,
-      fat_g:             fat     ? parseFloat(fat)     : undefined,
-      fiber_g:           fiber   ? parseFloat(fiber)   : undefined,
+      meal_type: mealType,
+      calories:  parseFloat(calories),
+      protein:   protein ? parseFloat(protein) : undefined,
+      carbs:     carbs   ? parseFloat(carbs)   : undefined,
+      fat:       fat     ? parseFloat(fat)     : undefined,
+      fiber:     fiber   ? parseFloat(fiber)   : undefined,
       notes:             notes   || undefined,
     }),
     onSuccess: () => {
