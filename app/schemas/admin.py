@@ -43,6 +43,14 @@ class DoctorAdminView(BaseModel):
     created_at: datetime
     model_config = {"from_attributes": True}
 
+class UpdateDoctorRequest(BaseModel):
+    name:           Optional[str] = Field(default=None, min_length=1, max_length=100)
+    specialization: Optional[str] = Field(default=None, max_length=100)
+    clinic_name:    Optional[str] = Field(default=None, max_length=200)
+    city:           Optional[str] = Field(default=None, max_length=100)
+    phone:          Optional[str] = Field(default=None, max_length=20, pattern=r"^\+?[\d\s\-\(\)]{7,20}$")
+
+
 class PlatformStats(BaseModel):
     total_patients: int
     active_subscriptions: int

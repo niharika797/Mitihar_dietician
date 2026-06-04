@@ -1,3 +1,4 @@
+from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 from typing import Annotated, Literal, Optional
 from datetime import date, datetime
@@ -138,7 +139,7 @@ class ClinicalNoteResponse(BaseModel):
 class MealPlanNoteRequest(BaseModel):
     # Pydantic parses and validates '2026-03-10' automatically; handler converts back to str
     meal_date: date
-    meal_type: Literal["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner"]
+    meal_type: Literal["Breakfast", "Lunch", "Dinner"]
     note: str = Field(..., min_length=1, max_length=1000)
 
 
@@ -202,9 +203,51 @@ class RecipeCreateRequest(BaseModel):
     )
 
 
+_VALID_SLOT_TYPES = Literal[
+    "accompaniment", "beverage", "dal_protein", "grain",
+    "main_dish", "one_pot", "sabzi", "snack_item",
+]
+
+
+class AddCustomDishRequest(BaseModel):
+    recipe_name: str = Field(..., min_length=1, max_length=200)
+    calories:    float = Field(..., gt=0, le=5000)
+    protein:     float = Field(default=0.0, ge=0, le=500)
+    carbs:       float = Field(default=0.0, ge=0, le=500)
+    fat:         float = Field(default=0.0, ge=0, le=500)
+    fiber:       float = Field(default=0.0, ge=0, le=200)
+    diet_type:   str = "Vegetarian"
+    slot_type:   _VALID_SLOT_TYPES = "main_dish"  # type: ignore[assignment]
+    add_to_library:   bool = False
+    serving_weight_g: Optional[float] = Field(default=None, gt=0, le=10000)
+
+
+class DishAction(str, Enum):
+    swap   = "swap"
+    remove = "remove"
+    add    = "add"
+
+
+class CustomDishBody(BaseModel):
+    recipe_name: str   = Field(..., min_length=1, max_length=200)
+    calories:    float = Field(..., gt=0, le=5000)
+    protein:     float = Field(default=0.0, ge=0, le=500)
+    carbs:       float = Field(default=0.0, ge=0, le=500)
+    fat:         float = Field(default=0.0, ge=0, le=500)
+    fiber:       float = Field(default=0.0, ge=0, le=200)
+
+
+class PatchDishRequest(BaseModel):
+    action:              DishAction
+    replacement_food_id: Optional[int]           = None  # existing food_items record
+    custom_dish:         Optional[CustomDishBody] = None  # free-text dish
+    flag_for_database:   bool                     = False  # True + custom_dish → submitted_for_review
+    slot_type:           Optional[str]            = None  # passed through to new dish if custom
+
+
 class RecipeAssignRequest(BaseModel):
     patient_ids: list[int] = Field(..., min_length=1)
-    meal_type:   Literal["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner"]
+    meal_type:   Literal["Breakfast", "Lunch", "Dinner"]
     meal_date:   date  # Pydantic parses '2026-03-15'; handler uses str(body.meal_date)
     note:        Optional[str] = Field(default=None, max_length=500)
 

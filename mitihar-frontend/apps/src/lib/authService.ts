@@ -123,8 +123,7 @@ export function commitLogin(
       ? (payload['doctor_id'] as number)
       : (payload['admin_id'] as number);
 
-  // Use email as name fallback — will be overwritten once profile API is wired
-  const user_name = (payload['sub'] as string) ?? '';
+  const user_name = (payload['name'] as string) ?? (payload['sub'] as string) ?? '';
 
   useAuthStore.getState().setAuth({
     access_token: tokens.access_token,

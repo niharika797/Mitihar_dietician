@@ -123,7 +123,7 @@ function AssignModal({ recipe, onClose }: AssignModalProps) {
                 onChange={e => setMealType(e.target.value)}
                 className="w-full h-9 px-2 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
               >
-                {['Breakfast', 'MorningSnacks', 'Lunch', 'EveningSnacks', 'Dinner'].map(t => (
+                {['Breakfast', 'Lunch', 'Dinner'].map(t => (
                   <option key={t}>{t}</option>
                 ))}
               </select>
@@ -182,7 +182,9 @@ function AssignModal({ recipe, onClose }: AssignModalProps) {
   );
 }
 
-const MEAL_TIMES = ['All', 'Breakfast', 'MorningSnacks', 'Lunch', 'EveningSnacks', 'Dinner'];
+const MEAL_TIMES = ['All', 'Breakfast', 'Lunch', 'Dinner'];
+const VERIFIED_OPTIONS = ['All', 'Verified', 'Unverified'] as const;
+type VerifiedFilter = typeof VERIFIED_OPTIONS[number];
 
 interface AiEstimate {
   dish_name: string;
@@ -395,7 +397,7 @@ function AddRecipeForm({ onSuccess, onCancel }: AddRecipeFormProps) {
             <label htmlFor="recipe-meal-time" className="block text-sm font-medium text-[#374151] mb-1.5">Meal Time</label>
             <select id="recipe-meal-time" value={form.meal_time} onChange={e => setForm(p => ({ ...p, meal_time: e.target.value }))}
               className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]">
-              {['Breakfast','MorningSnacks','Lunch','EveningSnacks','Dinner'].map(t => <option key={t}>{t}</option>)}
+              {['Breakfast','Lunch','Dinner'].map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div>
@@ -452,6 +454,7 @@ export function Recipes() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [mealTimeFilter, setMealTimeFilter] = useState('All');
+  const [verifiedFilter, setVerifiedFilter] = useState<VerifiedFilter>('All');
   const [showAddForm, setShowAddForm] = useState(false);
   const [assignRecipe, setAssignRecipe] = useState<FoodItemSummary | null>(null);
 
@@ -467,6 +470,7 @@ export function Recipes() {
   const queryParams = {
     ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
     ...(mealTimeFilter !== 'All' ? { meal_time: mealTimeFilter } : {}),
+    ...(verifiedFilter !== 'All' ? { is_verified: verifiedFilter === 'Verified' } : {}),
   };
 
   const { data: recipes = [], isLoading, isError, isFetching } = useQuery({
@@ -505,29 +509,44 @@ export function Recipes() {
       )}
 
       {/* ── Filters ──────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <div className="relative">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => handleSearch(e.target.value)}
-            placeholder="Search recipes…"
-            className="w-52 h-9 pl-9 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
-          />
-        </div>
-        <div className="flex items-center gap-0 border border-[#D1D5DB] rounded-md overflow-hidden">
-          {MEAL_TIMES.map(mt => (
-            <button
-              key={mt}
-              onClick={() => setMealTimeFilter(mt)}
-              className={`h-9 px-3 text-xs font-medium transition-colors ${
-                mealTimeFilter === mt ? 'bg-[#1E7C45] text-white' : 'text-[#6B7280] hover:bg-[#F3F4F6]'
-              }`}
-            >
-              {mt === 'MorningSnacks' ? 'AM Snack' : mt === 'EveningSnacks' ? 'PM Snack' : mt}
-            </button>
-          ))}
+      <div className="flex flex-col gap-2 mb-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => handleSearch(e.target.value)}
+              placeholder="Search recipes…"
+              className="w-52 h-9 pl-9 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
+            />
+          </div>
+          <div className="flex items-center gap-0 border border-[#D1D5DB] rounded-md overflow-hidden">
+            {MEAL_TIMES.map(mt => (
+              <button
+                key={mt}
+                onClick={() => setMealTimeFilter(mt)}
+                className={`h-9 px-3 text-xs font-medium transition-colors ${
+                  mealTimeFilter === mt ? 'bg-[#1E7C45] text-white' : 'text-[#6B7280] hover:bg-[#F3F4F6]'
+                }`}
+              >
+                {mt}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-0 border border-[#D1D5DB] rounded-md overflow-hidden">
+            {VERIFIED_OPTIONS.map(v => (
+              <button
+                key={v}
+                onClick={() => setVerifiedFilter(v)}
+                className={`h-9 px-3 text-xs font-medium transition-colors ${
+                  verifiedFilter === v ? 'bg-[#1E7C45] text-white' : 'text-[#6B7280] hover:bg-[#F3F4F6]'
+                }`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

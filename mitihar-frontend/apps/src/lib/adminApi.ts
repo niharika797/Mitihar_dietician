@@ -120,6 +120,14 @@ export interface CreateDoctorBody {
   city?: string;
 }
 
+export interface UpdateDoctorBody {
+  name?: string;
+  specialization?: string;
+  clinic_name?: string;
+  city?: string;
+  phone?: string;
+}
+
 // ── API functions ─────────────────────────────────────────────────────────────
 
 export const adminApi = {
@@ -133,6 +141,9 @@ export const adminApi = {
 
   createDoctor: (body: CreateDoctorBody) =>
     apiClient.post<DoctorAdminView>('/admin/doctors', body).then(r => r.data),
+
+  updateDoctor: (id: number, body: UpdateDoctorBody) =>
+    apiClient.patch<DoctorAdminView>(`/admin/doctors/${id}`, body).then(r => r.data),
 
   deactivateDoctor: (id: number) =>
     apiClient.patch(`/admin/doctors/${id}/deactivate`).then(r => r.data),

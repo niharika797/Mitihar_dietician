@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Numeric, Boolean, DateTime, Date,
+    Column, Integer, String, Numeric, Float, Boolean, DateTime, Date,
     Text, Index, UniqueConstraint, ForeignKey, text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -30,7 +30,9 @@ class FoodItem(Base):
     plan_type_tags      = Column(ARRAY(Text), nullable=False, default=["Healthy", "Diabetic-Friendly", "Gym-Friendly"])
     ingredients         = Column(JSONB, nullable=False, default=[])  # [{"name": str, "amount_g": float}]
     source              = Column(String(20), nullable=False, default="manual")
+    nutrition_source    = Column(Text, nullable=False, server_default="manual")
     is_verified         = Column(Boolean, nullable=False, default=False)
+    submitted_for_review = Column(Boolean, nullable=False, default=False)
     image_url           = Column(String(500), nullable=True)
     # URL to food image — populated by ETL script in Phase 6
     doctor_id           = Column(Integer, ForeignKey("doctors.id"), nullable=True)
@@ -40,6 +42,7 @@ class FoodItem(Base):
 
     # relationships
     doctor              = relationship("Doctor")
+    recipe_ingredients  = relationship("RecipeIngredient", back_populates="food_item", cascade="all, delete-orphan")
 
 
 Index("idx_fi_slot",       FoodItem.slot_type)
@@ -646,4 +649,65 @@ class PatientMealConfig(Base):
 
     __table_args__ = (
         Index("idx_pmc_patient", "patient_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ingredient  (master nutrition source — per 100g, INDB-compatible)
+# ---------------------------------------------------------------------------
+
+class Ingredient(Base):
+    __tablename__ = "ingredients"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    name                = Column(Text, nullable=False)
+    name_hindi          = Column(Text, nullable=True)
+    name_normalized     = Column(Text, nullable=True)
+    calories_per_100g   = Column(Float, nullable=True)
+    protein_per_100g    = Column(Float, nullable=True)
+    carbs_per_100g      = Column(Float, nullable=True)
+    fat_per_100g        = Column(Float, nullable=True)
+    fiber_per_100g      = Column(Float, nullable=True)
+    sodium_per_100g     = Column(Float, nullable=True)
+    iron_per_100g       = Column(Float, nullable=True)
+    calcium_per_100g    = Column(Float, nullable=True)
+    unit_weight_g       = Column(Numeric, nullable=True)
+    source              = Column(Text, nullable=False)
+    is_verified         = Column(Boolean, nullable=False, default=False)
+    added_by_doctor_id  = Column(Integer, ForeignKey("doctors.id", ondelete="SET NULL"), nullable=True)
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # relationships
+    recipe_ingredients  = relationship("RecipeIngredient", back_populates="ingredient")
+
+    __table_args__ = (
+        UniqueConstraint("name", "source", name="uq_ingredient_name_source"),
+        Index("idx_ing_name",     "name"),
+        Index("idx_ing_source",   "source"),
+        Index("idx_ing_verified", "is_verified"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# RecipeIngredient  (links food_items → ingredients with quantity in grams)
+# ---------------------------------------------------------------------------
+
+class RecipeIngredient(Base):
+    __tablename__ = "recipe_ingredients"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    food_item_id  = Column(Integer, ForeignKey("food_items.id",  ondelete="CASCADE"),  nullable=False)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="RESTRICT"), nullable=False)
+    quantity_g    = Column(Float, nullable=False)
+    notes         = Column(Text, nullable=True)
+
+    # relationships
+    food_item  = relationship("FoodItem",   back_populates="recipe_ingredients")
+    ingredient = relationship("Ingredient", back_populates="recipe_ingredients")
+
+    __table_args__ = (
+        UniqueConstraint("food_item_id", "ingredient_id", name="uq_recipe_ingredient"),
+        Index("idx_ri_food_item",  "food_item_id"),
+        Index("idx_ri_ingredient", "ingredient_id"),
     )

@@ -56,6 +56,7 @@ def _patient_token_data(patient: Patient) -> dict:
 def _doctor_token_data(doctor: Doctor) -> dict:
     return {
         "sub": doctor.email,
+        "name": doctor.name,
         "role": "doctor",
         "user_type": "doctor",
         "doctor_id": doctor.id,

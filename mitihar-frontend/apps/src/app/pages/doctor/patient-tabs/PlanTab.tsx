@@ -1,12 +1,12 @@
 ﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { doctorApi, MealEntry, FoodItemSummary } from '../../../../lib/doctorApi';
+import { doctorApi, MealEntry, FoodItemSummary, Dish } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
 import {
-  MoreHorizontal, StickyNote, Flame, Beef, Wheat, Droplets,
+  StickyNote, Flame, Beef, Wheat, Droplets,
   Plus, X, Loader2, AlertCircle, CalendarDays, Pencil, Save,
-  Search, Sparkles,
+  Search, Sparkles, ArrowLeftRight,
 } from 'lucide-react';
 
 interface PlanTabProps {
@@ -20,6 +20,7 @@ interface PlanTabProps {
 interface CustomMealForm {
   name: string;
   mealType: string;
+  serving_weight_g: string;
   calories: string;
   protein: string;
   carbs: string;
@@ -29,24 +30,21 @@ interface CustomMealForm {
 }
 
 // Task 1 — meal slots filtered by patient preference
-const ALL_MEAL_TYPES  = ['Breakfast', 'MorningSnacks', 'Lunch', 'EveningSnacks', 'Dinner'];
+const ALL_MEAL_TYPES  = ['Breakfast', 'Lunch', 'Dinner'];
 const THREE_MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
 
 function getMealTypes(mealsPerDay: number): string[] {
   return mealsPerDay >= 5 ? ALL_MEAL_TYPES : THREE_MEAL_TYPES;
 }
 
-function inferSlotType(mealType: string): string {
-  if (mealType === 'MorningSnacks' || mealType === 'EveningSnacks') return 'snack_item';
+function inferSlotType(_mealType: string): string {
   return 'main_dish';
 }
 
 function inferMealTimeTags(mealType: string): string[] {
-  if (mealType === 'Breakfast')     return ['Breakfast'];
-  if (mealType === 'MorningSnacks') return ['Morning_Snack'];
-  if (mealType === 'EveningSnacks') return ['Evening_Snack'];
-  if (mealType === 'Lunch')         return ['Lunch'];
-  if (mealType === 'Dinner')        return ['Dinner'];
+  if (mealType === 'Breakfast') return ['Breakfast'];
+  if (mealType === 'Lunch')     return ['Lunch'];
+  if (mealType === 'Dinner')    return ['Dinner'];
   return ['Lunch', 'Dinner'];
 }
 
@@ -79,30 +77,223 @@ function MacroPill({ icon, value, unit, color }: {
   );
 }
 
-// ── Task 3: MealCard with inline edit + note ──────────────────────────────
+// ── DishCard ──────────────────────────────────────────────────────────────
+function DishCard({ dish, index, onSwap, onRemove, removing }: {
+  dish: Dish;
+  index: number;
+  onSwap: () => void;
+  onRemove: (index: number) => void;
+  removing: boolean;
+}) {
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  return (
+    <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-md p-2.5">
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <p className="text-xs font-medium text-[#111827] leading-snug flex-1">{dish.recipe_name}</p>
+        <div className="flex gap-0.5 flex-shrink-0">
+          <button onClick={onSwap} title="Swap dish"
+            className="w-6 h-6 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#E5E7EB] hover:text-[#1E7C45]">
+            <ArrowLeftRight size={11} />
+          </button>
+          <button onClick={() => setConfirmRemove(true)} title="Remove dish"
+            className="w-6 h-6 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#FEE2E2] hover:text-[#DC2626]">
+            <X size={11} />
+          </button>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+        {dish.is_custom_override && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]">Custom</span>
+        )}
+        {dish.food_id && !dish.is_custom_override && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280] border border-[#E5E7EB]">Library</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <span className="flex items-center gap-0.5 text-[10px] text-[#DC2626]">
+          <Flame size={9} /><span className="tabular-nums font-medium">{Math.round(dish.calories)}</span>
+        </span>
+        <span className="text-[10px] text-[#2563EB] tabular-nums">{dish.protein.toFixed(1)}g P</span>
+        <span className="text-[10px] text-[#F59E0B] tabular-nums">{dish.carbs.toFixed(1)}g C</span>
+        <span className="text-[10px] text-[#6B7280] tabular-nums">{dish.fat.toFixed(1)}g F</span>
+      </div>
+      {confirmRemove && (
+        <div className="mt-2 p-2 bg-[#FEF2F2] border border-[#FECACA] rounded flex items-center justify-between">
+          <span className="text-[10px] text-[#DC2626]">Remove this dish?</span>
+          <div className="flex gap-1.5">
+            <button onClick={() => { onRemove(index); setConfirmRemove(false); }} disabled={removing}
+              className="h-5 px-2 rounded bg-[#DC2626] text-white text-[9px] hover:bg-[#B91C1C] disabled:opacity-50">
+              {removing ? '…' : 'Remove'}
+            </button>
+            <button onClick={() => setConfirmRemove(false)}
+              className="h-5 px-2 rounded border border-[#D1D5DB] bg-white text-[#374151] text-[9px]">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── RecipeSearchModal ─────────────────────────────────────────────────────
+function RecipeSearchModal({ patientId, date, mealType, dishIndex, mode, onClose, onSuccess }: {
+  patientId: number;
+  date: string;
+  mealType: string;
+  dishIndex: number;
+  mode: 'swap' | 'add';
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [query, setQuery]           = useState('');
+  const [customMode, setCustomMode] = useState(false);
+  const [flagForDb, setFlagForDb]   = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [customForm, setCustomForm] = useState(
+    { name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '' },
+  );
+  const { results, loading } = useRecipeSearch(query);
+
+  const callPatch = async (body: Parameters<typeof doctorApi.patchDish>[4]) => {
+    setSubmitting(true);
+    try {
+      await doctorApi.patchDish(patientId, date, mealType, dishIndex, body);
+      toast.success(mode === 'swap' ? 'Dish swapped' : 'Dish added');
+      onSuccess();
+    } catch (err: any) {
+      const d = err?.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Operation failed');
+    } finally { setSubmitting(false); }
+  };
+
+  const handleCustomSubmit = () => {
+    if (!customForm.name.trim() || !customForm.calories) {
+      toast.error('Name and calories required');
+      return;
+    }
+    callPatch({
+      action: mode,
+      custom_dish: {
+        recipe_name: customForm.name.trim(),
+        calories:    parseFloat(customForm.calories),
+        protein:     parseFloat(customForm.protein) || 0,
+        carbs:       parseFloat(customForm.carbs)   || 0,
+        fat:         parseFloat(customForm.fat)     || 0,
+        fiber:       parseFloat(customForm.fiber)   || 0,
+      },
+      flag_for_database: flagForDb,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose}
+        onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close" />
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between p-4 border-b border-[#E5E7EB]">
+          <p className="text-sm font-semibold text-[#111827]">
+            {mode === 'swap' ? 'Swap Dish' : 'Add Dish'} — {mealType}
+          </p>
+          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
+            <X size={15} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {!customMode ? (
+            <>
+              <div className="relative mb-3">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                <input type="text" value={query} onChange={e => setQuery(e.target.value)}
+                  placeholder="Search recipes…" autoFocus
+                  className="w-full h-9 pl-8 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+              </div>
+              {loading && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-[#1E7C45]" /></div>}
+              {!loading && query.length >= 2 && results.length === 0 && (
+                <p className="text-sm text-[#9CA3AF] text-center py-4">No matches found</p>
+              )}
+              <div className="space-y-1.5 mb-3">
+                {results.map(r => (
+                  <div key={r.id} className="flex items-center justify-between p-2.5 rounded-md border border-[#E5E7EB] hover:border-[#D1D5DB]">
+                    <div>
+                      <p className="text-sm font-medium text-[#111827]">{r.recipe_name}</p>
+                      <p className="text-xs text-[#9CA3AF]">
+                        {Math.round(r.cal_per_serving)} kcal · {r.is_verified ? '✓ Verified' : 'Unverified'}
+                      </p>
+                    </div>
+                    <button onClick={() => callPatch({ action: mode, replacement_food_id: r.id })}
+                      disabled={submitting}
+                      className="h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50">
+                      Use
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setCustomMode(true)}
+                className="w-full h-8 rounded-md border border-dashed border-[#D1D5DB] text-xs text-[#6B7280] hover:border-[#1E7C45] hover:text-[#1E7C45]">
+                Enter custom values instead
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-[#374151] mb-1">Dish Name *</label>
+                  <input type="text" value={customForm.name}
+                    onChange={e => setCustomForm(p => ({ ...p, name: e.target.value }))}
+                    className="w-full h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+                </div>
+                {(['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((k, i) => (
+                  <div key={k}>
+                    <label className="block text-xs font-medium text-[#374151] mb-1">
+                      {['Calories *', 'Protein g', 'Carbs g', 'Fat g', 'Fiber g'][i]}
+                    </label>
+                    <input type="number" min={0} value={customForm[k]}
+                      onChange={e => setCustomForm(p => ({ ...p, [k]: e.target.value }))}
+                      className="w-full h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+                  </div>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-xs text-[#374151] mb-4 cursor-pointer">
+                <input type="checkbox" checked={flagForDb} onChange={e => setFlagForDb(e.target.checked)}
+                  className="rounded border-[#D1D5DB]" />
+                Submit to recipe library (pending admin review)
+              </label>
+              <div className="flex gap-2">
+                <button onClick={handleCustomSubmit} disabled={submitting}
+                  className="flex items-center gap-1.5 h-8 px-4 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166634] disabled:opacity-50">
+                  {submitting && <Loader2 size={11} className="animate-spin" />}
+                  {mode === 'swap' ? 'Swap' : 'Add'}
+                </button>
+                <button onClick={() => setCustomMode(false)}
+                  className="h-8 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151]">
+                  Back to search
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MealCard ──────────────────────────────────────────────────────────────
 function MealCard({
-  meal, patientId, allMeals, onUpdated,
+  meal, patientId, onUpdated,
 }: {
   meal: MealEntry;
   patientId: number;
-  allMeals: MealEntry[];
   onUpdated: () => void;
 }) {
-  const [menuOpen, setMenuOpen]   = useState(false);
-  const [noteOpen, setNoteOpen]   = useState(false);
-  const [editOpen, setEditOpen]   = useState(false);
-  const [noteText, setNoteText]   = useState(meal.doctor_note ?? '');
-  const [saving,   setSaving]     = useState(false);
+  const [noteOpen,    setNoteOpen]    = useState(false);
+  const [noteText,    setNoteText]    = useState(meal.doctor_note ?? '');
+  const [saving,      setSaving]      = useState(false);
+  const [removing,    setRemoving]    = useState(false);
+  const [modalState,  setModalState]  = useState<null | { mode: 'swap' | 'add'; dishIndex: number }>(null);
 
-  // Edit form state — pre-filled from current meal
-  const [editForm, setEditForm] = useState({
-    name:     meal['Menu Names'],
-    calories: String(Math.round(meal['Total Calories'])),
-    protein:  String(Math.round(meal['Total Protein'])),
-    carbs:    String(Math.round(meal['Total Carbs'])),
-    fat:      String(Math.round(meal['Total Fat'])),
-    fiber:    String(Math.round(meal['Total Fiber'] ?? 0)),
-  });
+  const dishes    = meal.dishes ?? [];
+  const hasDishes = dishes.length > 0;
 
   const handleSaveNote = async () => {
     if (!noteText.trim()) return;
@@ -116,125 +307,78 @@ function MealCard({
     finally   { setSaving(false); }
   };
 
-  const handleSaveEdit = async () => {
-    if (!editForm.name.trim() || !editForm.calories) {
-      toast.error('Name and calories are required');
-      return;
-    }
-    setSaving(true);
+  const handleRemoveDish = async (dishIndex: number) => {
+    setRemoving(true);
     try {
-      // Build updated meals array — swap only this meal
-      const updatedMeals = allMeals.map(m => {
-        if (m.Date === meal.Date && m['Meal Type'] === meal['Meal Type']) {
-          return {
-            ...m,
-            'Menu Names':     editForm.name.trim(),
-            'Total Calories': parseFloat(editForm.calories) || 0,
-            'Total Protein':  parseFloat(editForm.protein)  || 0,
-            'Total Carbs':    parseFloat(editForm.carbs)    || 0,
-            'Total Fat':      parseFloat(editForm.fat)      || 0,
-            'Total Fiber':    parseFloat(editForm.fiber)    || 0,
-          };
-        }
-        return m;
-      });
-      await doctorApi.overridePlan(patientId, { meals: updatedMeals });
-      toast.success('Meal updated');
-      setEditOpen(false);
+      await doctorApi.patchDish(patientId, meal.Date, meal['Meal Type'], dishIndex, { action: 'remove' });
+      toast.success('Dish removed');
       onUpdated();
-    } catch { toast.error('Failed to update meal'); }
-    finally   { setSaving(false); }
+    } catch (err: any) {
+      const d = err?.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Failed to remove dish');
+    } finally { setRemoving(false); }
   };
 
-  const ef = (key: keyof typeof editForm, label: string) => (
-    <div key={key}>
-      <label className="block text-xs font-medium text-[#374151] mb-1">{label}</label>
-      <input
-        type={key === 'name' ? 'text' : 'number'} min={0}
-        value={editForm[key]}
-        onChange={e => setEditForm(p => ({ ...p, [key]: e.target.value }))}
-        className="w-full h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm
-                   focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
-      />
-    </div>
-  );
-
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-lg p-4 group relative
-                    hover:border-[#D1D5DB] transition-colors">
-      <div className="flex items-start justify-between mb-2">
+    <div className="bg-white border border-[#E5E7EB] rounded-lg p-4 relative hover:border-[#D1D5DB] transition-colors">
+      {/* Slot header */}
+      <div className="flex items-center justify-between mb-3">
         <div>
           <span className="text-xs font-medium uppercase tracking-wide text-[#6B7280]">
             {meal['Meal Type']}
           </span>
           <p className="text-xs text-[#9CA3AF]">{meal['Diet Type']}</p>
         </div>
-        <div className="relative">
+        <div className="flex items-center gap-2">
+          <MacroPill icon={<Flame size={11} />} value={meal['Total Calories']} unit="kcal" color="text-[#DC2626]" />
           <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF]
-                       opacity-0 group-hover:opacity-100 hover:bg-[#F3F4F6]
-                       hover:text-[#374151] transition-all"
+            onClick={() => { setNoteText(meal.doctor_note ?? ''); setNoteOpen(true); }}
+            title="Add note"
+            className="w-6 h-6 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#374151]"
           >
-            <MoreHorizontal size={15} />
+            <StickyNote size={12} />
           </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} onKeyDown={(e) => e.key === "Escape" && setMenuOpen(false)} role="button" aria-label="Close menu" tabIndex={-1} />
-              <div className="absolute right-0 top-8 z-20 w-36 bg-white rounded-lg
-                              border border-[#E5E7EB] shadow-lg py-1">
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setEditForm({
-                      name:     meal['Menu Names'],
-                      calories: String(Math.round(meal['Total Calories'])),
-                      protein:  String(Math.round(meal['Total Protein'])),
-                      carbs:    String(Math.round(meal['Total Carbs'])),
-                      fat:      String(Math.round(meal['Total Fat'])),
-                      fiber:    String(Math.round(meal['Total Fiber'] ?? 0)),
-                    });
-                    setEditOpen(true);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm
-                             text-[#374151] hover:bg-[#F9FAFB]"
-                >
-                  <Pencil size={13} className="text-[#6B7280]" />
-                  Edit meal
-                </button>
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setNoteText(meal.doctor_note ?? '');
-                    setNoteOpen(true);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm
-                             text-[#374151] hover:bg-[#F9FAFB]"
-                >
-                  <StickyNote size={13} className="text-[#6B7280]" />
-                  {meal.doctor_note ? 'Edit note' : 'Add note'}
-                </button>
-              </div>
-            </>
-          )}
         </div>
       </div>
 
-      {/* Meal name */}
-      <p className="text-sm font-medium text-[#111827] mb-3 leading-snug">
-        {meal['Menu Names']}
-      </p>
+      {/* Per-dish cards or fallback for legacy (pre-Session-11) meals */}
+      {hasDishes ? (
+        <div className="space-y-2 mb-3">
+          {dishes.map((dish, i) => (
+            <DishCard
+              key={i}
+              dish={dish}
+              index={i}
+              onSwap={() => setModalState({ mode: 'swap', dishIndex: i })}
+              onRemove={handleRemoveDish}
+              removing={removing}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm font-medium text-[#111827] mb-3 leading-snug">
+          {meal['Menu Names']}
+        </p>
+      )}
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <MacroPill icon={<Flame size={11} />}    value={meal['Total Calories']} unit="kcal" color="text-[#DC2626]" />
+      {/* Macro summary row */}
+      <div className="flex items-center gap-3 flex-wrap mb-3">
         <MacroPill icon={<Beef size={11} />}     value={meal['Total Protein']}  unit="g P"  color="text-[#2563EB]" />
         <MacroPill icon={<Wheat size={11} />}    value={meal['Total Carbs']}    unit="g C"  color="text-[#F59E0B]" />
         <MacroPill icon={<Droplets size={11} />} value={meal['Total Fat']}      unit="g F"  color="text-[#6B7280]" />
       </div>
 
-      {/* Existing note display */}
-      {meal.doctor_note && !noteOpen && !editOpen && (
-        <div className="mt-3 px-3 py-2 bg-[#F0FDF4] rounded-md border border-[#DCFCE7]">
+      {hasDishes && (
+        <button
+          onClick={() => setModalState({ mode: 'add', dishIndex: -1 })}
+          className="flex items-center gap-1.5 h-7 px-3 rounded-md border border-dashed border-[#D1D5DB] text-xs text-[#6B7280] hover:border-[#1E7C45] hover:text-[#1E7C45] w-full justify-center mb-2"
+        >
+          <Plus size={11} /> Add Dish
+        </button>
+      )}
+
+      {meal.doctor_note && !noteOpen && (
+        <div className="px-3 py-2 bg-[#F0FDF4] rounded-md border border-[#DCFCE7]">
           <p className="text-xs text-[#15803d] flex items-start gap-1.5">
             <StickyNote size={11} className="mt-0.5 flex-shrink-0" />
             <span>{meal.doctor_note}</span>
@@ -242,60 +386,39 @@ function MealCard({
         </div>
       )}
 
-      {/* Inline note editor */}
       {noteOpen && (
-        <div className="mt-3">
+        <div className="mt-2">
           <textarea
             value={noteText}
             onChange={e => setNoteText(e.target.value)}
             rows={2}
             placeholder="Add a note for this meal…"
-            className="w-full resize-none text-sm px-2 py-1.5 border border-[#DCFCE7]
-                       rounded bg-[#F0FDF4] text-[#374151] focus:outline-none
-                       focus:ring-2 focus:ring-[#1E7C45]"
+            className="w-full resize-none text-sm px-2 py-1.5 border border-[#DCFCE7] rounded bg-[#F0FDF4] text-[#374151] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
           />
           <div className="flex gap-2 mt-1.5">
             <button onClick={handleSaveNote} disabled={saving || !noteText.trim()}
-              className="flex items-center gap-1.5 h-7 px-3 rounded bg-[#1E7C45]
-                         text-white text-xs hover:bg-[#166534] disabled:opacity-50">
+              className="flex items-center gap-1.5 h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50">
               {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
               Save
             </button>
             <button onClick={() => setNoteOpen(false)}
-              className="h-7 px-3 rounded border border-[#D1D5DB] bg-white text-xs
-                         text-[#374151] hover:bg-[#F9FAFB]">
+              className="h-7 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151] hover:bg-[#F9FAFB]">
               Cancel
             </button>
           </div>
         </div>
       )}
 
-      {/* Task 3 — Inline meal editor */}
-      {editOpen && (
-        <div className="mt-3 border border-[#E5E7EB] rounded-lg p-3 bg-[#F9FAFB]">
-          <p className="text-xs font-semibold text-[#374151] mb-2">Edit Meal</p>
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <div className="col-span-2">{ef('name',     'Dish Name')}</div>
-            {ef('calories', 'Calories')}
-            {ef('protein',  'Protein (g)')}
-            {ef('carbs',    'Carbs (g)')}
-            {ef('fat',      'Fat (g)')}
-            <div className="col-span-2">{ef('fiber', 'Fiber (g)')}</div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleSaveEdit} disabled={saving}
-              className="flex items-center gap-1.5 h-7 px-3 rounded bg-[#1E7C45]
-                         text-white text-xs hover:bg-[#166534] disabled:opacity-50">
-              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-              Save Changes
-            </button>
-            <button onClick={() => setEditOpen(false)}
-              className="h-7 px-3 rounded border border-[#D1D5DB] bg-white text-xs
-                         text-[#374151] hover:bg-[#F9FAFB]">
-              Cancel
-            </button>
-          </div>
-        </div>
+      {modalState && (
+        <RecipeSearchModal
+          patientId={patientId}
+          date={meal.Date}
+          mealType={meal['Meal Type']}
+          dishIndex={modalState.dishIndex}
+          mode={modalState.mode}
+          onClose={() => setModalState(null)}
+          onSuccess={() => { onUpdated(); setModalState(null); }}
+        />
       )}
     </div>
   );
@@ -420,8 +543,8 @@ function AddMealForm({
   const queryClient = useQueryClient();
 
   const EMPTY_FORM: CustomMealForm = {
-    name: '', mealType: 'Breakfast', calories: '', protein: '',
-    carbs: '', fat: '', fiber: '', diet_type: patientDietType,
+    name: '', mealType: 'Breakfast', serving_weight_g: '', calories: '',
+    protein: '', carbs: '', fat: '', fiber: '', diet_type: patientDietType,
   };
 
   const [form,          setForm]         = useState<CustomMealForm>(EMPTY_FORM);
@@ -434,13 +557,14 @@ function AddMealForm({
   const handleSelectRecipe = (recipe: FoodItemSummary) => {
     setForm(p => ({
       ...p,
-      name:      recipe.recipe_name,
-      calories:  String(recipe.cal_per_serving),
-      protein:   String(recipe.protein_per_serving),
-      carbs:     String(recipe.carbs_per_serving),
-      fat:       String(recipe.fat_per_serving),
-      fiber:     String(recipe.fiber_per_serving),
-      diet_type: recipe.diet_type,
+      name:             recipe.recipe_name,
+      serving_weight_g: recipe.serving_weight_g !== null ? String(recipe.serving_weight_g) : '',
+      calories:         String(recipe.cal_per_serving),
+      protein:          String(recipe.protein_per_serving),
+      carbs:            String(recipe.carbs_per_serving),
+      fat:              String(recipe.fat_per_serving),
+      fiber:            String(recipe.fiber_per_serving),
+      diet_type:        recipe.diet_type,
     }));
     setShowDropdown(false);
   };
@@ -471,31 +595,27 @@ function AddMealForm({
     }
     setSubmitting(true);
     try {
-      const newRecipe = await doctorApi.addRecipe({
-        recipe_name:         form.name.trim(),
-        slot_type:           inferSlotType(form.mealType),
-        cal_per_serving:     parseFloat(form.calories),
-        protein_per_serving: parseFloat(form.protein) || 0,
-        carbs_per_serving:   parseFloat(form.carbs)   || 0,
-        fat_per_serving:     parseFloat(form.fat)     || 0,
-        fiber_per_serving:   parseFloat(form.fiber)   || 0,
-        diet_type:           form.diet_type,
-        meal_time_tags:      inferMealTimeTags(form.mealType),
-        plan_type_tags:      ['Healthy', 'Diabetic-Friendly', 'Gym-Friendly'],
-        ingredients:         [],
-        region_tags:         [],
-        submit_to_global:    true,
-      });
-      await doctorApi.assignRecipe(newRecipe.id, {
-        patient_ids: [patientId],
-        meal_type:   form.mealType,
-        meal_date:   activeDate,
+      await doctorApi.addCustomDish(patientId, activeDate, form.mealType, {
+        recipe_name: form.name.trim(),
+        calories:    parseFloat(form.calories),
+        protein:     parseFloat(form.protein) || 0,
+        carbs:       parseFloat(form.carbs)   || 0,
+        fat:         parseFloat(form.fat)     || 0,
+        fiber:       parseFloat(form.fiber)   || 0,
+        diet_type:   form.diet_type,
+        slot_type:   inferSlotType(form.mealType),
       });
       queryClient.invalidateQueries({ queryKey: qk.patientPlan(patientId) });
-      toast.success(`"${form.name}" added to ${patientName}'s plan and saved to dataset`);
+      toast.success(`"${form.name}" added to ${patientName}'s plan`);
       onClose();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Failed to add meal');
+      const detail = err?.response?.data?.detail;
+      const message = Array.isArray(detail)
+        ? detail.map((e: any) => e.msg).join(', ')
+        : typeof detail === 'string'
+        ? detail
+        : 'Failed to add meal';
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -588,6 +708,7 @@ function AddMealForm({
             </select>
           </div>
 
+          {numField('serving_weight_g', 'Serving Weight (g) *')}
           {numField('calories', 'Calories (kcal) *')}
           {numField('protein',  'Protein (g)')}
           {numField('carbs',    'Carbs (g)')}
@@ -596,7 +717,7 @@ function AddMealForm({
         </div>
 
         <div className="border border-[#E5E7EB] rounded-md px-3 py-2 mb-4 bg-[#F9FAFB] text-xs text-[#6B7280]">
-          ✅ This meal will be saved to your library and submitted to the global dataset for admin review.
+          This meal is added directly to {patientName}'s plan. It is not saved to the recipe library.
         </div>
 
         <div className="flex gap-3">
@@ -767,7 +888,6 @@ export function PlanTab({
             key={meal.id ?? `meal-${i}`}
             meal={meal}
             patientId={patientId}
-            allMeals={allDayMeals}
             onUpdated={() =>
               queryClient.invalidateQueries({ queryKey: qk.patientPlan(patientId) })
             }

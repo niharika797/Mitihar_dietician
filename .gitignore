@@ -69,6 +69,11 @@ mitihar-frontend/apps/tsconfig.tsbuildinfo
 
 # ── Design / Screens ──────────────────────────────────────────────────────────
 Phone screens/
+presentation/
+
+# ── Nutrition source data (raw dumps — large binaries/JSON, not source code) ──
+data/
+IFCT2017.pdf
 
 # ── Local variants ────────────────────────────────────────────────────────────
 *.local

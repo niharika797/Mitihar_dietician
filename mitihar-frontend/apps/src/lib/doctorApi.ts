@@ -87,6 +87,18 @@ export interface PaginatedPatients {
   page_size: number;
 }
 
+export interface Dish {
+  food_id: number | null;
+  recipe_name: string;
+  slot_type: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  is_custom_override?: boolean;
+}
+
 export interface MealEntry {
   Date: string;
   'Meal Type': string;
@@ -99,6 +111,8 @@ export interface MealEntry {
   'Total Fiber': number;
   doctor_note?: string;
   food_id?: number;
+  dishes?: Dish[];
+  recommendation_id?: number;
 }
 
 export interface RecommendationDetail {
@@ -330,7 +344,7 @@ export const doctorApi = {
       .then(r => r.data.patients),
 
   // Recipes
-  browseRecipes: (params: { search?: string; meal_time?: string; page?: number }) =>
+  browseRecipes: (params: { search?: string; meal_time?: string; is_verified?: boolean; page?: number }) =>
     apiClient
       .get<FoodItemSummary[]>('/doctor/recipes', {
         params: { page_size: 20, page: 1, ...params },
@@ -346,6 +360,55 @@ export const doctorApi = {
       .get<FoodItemSummary[]>('/doctor/recipes', {
         params: { page_size: 50, page: 1, my_library: true, ...params },
       })
+      .then(r => r.data),
+
+  patchDish: (
+    patientId: number,
+    date: string,
+    mealType: string,
+    dishIndex: number,
+    body: {
+      action: 'swap' | 'remove' | 'add';
+      replacement_food_id?: number | null;
+      custom_dish?: {
+        recipe_name: string;
+        calories: number;
+        protein?: number;
+        carbs?: number;
+        fat?: number;
+        fiber?: number;
+      } | null;
+      flag_for_database?: boolean;
+      slot_type?: string;
+    },
+  ) =>
+    apiClient
+      .patch(
+        `/doctor/patients/${patientId}/plan/meals/${date}/${mealType}/dishes/${dishIndex}`,
+        body,
+      )
+      .then(r => r.data),
+
+  // Add a custom dish directly to a patient's meal JSONB (no food_items record created by default)
+  addCustomDish: (
+    patientId: number,
+    date: string,
+    mealType: string,
+    body: {
+      recipe_name: string;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      fiber: number;
+      diet_type?: string;
+      slot_type?: string;
+      add_to_library?: boolean;
+      serving_weight_g?: number;
+    },
+  ) =>
+    apiClient
+      .post(`/doctor/patients/${patientId}/plan/meals/${date}/${mealType}/add`, body)
       .then(r => r.data),
 
   // Add a note to a specific meal slot in a patient's active plan
