@@ -12,6 +12,8 @@ export const QUERY_KEYS = {
   WEEK_PLAN:      ["meal-plan", "week"] as const,
   PLAN_HISTORY:   ["meal-plan", "history"] as const,
   SHOPPING_LIST:  ["meal-plan", "shopping-list"] as const,
+  SUGGESTIONS:    (date: string, mealType: string) => ["meal-plan", "suggestions", date, mealType] as const,
+  DAILY_CHOICES:  (date: string) => ["meal-plan", "choices", date] as const,
 
   // Progress
   TODAY:          ["progress", "today"] as const,

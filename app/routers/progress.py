@@ -184,6 +184,11 @@ async def get_today_stats(
             "target": target,
             "remaining": target - summary["total_calories"],
         },
+        "macros": {
+            "protein": summary["protein_g"],
+            "carbs": summary["carbs_g"],
+            "fat": summary["fat_g"],
+        },
         "water_intake": {
             "glasses": summary["water_glasses"],
             "target": 8,

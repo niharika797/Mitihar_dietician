@@ -34,7 +34,7 @@ export default function ActivityLevelScreen() {
   };
 
   return (
-    <OnboardingShell step={2} totalSteps={8} title="Health & Activity" subtitle="Customize your base nutritional profile" onContinue={handleContinue} continueDisabled={!selected}>
+    <OnboardingShell step={2} totalSteps={7} title="Health & Activity" subtitle="Customize your base nutritional profile" onContinue={handleContinue} continueDisabled={!selected}>
       <View style={s.section}>
         <Text style={s.sectionTitle}>Activity Level</Text>
         <View style={s.list}>

@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getWeeklyPlan } from "../../services/meals";
 import { MacroRow } from "../../components/shared";
-import type { Meal } from "../../types";
+import type { Meal, WeeklyPlan } from "../../types";
 
 const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MEAL_ORDER = ["Breakfast","Lunch","Dinner"];
@@ -36,7 +36,7 @@ export default function WeekViewScreen() {
   });
 
   const selectedDate = weekDates[selectedIdx].toISOString().slice(0, 10);
-  const dayMeals: Meal[] = plan?.[selectedDate] ?? [];
+  const dayMeals: Meal[] = (plan as WeeklyPlan | undefined)?.[selectedDate] ?? [];
   const ordered = MEAL_ORDER
     .map(t => dayMeals.find(m => m["Meal Type"] === t))
     .filter((m): m is Meal => !!m);
@@ -55,7 +55,7 @@ export default function WeekViewScreen() {
       <View style={s.dayBar}>
         {weekDates.map((date, i) => {
           const sel = selectedIdx === i;
-          const hasPlan = plan?.[date.toISOString().slice(0, 10)]?.length ?? 0;
+          const hasPlan = (plan as WeeklyPlan | undefined)?.[date.toISOString().slice(0, 10)]?.length ?? 0;
           return (
             <Pressable key={date.toISOString().slice(0, 10)} onPress={() => setSelectedIdx(i)} style={s.dayBtn}>
               <Text style={s.dayLabel}>{DAY_LABELS[(i + 1) % 7]}</Text>

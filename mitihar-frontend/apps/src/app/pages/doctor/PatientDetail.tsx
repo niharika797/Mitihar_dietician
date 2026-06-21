@@ -10,8 +10,10 @@ import { PlanTab } from './patient-tabs/PlanTab';
 import { ActivityTab } from './patient-tabs/ActivityTab';
 import { NotesTab } from './patient-tabs/NotesTab';
 import { VisitsTab } from './patient-tabs/VisitsTab';
+import { MealConfigTab } from './patient-tabs/MealConfigTab';
+import { WeeklySummaryTab } from './patient-tabs/WeeklySummaryTab';
 
-type Tab = 'profile' | 'plan' | 'activity' | 'notes' | 'visits';
+type Tab = 'profile' | 'plan' | 'activity' | 'notes' | 'visits' | 'meal-config' | 'weekly-summary';
 
 function subStatusToStatus(s: string): 'active' | 'inactive' | 'expired' | 'pending' {
   if (s === 'active') return 'active';
@@ -56,11 +58,13 @@ export function PatientDetail() {
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'profile',  label: 'Profile'   },
-    { id: 'plan',     label: 'Plan'      },
-    { id: 'activity', label: 'Activity'  },
-    { id: 'notes',    label: 'Notes'     },
-    { id: 'visits',   label: 'Visits'    },
+    { id: 'profile',        label: 'Profile'         },
+    { id: 'plan',           label: 'Plan'            },
+    { id: 'activity',       label: 'Activity'        },
+    { id: 'notes',          label: 'Notes'           },
+    { id: 'visits',         label: 'Visits'          },
+    { id: 'meal-config',    label: 'Meal Config'     },
+    { id: 'weekly-summary', label: 'Weekly Summary'  },
   ];
 
   return (
@@ -128,11 +132,13 @@ export function PatientDetail() {
 
       {/* Tab content */}
       <div className="p-6">
-        {activeTab === 'profile'  && <ProfileTab  patient={patient} />}
-        {activeTab === 'plan'     && <PlanTab     patientId={patientId} patientTdee={patient.tdee ?? 2000} patientName={patient.name} patientDietType={patient.diet_type ?? 'Vegetarian'} patientMealsPerDay={patient.meals_per_day ?? 3} />}
-        {activeTab === 'activity' && <ActivityTab patientId={patientId} patientName={patient.name} />}
-        {activeTab === 'notes'    && <NotesTab    patientId={patientId} patientName={patient.name} />}
-        {activeTab === 'visits'   && <VisitsTab   patientId={patientId} patientName={patient.name} />}
+        {activeTab === 'profile'     && <ProfileTab     patient={patient} />}
+        {activeTab === 'plan'        && <PlanTab        patientId={patientId} patientTdee={patient.tdee ?? 2000} patientName={patient.name} patientDietType={patient.diet_type ?? 'Vegetarian'} patientMealsPerDay={patient.meals_per_day ?? 3} />}
+        {activeTab === 'activity'    && <ActivityTab    patientId={patientId} patientName={patient.name} />}
+        {activeTab === 'notes'       && <NotesTab       patientId={patientId} patientName={patient.name} />}
+        {activeTab === 'visits'      && <VisitsTab      patientId={patientId} patientName={patient.name} />}
+        {activeTab === 'meal-config'    && <MealConfigTab      patientId={patientId} />}
+        {activeTab === 'weekly-summary' && <WeeklySummaryTab   patientId={patientId} />}
       </div>
     </div>
   );

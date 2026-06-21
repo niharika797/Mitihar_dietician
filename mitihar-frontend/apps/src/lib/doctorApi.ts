@@ -92,6 +92,11 @@ export interface Dish {
   recipe_name: string;
   slot_type: string;
   calories: number;
+  // Session 22E (Bug 2): calories stays unscaled per-serving; scaled_calories =
+  // calories × factor is the portion-adjusted value to display. Optional for
+  // legacy dishes generated before 22E.
+  scaled_calories?: number;
+  factor?: number;
   protein: number;
   carbs: number;
   fat: number;
@@ -109,6 +114,10 @@ export interface MealEntry {
   'Total Carbs': number;
   'Total Fat': number;
   'Total Fiber': number;
+  // Session 22E (Bug 2): the slot's generation-time budget target. 'Total Calories'
+  // is now Σ(scaled_calories); 'Target Calories' is what it used to represent and
+  // anchors the doctor >10% divergence warning. Optional for legacy plans.
+  'Target Calories'?: number;
   doctor_note?: string;
   food_id?: number;
   dishes?: Dish[];
@@ -208,9 +217,38 @@ export interface FoodItemSummary {
   diet_type: string;
   meal_time_tags: string[];
   plan_type_tags: string[];
+  avoid_tags: string[];
+  prefer_tags: string[];
   source: string;
   is_verified: boolean;
   image_url: string | null;
+}
+
+export interface RecipeTagsResponse {
+  food_item_id: number;
+  recipe_name: string;
+  avoid_tags: string[];
+  prefer_tags: string[];
+  is_verified: boolean;
+}
+
+export interface DishPreference {
+  food_id: number;
+  recipe_name: string;
+  calories_per_serving: number;
+}
+
+export interface MealConfigResponse {
+  meal_split: { Breakfast: number; Lunch: number; Dinner: number };
+  buffer_pct: number;
+  pinned_dishes: DishPreference[];
+  blocked_dishes: DishPreference[];
+}
+
+export interface MealConfigPatchResult extends MealConfigResponse {
+  config_saved: boolean;
+  plan_regenerated: boolean;
+  error?: string;
 }
 
 export interface DashboardStats {
@@ -220,6 +258,61 @@ export interface DashboardStats {
   plans_generated_this_week: number;
   inactive_patients: { patient_id: number; name: string; email: string }[];
   expiring_soon: { patient_id: number; name: string; subscription_end_date: string }[];
+}
+
+// ── v2 weekly plan types ─────────────────────────────────────────────────────
+
+export interface DishInCombo {
+  food_id: number | null;
+  recipe_name: string;
+  slot_type: string;
+  calories: number;
+}
+
+export interface ComboEntry {
+  combo_id: number;
+  combo_index: number;
+  total_calories: number;
+  slot_composition: string;
+  dishes: DishInCombo[];
+}
+
+export interface WeeklyPlanResponse {
+  recommendation_id: number;
+  generation_version: number;
+  approval_status: string;
+  week_start: string;
+  combos_available: boolean;
+  plan: Record<string, Record<string, ComboEntry[]>>;
+}
+
+export interface WeeklySummaryDay {
+  date: string;
+  planned_calories: number;
+  confirmed_calories: number;
+  meals_confirmed: number;
+  meals_total: number;
+  bowl_size_breakdown: Record<string, string>;
+}
+
+export interface WeeklySummaryResponse {
+  week_start: string;
+  days: WeeklySummaryDay[];
+  week_totals: {
+    planned_calories: number;
+    confirmed_calories: number;
+    avg_bowl_size: string;
+  };
+}
+
+export interface PendingApproval {
+  patient_id: number;
+  patient_name: string;
+  recommendation_id: number;
+}
+
+export interface PendingApprovalsResponse {
+  pending: PendingApproval[];
 }
 
 export interface RecipeCreateBody {
@@ -389,6 +482,23 @@ export const doctorApi = {
       )
       .then(r => r.data),
 
+  patchWeeklyDish: (
+    patientId: number,
+    comboId: number,
+    dishIndex: number,
+    body: {
+      action: 'swap' | 'add' | 'remove';
+      food_item_id?: number;
+      doctor_note?: string;
+    },
+  ) =>
+    apiClient
+      .patch(
+        `/doctor/patients/${patientId}/weekly-plan/combos/${comboId}/dishes/${dishIndex}`,
+        body,
+      )
+      .then(r => r.data),
+
   // Add a custom dish directly to a patient's meal JSONB (no food_items record created by default)
   addCustomDish: (
     patientId: number,
@@ -405,6 +515,7 @@ export const doctorApi = {
       slot_type?: string;
       add_to_library?: boolean;
       serving_weight_g?: number;
+      combo_index?: number;
     },
   ) =>
     apiClient
@@ -450,4 +561,45 @@ export const doctorApi = {
         fiber: string;
       }>('/doctor/recipes/estimate', { dish_name: dishName })
       .then(r => r.data),
+
+  // Meal config
+  getMealConfig: (patientId: number) =>
+    apiClient.get<MealConfigResponse>(`/doctor/patients/${patientId}/meal-config`).then(r => r.data),
+
+  patchMealConfig: (
+    patientId: number,
+    body: { meal_split?: { Breakfast: number; Lunch: number; Dinner: number } | null; regenerate_plan?: boolean },
+  ) =>
+    apiClient.patch<MealConfigPatchResult>(`/doctor/patients/${patientId}/meal-config`, body).then(r => r.data),
+
+  pinDish: (patientId: number, food_id: number) =>
+    apiClient.post(`/doctor/patients/${patientId}/meal-config/pin`, { food_id }).then(r => r.data),
+
+  unpinDish: (patientId: number, food_id: number) =>
+    apiClient.delete(`/doctor/patients/${patientId}/meal-config/pin/${food_id}`).then(r => r.data),
+
+  blockDish: (patientId: number, food_id: number) =>
+    apiClient.post(`/doctor/patients/${patientId}/meal-config/block`, { food_id }).then(r => r.data),
+
+  unblockDish: (patientId: number, food_id: number) =>
+    apiClient.delete(`/doctor/patients/${patientId}/meal-config/block/${food_id}`).then(r => r.data),
+
+  patchRecipeTags: (id: number, body: { avoid_tags: string[]; prefer_tags: string[] }) =>
+    apiClient.patch<RecipeTagsResponse>(`/doctor/recipes/${id}/tags`, body).then(r => r.data),
+
+  // v2 weekly plan
+  getWeeklyPlan: (patientId: number) =>
+    apiClient.get<WeeklyPlanResponse>(`/doctor/patients/${patientId}/weekly-plan`).then(r => r.data),
+
+  approveWeeklyPlan: (patientId: number) =>
+    apiClient.post(`/doctor/patients/${patientId}/weekly-plan/approve`, {}).then(r => r.data),
+
+  swapCombo: (patientId: number, comboId: number) =>
+    apiClient.post(`/doctor/patients/${patientId}/weekly-plan/combos/${comboId}/swap`).then(r => r.data),
+
+  getWeeklySummary: (patientId: number) =>
+    apiClient.get<WeeklySummaryResponse>(`/doctor/patients/${patientId}/weekly-summary`).then(r => r.data),
+
+  getPendingApprovals: () =>
+    apiClient.get<PendingApprovalsResponse>('/doctor/pending-approvals').then(r => r.data),
 };

@@ -60,7 +60,7 @@ export default function DisclaimerScreen() {
 
   return (
     <OnboardingShell
-      step={8} totalSteps={8}
+      step={7} totalSteps={7}
       title="Before We Begin"
       onContinue={() => submitMut.mutate()}
       continueDisabled={!accepted || submitMut.isPending}

@@ -9,6 +9,7 @@ import { logMeal } from "../../services/progress";
 import { getWeeklyPlan } from "../../services/meals";
 import { useToast } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
+import type { WeeklyPlan } from "../../types";
 
 export default function LogFromPlanScreen() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function LogFromPlanScreen() {
   const { date, type } = useLocalSearchParams<{ date: string; type: string }>();
 
   const { data: plan } = useQuery({ queryKey: QUERY_KEYS.WEEK_PLAN, queryFn: getWeeklyPlan });
-  const meal = plan?.[date ?? ""]?.find(m => m["Meal Type"] === type);
+  const meal = (plan as WeeklyPlan | undefined)?.[date ?? ""]?.find(m => m["Meal Type"] === type);
 
   const [calories, setCalories] = useState(String(Math.round(meal?.["Total Calories"] ?? 0)));
   const [protein,  setProtein]  = useState(String(Math.round(meal?.["Total Protein"]  ?? 0)));

@@ -23,7 +23,7 @@ export default function GoalsScreen() {
   };
 
   return (
-    <OnboardingShell step={3} totalSteps={8} title="Your Health Goals" subtitle="Select all that apply" onContinue={handleContinue} continueDisabled={goals.length === 0} onSkip={() => router.push("/(onboarding)/medical-conditions")}>
+    <OnboardingShell step={3} totalSteps={7} title="Your Health Goals" subtitle="Select all that apply" onContinue={handleContinue} continueDisabled={goals.length === 0} onSkip={() => router.push("/(onboarding)/medical-conditions")}>
       <View style={s.form}>
         <ChipGrid options={GOALS} selected={goals} onToggle={toggleGoal} columns={2} />
 

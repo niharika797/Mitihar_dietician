@@ -1,18 +1,19 @@
 import React, { useState } from "react";
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
+  View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, CalendarClock, ChevronRight, Droplets, Footprints } from "lucide-react-native";
+import { Bell, CalendarClock, ChevronRight, Utensils, Coffee } from "lucide-react-native";
 import { QUERY_KEYS } from "../../lib/queryKeys";
-import { getTodaySummary, logWater, logSteps, logMeal, rateMeal, getMyRatings, getStreak, MealRating } from "../../services/progress"; // Audit C-6: added getStreak
+import { getTodaySummary, logMeal, rateMeal, getMyRatings, getStreak, MealRating } from "../../services/progress"; // Audit C-6: added getStreak
 import { getWeeklyPlan } from "../../services/meals";
 import { getRequestStatus, getMyProfile, getMyVisit } from "../../services/profile";
+import { getDailyChoices, getBeverages, type Beverage } from "../../services/meals";
 import { useAuthStore } from "../../store/useAuthStore";
-import { useProgressStore, selectWater, selectSteps } from "../../store/useProgressStore";
+import { useProgressStore } from "../../store/useProgressStore";
 import { ProgressRing, MacroRow, BottomSheet, useToast } from "../../components/shared";
-import type { Meal } from "../../types";
+import type { Meal, WeeklyPlan } from "../../types";
 
 function greeting() {
   const h = new Date().getHours();
@@ -177,7 +178,7 @@ export default function HomeScreen() {
   const { showToast } = useToast();
   const profile = useAuthStore(s => s.profile);
   const { setProfile } = useAuthStore();
-  const { hydrateSummary, setLocalWater, setLocalSteps } = useProgressStore();
+  const { hydrateSummary } = useProgressStore();
 
   // ── Poll for doctor approval while subscription is inactive ─────────────
   // Runs silently in the background so patients don't need to watch
@@ -208,10 +209,9 @@ export default function HomeScreen() {
   }, [reqStatus?.status]);
 
   const [logSheet, setLogSheet] = useState<string | null>(null);
-  const [waterSheet, setWaterSheet] = useState(false);
-  const [stepsSheet, setStepsSheet] = useState(false);
-  const [tempWater, setTempWater] = useState(0);
-  const [tempSteps, setTempSteps] = useState("0");
+  const [snackSheet, setSnackSheet] = useState(false);
+  const [snackCals, setSnackCals] = useState("0");
+  const [beverageSheet, setBeverageSheet] = useState(false);
   const [loggedMeals, setLoggedMeals] = useState<Record<string, boolean>>({});
   // rating state: key = food_item_id string, value = 1 | -1
   const [localRatings, setLocalRatings] = useState<Record<string, 1 | -1>>({});
@@ -231,6 +231,12 @@ export default function HomeScreen() {
     staleTime: 1000 * 60 * 5,
   });
 
+  const { data: dailyChoices } = useQuery({
+    queryKey: QUERY_KEYS.DAILY_CHOICES(todayKey()),
+    queryFn: () => getDailyChoices(todayKey()),
+    staleTime: 1000 * 60 * 2,
+  });
+
   React.useEffect(() => { if (today) hydrateSummary(today); }, [today]);
 
   const { data: plan } = useQuery({
@@ -247,34 +253,53 @@ export default function HomeScreen() {
     staleTime: 1000 * 60 * 10,
   });
 
-  // Optimistic local overrides
-  const water = useProgressStore(selectWater);
-  const steps = useProgressStore(selectSteps);
-
   // Today's meals from plan (fallback: empty)
-  const todayMeals: Meal[] = plan?.[todayKey()] ?? [];
+  const todayMeals: Meal[] = (plan as WeeklyPlan | undefined)?.[todayKey()] ?? [];
 
   // ── Mutations ─────────────────────────────────────────────────────────────
-  const waterMut = useMutation({
-    mutationFn: (g: number) => logWater(g),
-    onMutate: (g) => setLocalWater(g),
+  const snackMut = useMutation({
+    mutationFn: (cals: number) => logMeal({
+      meal_type: "Snack",
+      calories: cals,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY });
-      setWaterSheet(false);
-      showToast("Water intake saved! 💧", "success");
+      setSnackSheet(false);
+      setSnackCals("0");
+      showToast("Snack logged! 🍎", "success");
     },
-    onError: () => showToast("Failed to save water", "error"),
+    onError: () => showToast("Failed to log snack", "error"),
   });
 
-  const stepsMut = useMutation({
-    mutationFn: (s: number) => logSteps(s),
-    onMutate: (s) => setLocalSteps(s),
+  // Session 22E (Part 2): beverage picker — DB-linked, logs via the same
+  // /progress/log/meal endpoint with food_id set (snack quick-log pattern).
+  const { data: beverages = [] } = useQuery({
+    queryKey: ["beverages"],
+    queryFn: getBeverages,
+    enabled: beverageSheet,
+    staleTime: 1000 * 60 * 30,
+  });
+
+  const beverageMut = useMutation({
+    mutationFn: (b: Beverage) => logMeal({
+      meal_type: "Snack",   // beverages logged as extras, like snacks
+      calories: b.calories,
+      protein: b.protein,
+      carbs: b.carbs,
+      fat: b.fat,
+      fiber: b.fiber,
+      food_id: b.food_item_id,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY });
-      setStepsSheet(false);
-      showToast("Steps logged! 👟", "success");
+      setBeverageSheet(false);
+      showToast("Beverage logged! ☕", "success");
     },
-    onError: () => showToast("Failed to save steps", "error"),
+    onError: () => showToast("Failed to log beverage", "error"),
   });
 
   const mealMut = useMutation({
@@ -302,6 +327,9 @@ export default function HomeScreen() {
   const dailyTarget = today?.calories?.target ?? (profile ? 1850 : 1850);
   const cals         = today?.calories?.consumed ?? 0;
   const calPercent   = Math.min(100, Math.round((cals / dailyTarget) * 100));
+  const plannedKcal  = Math.round(
+    (dailyChoices?.choices ?? []).reduce((s, c) => s + c.calories, 0)
+  );
   const streak       = streakData?.streak_days ?? 0; // Audit C-6: was today?.streak (field never existed)
   const hasUnread    = true; // static badge — Phase 5 FCM will drive this
 
@@ -337,11 +365,14 @@ export default function HomeScreen() {
               <View style={s.calorieInfo}>
                 <Text style={s.calBig}>{cals.toLocaleString()}</Text>
                 <Text style={s.calSub}>of {dailyTarget.toLocaleString()} target</Text>
+                {plannedKcal > 0 && (
+                  <Text style={s.calPlanned}>Planned: {plannedKcal.toLocaleString()} kcal</Text>
+                )}
                 <View style={{ marginTop: 8 }}>
                   <MacroRow
-                    protein={0}
-                    carbs={0}
-                    fat={0}
+                    protein={today?.macros?.protein ?? 0}
+                    carbs={today?.macros?.carbs ?? 0}
+                    fat={today?.macros?.fat ?? 0}
                   />
                 </View>
               </View>
@@ -387,19 +418,29 @@ export default function HomeScreen() {
           </View>
 
           {/* ── Quick log ── */}
+          {/* Water and Steps tracking deferred — pending native health API integration (HealthKit / Health Connect) */}
           <Text style={s.sectionLabel}>QUICK LOG</Text>
-          <View style={s.quickGrid}>
-            <Pressable style={s.quickCard} onPress={() => { setTempWater(water); setWaterSheet(true); }}>
-              <Droplets size={22} color="#2563EB" />
-              <Text style={s.quickVal}>{water} / 8</Text>
-              <Text style={s.quickSub}>glasses today</Text>
-            </Pressable>
-            <Pressable style={s.quickCard} onPress={() => { setTempSteps(steps.toString()); setStepsSheet(true); }}>
-              <Footprints size={22} color="#1E7C45" />
-              <Text style={s.quickVal}>{steps.toLocaleString()}</Text>
-              <Text style={s.quickSub}>steps today</Text>
-            </Pressable>
-          </View>
+          <Pressable style={s.snackCard} onPress={() => { setSnackCals("0"); setSnackSheet(true); }}>
+            <View style={s.snackCardLeft}>
+              <Utensils size={22} color="#D97706" />
+              <View style={s.snackCardText}>
+                <Text style={s.snackCardTitle}>Log a Snack</Text>
+                <Text style={s.snackCardSub}>track extras & bites</Text>
+              </View>
+            </View>
+            <Text style={s.snackCardArrow}>+</Text>
+          </Pressable>
+
+          <Pressable style={[s.snackCard, { marginTop: 8 }]} onPress={() => setBeverageSheet(true)}>
+            <View style={s.snackCardLeft}>
+              <Coffee size={22} color="#0E7490" />
+              <View style={s.snackCardText}>
+                <Text style={s.snackCardTitle}>Log a Beverage</Text>
+                <Text style={s.snackCardSub}>tea, coffee, shakes & more</Text>
+              </View>
+            </View>
+            <Text style={s.snackCardArrow}>+</Text>
+          </Pressable>
 
           <DoctorStatusBanner
             subscriptionStatus={profile?.subscription_status}
@@ -441,53 +482,53 @@ export default function HomeScreen() {
         </View>
       </BottomSheet>
 
-      {/* ── Water Sheet ── */}
-      <BottomSheet open={waterSheet} onClose={() => setWaterSheet(false)}>
-        <View style={[sh.gap, { alignItems: "center" }]}>
-          <Text style={[sh.title, { alignSelf: "flex-start" }]}>Log Water Intake</Text>
-          <Text style={{ fontSize: 14, color: "#374151" }}>How many glasses today?</Text>
-          <View style={sh.counter}>
-            <Pressable onPress={() => setTempWater(Math.max(0, tempWater - 1))} style={sh.counterBtn}>
-              <Text style={sh.counterBtnText}>−</Text>
-            </Pressable>
-            <Text style={sh.counterVal}>{tempWater}</Text>
-            <Pressable onPress={() => setTempWater(Math.min(20, tempWater + 1))} style={sh.counterBtn}>
-              <Text style={sh.counterBtnText}>+</Text>
-            </Pressable>
+      {/* ── Snack Sheet ── */}
+      <BottomSheet open={snackSheet} onClose={() => setSnackSheet(false)}>
+        <View style={sh.gap}>
+          <Text style={sh.title}>Log a Snack</Text>
+          <Text style={{ fontSize: 14, color: "#374151" }}>How many calories?</Text>
+          <View style={{ alignItems: "center" }}>
+            <TextInput
+              style={sh.stepsInput}
+              keyboardType="number-pad"
+              value={snackCals}
+              onChangeText={setSnackCals}
+            />
           </View>
-          <View style={sh.dropRow}>
-            {Array.from({ length: 8 }, (_, i) => (
-              <Droplets key={`drop-${i}`} size={20} color={i < tempWater ? "#2563EB" : "#E5E7EB"} />
+          <View style={sh.stepsBtnRow}>
+            {[50, 100, 200, 300].map(v => (
+              <Pressable key={v} onPress={() => setSnackCals(v.toString())} style={sh.stepPreset}>
+                <Text style={sh.stepPresetText}>{v} kcal</Text>
+              </Pressable>
             ))}
           </View>
-          <Pressable style={sh.cta} onPress={() => waterMut.mutate(tempWater)} disabled={waterMut.isPending}>
-            {waterMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={sh.ctaText}>Save</Text>}
+          <Pressable style={sh.cta} onPress={() => snackMut.mutate(parseInt(snackCals) || 0)} disabled={snackMut.isPending}>
+            {snackMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={sh.ctaText}>Log Snack</Text>}
           </Pressable>
         </View>
       </BottomSheet>
 
-      {/* ── Steps Sheet ── */}
-      <BottomSheet open={stepsSheet} onClose={() => setStepsSheet(false)}>
+      {/* ── Beverage Sheet ── */}
+      <BottomSheet open={beverageSheet} onClose={() => setBeverageSheet(false)}>
         <View style={sh.gap}>
-          <Text style={sh.title}>Log Steps Today</Text>
-          <View style={{ alignItems: "center" }}>
-            <Text
-              style={sh.stepsInput}
-              onPress={() => {}}
-            >
-              {tempSteps}
-            </Text>
-          </View>
-          <View style={sh.stepsBtnRow}>
-            {[1000, 2000, 5000, 8000].map(v => (
-              <Pressable key={v} onPress={() => setTempSteps(v.toString())} style={sh.stepPreset}>
-                <Text style={sh.stepPresetText}>{v.toLocaleString()}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Pressable style={sh.cta} onPress={() => stepsMut.mutate(parseInt(tempSteps) || 0)} disabled={stepsMut.isPending}>
-            {stepsMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={sh.ctaText}>Save</Text>}
-          </Pressable>
+          <Text style={sh.title}>Log a Beverage</Text>
+          {beverages.length === 0 ? (
+            <Text style={{ color: "#6B7280", fontSize: 13 }}>No beverages available.</Text>
+          ) : (
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              {beverages.map(b => (
+                <Pressable
+                  key={b.food_item_id}
+                  style={sh.beverageRow}
+                  onPress={() => beverageMut.mutate(b)}
+                  disabled={beverageMut.isPending}
+                >
+                  <Text style={sh.beverageName} numberOfLines={1}>{b.recipe_name}</Text>
+                  <Text style={sh.beverageCal}>{Math.round(b.calories)} kcal</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
         </View>
       </BottomSheet>
     </View>
@@ -518,6 +559,7 @@ const s = StyleSheet.create({
   calorieInfo: { flex: 1 },
   calBig:      { fontSize: 28, fontWeight: "700", color: "#111827" },
   calSub:      { fontSize: 12, color: "#6B7280" },
+  calPlanned:  { fontSize: 12, fontWeight: "500", color: "#1E7C45", marginTop: 2 },
   mealRow:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 },
   mealBorder:  { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   mealLogged:  { backgroundColor: "#F0FDF4" },
@@ -529,10 +571,12 @@ const s = StyleSheet.create({
   mealCal:     { fontSize: 14, fontWeight: "600", color: "#1E7C45" },
   logBtn:      { height: 30, paddingHorizontal: 12, borderRadius: 99, borderWidth: 1.5, borderColor: "#1E7C45", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   logBtnText:  { fontSize: 12, fontWeight: "500", color: "#1E7C45" },
-  quickGrid:   { flexDirection: "row", gap: 12, marginBottom: 20 },
-  quickCard:   { flex: 1, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 14 },
-  quickVal:    { fontSize: 16, fontWeight: "700", color: "#111827", marginTop: 6 },
-  quickSub:    { fontSize: 11, color: "#6B7280" },
+  snackCard:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#FDE68A", padding: 14, marginBottom: 20 },
+  snackCardLeft:  { flexDirection: "row", alignItems: "center", gap: 12 },
+  snackCardText:  { gap: 2 },
+  snackCardTitle: { fontSize: 15, fontWeight: "600", color: "#111827" },
+  snackCardSub:   { fontSize: 11, color: "#6B7280" },
+  snackCardArrow: { fontSize: 22, fontWeight: "300", color: "#D97706" },
   doctorBanner:  { flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#DCFCE7", borderRadius: 12, padding: 14, marginBottom: 8 },
   doctorLabel:   { fontSize: 12, fontWeight: "500", color: "#166534" },
   doctorSub:     { fontSize: 12, color: "#374151", marginTop: 2 },
@@ -554,13 +598,11 @@ const sh = StyleSheet.create({
   confirmText:   { fontSize: 12, color: "#166534" },
   cta:           { height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
   ctaText:       { fontSize: 16, fontWeight: "600", color: "#fff" },
-  counter:       { flexDirection: "row", alignItems: "center", gap: 24 },
-  counterBtn:    { width: 48, height: 48, borderRadius: 24, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  counterBtnText:{ fontSize: 24, color: "#fff", lineHeight: 28 },
-  counterVal:    { fontSize: 40, fontWeight: "700", color: "#111827", minWidth: 40, textAlign: "center" },
-  dropRow:       { flexDirection: "row", gap: 6 },
-  stepsInput:    { fontSize: 40, fontWeight: "700", color: "#111827", borderWidth: 1.5, borderColor: "#1E7C45", borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, minWidth: 160, textAlign: "center" },
+  stepsInput:    { fontSize: 40, fontWeight: "700", color: "#111827", borderWidth: 1.5, borderColor: "#D97706", borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, minWidth: 160, textAlign: "center" },
   stepsBtnRow:   { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   stepPreset:    { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#F9FAFB" },
   stepPresetText:{ fontSize: 13, color: "#374151", fontWeight: "500" },
+  beverageRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  beverageName:  { flex: 1, fontSize: 15, color: "#111827", marginRight: 12 },
+  beverageCal:   { fontSize: 13, color: "#0E7490", fontWeight: "600" },
 });

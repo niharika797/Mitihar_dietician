@@ -157,11 +157,26 @@ class FoodItemSummary(BaseModel):
     diet_type: str
     meal_time_tags: list[str]
     plan_type_tags: list[str]
+    avoid_tags: list[str] = []
+    prefer_tags: list[str] = []
     source: str
     is_verified: bool
     image_url: Optional[str]
     doctor_id: Optional[int] = None
     model_config = {"from_attributes": True}
+
+
+class RecipeTagsResponse(BaseModel):
+    food_item_id: int
+    recipe_name: str
+    avoid_tags: list[str]
+    prefer_tags: list[str]
+    is_verified: bool
+
+
+class RecipeTagsPatchRequest(BaseModel):
+    avoid_tags: list[str] = []
+    prefer_tags: list[str] = []
 
 
 # Typed ingredient item — prevents arbitrary JSON injection into meal JSONB / AI prompts
@@ -220,6 +235,7 @@ class AddCustomDishRequest(BaseModel):
     slot_type:   _VALID_SLOT_TYPES = "main_dish"  # type: ignore[assignment]
     add_to_library:   bool = False
     serving_weight_g: Optional[float] = Field(default=None, gt=0, le=10000)
+    combo_index:      int  = Field(default=0, ge=0, le=3)
 
 
 class DishAction(str, Enum):
@@ -330,3 +346,31 @@ class PatientSummaryWithVisit(PatientSummary):
     visits_this_cycle: int = 0
     cycle_expiry: Optional[datetime] = None
     last_visit_at: Optional[datetime] = None
+
+
+# ── Meal config ───────────────────────────────────────────────────────────
+
+class MealConfigRequest(BaseModel):
+    meal_split: Optional[dict[str, int]] = None  # None = reset to default
+    regenerate_plan: bool = False
+
+
+class DishPrefRequest(BaseModel):
+    food_id: int
+
+
+# ── R-3: Weekly plan (v2 multi-combo) doctor API ──────────────────────────
+
+class WeeklyPlanApproveRequest(BaseModel):
+    doctor_note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ComboSwapRequest(BaseModel):
+    edit_reason: Literal["swap", "add", "remove", "custom_add"] = "swap"
+    doctor_note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class WeeklyDishPatchRequest(BaseModel):
+    action:       DishAction
+    food_item_id: Optional[int] = None
+    doctor_note:  Optional[str] = Field(default=None, max_length=1000)

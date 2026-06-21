@@ -19,16 +19,27 @@ from ..core.limiter import limiter
 logger = logging.getLogger(__name__)
 diet_plan_service = DietPlanService()
 
-EXPECTED_MEAL_COUNT = 7 * 3  # 7 days × 3 meal types (Breakfast, Lunch, Dinner)
+EXPECTED_MEAL_COUNT = 7 * 3  # 7 days × 3 meal types (Breakfast, Lunch, Dinner) — v1 only
+EXPECTED_COMBO_COUNT = 7 * 3 * 4  # 7 days × 3 meal types × 4 combos/slot (PD-1) — v2
 
 
 def _validate_generated_plan(diet_plan: DietPlan, user_diet: str) -> str | None:
     """
     Validates a generated DietPlan against the required structure.
     Returns None if valid, or an error string describing the failure.
+
+    R-2: dispatches on generation_version. v2 plans carry their dishes in
+    `combos` (meals is always [] for v2) — validate combo count/shape instead
+    of the old per-meal checks.
     """
-    meals = getattr(diet_plan, "meals", None) or []
     checklist = getattr(diet_plan, "ingredient_checklist", None) or []
+    if not checklist:
+        return "ingredient_checklist is empty"
+
+    if getattr(diet_plan, "generation_version", 1) == 2:
+        return _validate_generated_combos(diet_plan, user_diet)
+
+    meals = getattr(diet_plan, "meals", None) or []
 
     # 1. Must have exactly 21 meals (7 days × 3 meal types × 1 option)
     if len(meals) != EXPECTED_MEAL_COUNT:
@@ -39,11 +50,7 @@ def _validate_generated_plan(diet_plan: DietPlan, user_diet: str) -> str | None:
     if missing_date:
         return f"Meals at indices {missing_date[:5]} are missing the 'Date' field"
 
-    # 3. ingredient_checklist must be non-empty
-    if not checklist:
-        return "ingredient_checklist is empty"
-
-    # 4. Diet-type constraint validation
+    # 3. Diet-type constraint validation
     diet_lower = user_diet.lower().strip()
     if diet_lower == "vegetarian":
         non_veg_meals = [m for m in meals if "Vegetarian" not in str(m)]
@@ -56,6 +63,38 @@ def _validate_generated_plan(diet_plan: DietPlan, user_diet: str) -> str | None:
         )
         if not has_non_veg:
             return "No Non-Vegetarian meals found for non-vegetarian user"
+
+    return None  # All checks passed
+
+
+def _validate_generated_combos(diet_plan: DietPlan, user_diet: str) -> str | None:
+    """v2 structural validation — combos replace meals (R-2)."""
+    combos = getattr(diet_plan, "combos", None) or []
+
+    # 1. Must have exactly 84 combo rows (7 days × 3 meal types × 4 combos)
+    if len(combos) != EXPECTED_COMBO_COUNT:
+        return f"Expected {EXPECTED_COMBO_COUNT} combos, got {len(combos)}"
+
+    # 2. Every combo must have a slot_date and at least one dish
+    missing_date = [i for i, c in enumerate(combos) if not c.get("slot_date")]
+    if missing_date:
+        return f"Combos at indices {missing_date[:5]} are missing 'slot_date'"
+    empty_dishes = [i for i, c in enumerate(combos) if not c.get("dishes")]
+    if empty_dishes:
+        return f"Combos at indices {empty_dishes[:5]} have no dishes"
+
+    # 3. Diet-type constraint validation — inspect dish.diet_type, not meal text
+    all_dish_diets = {
+        d.get("diet_type") for c in combos for d in c.get("dishes", [])
+    }
+    diet_lower = user_diet.lower().strip()
+    if diet_lower == "vegetarian":
+        non_veg = all_dish_diets - {"Vegetarian"}
+        if non_veg:
+            return f"Vegetarian user's plan contains non-Vegetarian dishes: {non_veg}"
+    elif diet_lower in ["non-vegetarian", "non vegetarian", "non_vegetarian"]:
+        if "Non-Vegetarian" not in all_dish_diets and "Eggetarian" not in all_dish_diets:
+            return "No Non-Vegetarian/Eggetarian dishes found for non-vegetarian user"
 
     return None  # All checks passed
 

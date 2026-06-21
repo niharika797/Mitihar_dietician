@@ -41,7 +41,7 @@ export default function PlanHistoryScreen() {
                   {plan.is_active && <Text style={s.activeLabel}>Current Plan</Text>}
                 </View>
                 <Text style={s.weekLabel}>Week of {plan.week_start_date}</Text>
-                <Text style={s.genLabel}>Generated {plan.created_at.slice(0, 10)} · v{plan.version}</Text>
+                <Text style={s.genLabel}>Generated {plan.created_at.slice(0, 10)} · v{plan.generation_version ?? 1}</Text>
               </View>
               <Pressable onPress={() => router.push("/(tabs)/meals")} style={s.viewBtn}>
                 <Text style={s.viewBtnText}>View</Text>

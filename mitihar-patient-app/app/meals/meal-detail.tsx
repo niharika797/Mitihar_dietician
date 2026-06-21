@@ -10,7 +10,7 @@ import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getWeeklyPlan } from "../../services/meals";
 import { logMeal, rateMeal, getMyRatings, MealRating } from "../../services/progress";
 import { useToast } from "../../components/shared";
-import type { Meal, Dish } from "../../types";
+import type { Meal, Dish, WeeklyPlan } from "../../types";
 
 if (Platform.OS === "android") {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -80,7 +80,9 @@ function DishCard({ dish, index, rating, onRate, ratingPending }: DishCardProps)
             </View>
           </View>
           <View style={s.dishCalBlock}>
-            <Text style={s.dishCal}>{Math.round(dish.calories)}</Text>
+            {/* Session 22E (F4): scaled per-serving kcal, matches the scaled
+                ingredient grams shown below. Falls back to unscaled for legacy dishes. */}
+            <Text style={s.dishCal}>{Math.round(dish.scaled_calories ?? dish.calories)}</Text>
             <Text style={s.dishCalUnit}>kcal</Text>
           </View>
         </View>
@@ -167,7 +169,7 @@ export default function MealDetailScreen() {
     queryFn: getWeeklyPlan,
   });
 
-  const meal: Meal | undefined = plan?.[date ?? ""]?.find(m => m["Meal Type"] === type);
+  const meal: Meal | undefined = (plan as WeeklyPlan | undefined)?.[date ?? ""]?.find(m => m["Meal Type"] === type);
 
   const { data: allRatings = [] } = useQuery({
     queryKey: QUERY_KEYS.MY_RATINGS,

@@ -172,16 +172,37 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-04-20_
+> _This section is maintained by Claude. Last updated: 2026-06-18 (R-6.7 complete)_
 
-**Completed this session:**
-- Ultrareview fixes: duplicate `PatientVisit` guard, TOCTOU `.with_for_update()` on `/activate`, CSP built from `CORS_ORIGINS`, dead middleware skip rules removed, Google OAuth `gdpr_consent` gate
-- Contract gap fixes: consultation fee Rs 1,200 → Rs 1,500 (`admin.py`, `doctor.py`), royalty rate 6% → 2% (`admin.py`), annual billing year boundary Jan 1 → Apr 1 (Indian financial year), per-doctor tier assignment + differential in `/admin/consultations/annual`, "Next Visit" follow-up card on patient Home tab (`index.tsx`)
-- Docs updated: `docs/Task_List.md` (business model corrected, Next Visit card added, task count updated), `docs/SECURITY_AUDIT.md` (ultrareview fixes documented)
+**Completed R-5 (Backend v2 patient surfacing):** `GET /meal-plan/week` returns `WeekResponseV2` for v2 plans; `POST /confirm-choice` extended with `weekly_combo_id`.
 
-**Pending / Blocked:**
-- `mitihar-frontend/apps/` Sprint 5 changes unverified (`PlanTab.tsx` rewrite — check `patientMealsPerDay` prop)
-- Dish rename script ~22% complete (`rename_checkpoint.json`), safe to re-run
-- `Billing.tsx` annual section still uses legacy field names (`royalty_pool_6pct`, `royalty_per_member_2pct`) — values are now correct (2% / 0.67%), labels updated in UI
+**Completed R-6 (Patient app v2 UI):** `V2ComboCard` component, `isV2` gate, v2 confirmation mutation, TS cast fixes across 4 files. 0 new TS errors.
 
-**Next action:** Run `pnpm dev` in `mitihar-frontend/apps/` and verify no TypeScript errors before any frontend work.
+**Completed R-6.5 (Seven targeted fixes):** Calorie ring merge, macro tracking, bottom sheet animation, steps/water removal, notifications empty state, plan history v2 label, beverage dedup.
+
+**Completed R-6.6 (V2 Combo Detail Screen + Bowl Size + Confirmed State Fix):**
+- `bowl_size` (small/medium/large) added to `POST /confirm-choice`; defaults to `medium`; validated against existing DB constraint
+- `weekly_combo_id` exposed by `GET /choices/{date}` — confirmed state now restores on hard refresh
+- New `GET /meal-plan/combo/{combo_id}/dishes` endpoint with ownership check + JSONB enrichment
+- New screen `app/meals/combo-detail.tsx`: S/M/L bowl selector, live calorie scaling, expandable ingredients, 3-state confirm button
+- `V2ComboCard` tappable — card body navigates to combo-detail; Select button still quick-confirms
+- `getComboDetails` service + `ComboDetailDish`/`ComboDetailResponse` types added
+
+**Completed R-6.7 (Four targeted fixes):**
+- Approve Week button fixed: `approveWeeklyPlan` now sends `{}` body (was sending none → 422)
+- Doctor weekly summary `confirmed_kcal` fallback: uses `actual_calories ?? calories` (NULL-safe)
+- Weight goal null display: shows `"Not set"` instead of `"0 kg"` when `target_weight_kg` null
+- Weight chart: `BarChart` → `LineChart` (curved, area fill, auto-scale Y-axis)
+- Weight data seeded for Priya (5 entries, 66.2→65.0 kg)
+- 0 new TS errors vs R-6.6 baseline
+
+**Rebuild track:** R-0 → R-1 → R-2 → R-3 → R-4 → R-4.5 → R-5 → R-6 → R-6.5 → R-6.6 → **R-6.7 COMPLETE**.
+
+**Pending / Backlog:**
+- **W3 clinical guardrail decision:** Doctor pin of 2nd main_dish → amber fires but no hard block.
+- **Pool expansion (accompaniment/one_pot):** Swap 409s on thin pools for Vegetarian/Healthy.
+- **DB creds note:** `.env` shows `mityahar_user/mityahar_password` but Docker runs `POSTGRES_USER=admin`, `POSTGRES_PASSWORD=mityahar_dev`.
+- **Pre-existing:** `full_backend_test.py` admin login crash, water-log.tsx orphaned, avoid_pcos/avoid_gout tags absent, dish rename ~22% done.
+- **R-6.6/R-6.7 manual verification pending:** Combo detail screen, bowl size persistence, confirmed state across reload, LineChart rendering.
+
+**Next action:** R-7 — Weekly Cycle Automation (product owner to confirm scope before starting).

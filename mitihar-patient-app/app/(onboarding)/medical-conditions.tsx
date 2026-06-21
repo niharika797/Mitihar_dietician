@@ -32,7 +32,7 @@ export default function MedicalConditionsScreen() {
   const noneSelected = conditions.includes("None of the above");
 
   return (
-    <OnboardingShell step={4} totalSteps={8} title="Medical Conditions" subtitle="Select all that apply" onContinue={handleContinue} continueDisabled={conditions.length === 0} onSkip={() => router.push("/(onboarding)/allergies")}>
+    <OnboardingShell step={4} totalSteps={7} title="Medical Conditions" subtitle="Select all that apply" onContinue={handleContinue} continueDisabled={conditions.length === 0} onSkip={() => router.push("/(onboarding)/allergies")}>
       <View style={s.form}>
         <ChipGrid options={CONDITIONS} selected={conditions} onToggle={toggle} columns={2} small />
 

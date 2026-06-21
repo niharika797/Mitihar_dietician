@@ -5,12 +5,12 @@ Diet-plan service — PostgreSQL via AsyncSession + Recommendation ORM.
 from typing import Dict, Optional
 from datetime import datetime, date
 
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import select, update as sa_update, insert as sa_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from enum import Enum
 
 from ..schemas.diet_plan import DietPlanResponse as DietPlan
-from ..models.db_models import Recommendation
+from ..models.db_models import Recommendation, WeeklyCombo
 from ..core.config import settings
 from .meal_generator.meal_generator import meal_generator
 
@@ -47,34 +47,20 @@ class DietPlanService:
 
     async def generate_diet_plan(self, user_data: Dict, session: AsyncSession) -> DietPlan:
         """Generate personalised diet plan using nutritional science principles."""
-        # ── Cross-week variety: load food IDs from last 2 plans ─────────────
-        try:
-            past_result = await session.execute(
-                select(Recommendation.used_food_ids)
-                .where(
-                    Recommendation.patient_id == int(user_data["id"]),
-                    Recommendation.used_food_ids.isnot(None),
-                )
-                .order_by(Recommendation.created_at.desc())
-                .limit(2)
-            )
-            prior_ids: set[int] = set()
-            for row in past_result.all():
-                if row[0]:
-                    prior_ids.update(int(x) for x in row[0])
-            if prior_ids:
-                user_data = {**user_data, "prior_used_food_ids": list(prior_ids)}
-        except Exception:
-            pass  # Non-fatal — generation proceeds without cross-week memory
-
+        # Cross-week seeding removed (Session 22A): seeding prior plans' used_food_ids
+        # snowballed the exclusion set across regenerations until variety collapsed.
+        # Within-week variety is handled by the generator's weekly_used_ids.
         meal_plan = await meal_generator.generate_meal_plan(user_data, session)
         return DietPlan(
             user_id=str(user_data["id"]),
             created_at=datetime.now(),
             meals=meal_plan.get("meals", []),
+            combos=meal_plan.get("combos", []),
             ingredient_checklist=meal_plan.get("ingredient_checklist", []),
             used_food_ids=meal_plan.get("used_food_ids", []),
             version=1,
+            generation_version=2,
+            # R-2: meal_generator now always produces the multi-combo (v2) shape.
         )
 
     # ------------------------------------------------------------------
@@ -105,17 +91,40 @@ class DietPlanService:
             existing.is_active = False  # soft-delete previous plan
             await session.flush()
 
+        is_v2 = diet_plan.generation_version == 2
         rec = Recommendation(
             patient_id=int(diet_plan.user_id),
             week_start_date=date.today(),
-            meals=diet_plan.meals,
+            meals=diet_plan.meals,            # [] for v2 — kept for backward compat
             ingredient_checklist=diet_plan.ingredient_checklist,
             used_food_ids=diet_plan.used_food_ids,
             is_active=True,
             version=next_version,
+            generation_version=diet_plan.generation_version,
+            approval_status="draft" if is_v2 else "approved",
+            # v2 plans need doctor approval before patient visibility (R-3, out
+            # of scope here); v1 plans keep the old always-visible behavior.
         )
         session.add(rec)
-        await session.flush()
+        await session.flush()  # need rec.id for the WeeklyCombo FK below
+
+        if is_v2 and diet_plan.combos:
+            combo_rows = [
+                {
+                    "recommendation_id": rec.id,
+                    "slot_date": datetime.strptime(c["slot_date"], "%Y-%m-%d").date(),
+                    "meal_type": c["meal_type"],
+                    "combo_index": c["combo_index"],
+                    "slot_composition": c["slot_composition"],
+                    "total_calories": c["total_calories"],
+                    "dishes": c["dishes"],
+                }
+                for c in diet_plan.combos
+            ]
+            # Bulk INSERT — one statement for all rows (84/week), not 84 inserts.
+            await session.execute(sa_insert(WeeklyCombo), combo_rows)
+            await session.flush()
+
         return rec.id
 
     async def get_diet_plan(self, patient_id_str: str, *, session: AsyncSession) -> Optional[DietPlan]:
@@ -196,6 +205,7 @@ class DietPlanService:
                 Recommendation.created_at,
                 Recommendation.generated_by,
                 Recommendation.version,
+                Recommendation.generation_version,
                 Recommendation.is_active,
             )
             .where(Recommendation.patient_id == int(patient_id_str))
@@ -210,6 +220,7 @@ class DietPlanService:
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "generated_by": r.generated_by,
                 "version": r.version,
+                "generation_version": r.generation_version,
                 "is_active": r.is_active,
             }
             for r in rows

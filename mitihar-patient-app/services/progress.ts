@@ -17,6 +17,7 @@ export interface LogMealPayload {
   fiber?: number;
   logged_date?: string;
   notes?: string;
+  food_id?: number;   // Session 22E: links a logged item to its food_items row
 }
 
 export async function logMeal(payload: LogMealPayload): Promise<MealLogEntry> {

@@ -12,7 +12,7 @@ from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from ..models.db_models import MealLog, ProgressLog, Patient
+from ..models.db_models import MealLog, ProgressLog, Patient, PatientMealChoice
 
 
 # ---------------------------------------------------------------------------
@@ -218,14 +218,32 @@ async def get_today_summary(
     """Return calorie / water / steps totals for today."""
     today = date.today()
 
-    # Sum calories from meal_logs
+    # Sum calories + macros from meal_logs
     cal_q = await session.execute(
-        select(sa_func.coalesce(sa_func.sum(MealLog.calories_consumed), 0)).where(
+        select(
+            sa_func.coalesce(sa_func.sum(MealLog.calories_consumed), 0),
+            sa_func.coalesce(sa_func.sum(MealLog.protein_g), 0),
+            sa_func.coalesce(sa_func.sum(MealLog.carbs_g), 0),
+            sa_func.coalesce(sa_func.sum(MealLog.fat_g), 0),
+        ).where(
             MealLog.patient_id == patient_id,
             MealLog.logged_date == today,
         )
     )
-    total_calories = float(cal_q.scalar())
+    cal_row = cal_q.one()
+    total_calories = float(cal_row[0])
+    protein_g = float(cal_row[1])
+    carbs_g = float(cal_row[2])
+    fat_g = float(cal_row[3])
+
+    # Add calories from confirmed meal choices (patient_meal_choices)
+    choice_cal_q = await session.execute(
+        select(sa_func.coalesce(sa_func.sum(PatientMealChoice.calories), 0)).where(
+            PatientMealChoice.patient_id == patient_id,
+            PatientMealChoice.date == today,
+        )
+    )
+    total_calories += float(choice_cal_q.scalar())
 
     # Progress row
     prog_q = await session.execute(
@@ -238,6 +256,9 @@ async def get_today_summary(
 
     return {
         "total_calories": total_calories,
+        "protein_g": protein_g,
+        "carbs_g": carbs_g,
+        "fat_g": fat_g,
         "water_glasses": prog.water_glasses if prog else 0,
         "steps": prog.steps if prog else 0,
     }
