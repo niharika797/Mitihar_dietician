@@ -1330,6 +1330,40 @@ Duplicate dish within same (slot_date, meal_type) across its 4 combos:
 
 ---
 
+### R-7A — Weekly Cycle Automation: Summary Service + Doctor UI (COMPLETE)
+**Date:** 2026-06-21  
+**Depends on:** R-6.7 complete
+
+**Changes delivered:**
+
+1. **`app/services/weekly_summary_service.py`** (new) — `compute_weekly_summary(db, patient_id, week_start)`. Idempotent, error-isolated. Builds `per_day` (7×3 slot status, confirmed/planned kcal, bowl breakdown), `dish_frequency` (times_selected from PatientMealChoiceDish, times_offered from JSONB jsonb_array_elements, bowl_sizes), `pattern` (preferred/never_selected/most+least selected), `week_totals`. Upserts into `weekly_patient_summary` only when v2 recommendation exists. Never raises — returns `{"error": ...}` key on inner failure.
+
+2. **`app/routers/doctor.py`** — `GET /patients/{patient_id}/weekly-summary` replaced. Old: 80-line direct DB query returning `{week_start, days, week_totals}`. New: 3 lines — adds optional `?week_start=` query param, defaults to current Monday, calls `compute_weekly_summary()`, returns full `summary_data`. Removed duplicate DB queries. Added `WeeklyPatientSummary` to imports.
+
+3. **`app/main.py`** — `complete_expired_plans()` cron added (Sunday 01:00 UTC). Finds all patients with v2 recs for the just-ended week, calls `compute_weekly_summary()` for each. Registered with `id="complete_weekly_plans", replace_existing=True` to prevent ConflictingIdError on restart.
+
+4. **`mitihar-frontend/apps/src/lib/doctorApi.ts`** — Added `DishFrequencyEntry` and `WeeklySummaryData` interfaces. Updated `getWeeklySummary()` to accept optional `weekStart?: string` param and return `WeeklySummaryData`. Old `WeeklySummaryResponse` retained as `@deprecated` alias.
+
+5. **`mitihar-frontend/apps/src/app/pages/doctor/patient-tabs/WeeklySummaryTab.tsx`** — Adapted existing adherence table (`data.days` → `data.per_day`). Added Section A "This Week's Choices" (expandable per-day rows with B/L/D slot breakdown; visible when any dishes selected). Added Section B "Patterns This Week" (green chips for preferred ≥2×, amber chips for never selected ≥3 offers; visible when any dish data exists).
+
+**Verification results (2026-06-21):**
+- `weekly_patient_summary` table exists in DB (R-1 migration `a3b4c5d6e7f8`)
+- Syntax: all 3 Python files parse clean
+- Import: `compute_weekly_summary`, `doctor.router`, `app` all import with no errors
+- Live endpoint: `GET /api/v1/doctor/patients/2/weekly-summary` returns HTTP 200 with full shape: `per_day`, `dish_frequency` (12 dishes), `pattern.preferred_dishes: [{Dahi}]`, `week_totals`
+- DB cache write: skipped correctly (Priya has no v2 rec for this week — gated on `if recommendation_id:`)
+- TS check: 0 new errors in changed files; pre-existing `ImportMeta.env` baseline unchanged
+
+**ORM correction from spec:** Spec provided `PatientMealChoices` (plural) — actual ORM class is `PatientMealChoice` (singular). Corrected in service. Same for `PatientMealChoiceDish`.
+
+**R-7A.1 fix (2026-06-21):** Rec lookup date mismatch fixed. Old code floored `week_start` to Monday then queried `Recommendation.week_start_date == floored_monday`. Priya's active rec (id=180) has `week_start_date = 2026-06-18` (Thursday) — exact Monday match always failed, so `recommendation_id` was None, JSONB `times_offered` query never ran, `never_selected_dishes` was always empty, DB cache never written. Fix in `_compute()`: query `is_active=True` first, use rec's own `week_start_date` as canonical window, add historical fuzzy fallback (`week_start_date.between(monday-6, monday+6)`) when no active rec found. Also seeded 3× Chapati Lunch selections (Jun 20/21/22) to reach `times_selected=4` for R-7B threshold verification.
+
+Live re-verification (2026-06-21): `week_start: 2026-06-18` ✓, `dish_freq: 61` ✓, `times_offered > 0: 61` ✓, `preferred: [Chapati, Dahi]` ✓, `never_selected: 27` ✓. DB cache row written (rec 180). R-7B thresholds (`times_selected ≥ 2`, `times_offered ≥ 3 + times_selected == 0`) both populated and testable.
+
+**TS check (R-7A.1):** No frontend changes in R-7A.1. Pre-existing `ImportMeta.env` baseline errors in `Login.tsx` / `axios.ts` unchanged.
+
+---
+
 ### SESSION 22 — Doctor Weekly Patient Summary
 **Type:** Execution (/goal acceptable)  
 **Status:** NOT STARTED  

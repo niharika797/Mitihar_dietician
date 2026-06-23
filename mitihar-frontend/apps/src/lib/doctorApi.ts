@@ -292,9 +292,44 @@ export interface WeeklySummaryDay {
   confirmed_calories: number;
   meals_confirmed: number;
   meals_total: number;
-  bowl_size_breakdown: Record<string, string>;
+  bowl_size_breakdown: Record<string, number>;
+  breakfast_confirmed: boolean;
+  lunch_confirmed: boolean;
+  dinner_confirmed: boolean;
 }
 
+export interface DishFrequencyEntry {
+  food_item_id: number;
+  recipe_name: string;
+  times_selected: number;
+  times_offered: number;
+  bowl_sizes: string[];
+}
+
+export interface WeeklySummaryData {
+  week_start: string;
+  week_end: string;
+  total_slots: number;
+  confirmed_slots: number;
+  days_with_all_confirmed: number;
+  adherence_pct: number;
+  per_day: WeeklySummaryDay[];
+  dish_frequency: DishFrequencyEntry[];
+  pattern: {
+    preferred_dishes: { food_item_id: number; recipe_name: string }[];
+    never_selected_dishes: { food_item_id: number; recipe_name: string }[];
+    most_selected_dish: DishFrequencyEntry | null;
+    least_selected_dish: DishFrequencyEntry | null;
+  };
+  week_totals: {
+    planned_calories: number;
+    confirmed_calories: number;
+    avg_bowl_size: string;
+  };
+  error?: string;
+}
+
+/** @deprecated Use WeeklySummaryData */
 export interface WeeklySummaryResponse {
   week_start: string;
   days: WeeklySummaryDay[];
@@ -597,8 +632,11 @@ export const doctorApi = {
   swapCombo: (patientId: number, comboId: number) =>
     apiClient.post(`/doctor/patients/${patientId}/weekly-plan/combos/${comboId}/swap`).then(r => r.data),
 
-  getWeeklySummary: (patientId: number) =>
-    apiClient.get<WeeklySummaryResponse>(`/doctor/patients/${patientId}/weekly-summary`).then(r => r.data),
+  getWeeklySummary: (patientId: number, weekStart?: string) =>
+    apiClient.get<WeeklySummaryData>(
+      `/doctor/patients/${patientId}/weekly-summary`,
+      weekStart ? { params: { week_start: weekStart } } : undefined,
+    ).then(r => r.data),
 
   getPendingApprovals: () =>
     apiClient.get<PendingApprovalsResponse>('/doctor/pending-approvals').then(r => r.data),

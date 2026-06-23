@@ -172,37 +172,32 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-06-18 (R-6.7 complete)_
+> _This section is maintained by Claude. Last updated: 2026-06-23 (R-7A.1 complete)_
 
-**Completed R-5 (Backend v2 patient surfacing):** `GET /meal-plan/week` returns `WeekResponseV2` for v2 plans; `POST /confirm-choice` extended with `weekly_combo_id`.
+**Completed R-6.7 (Four targeted fixes):** Approve Week 422 fix, confirmed_kcal NULL fallback, weight goal "Not set", BarChart→LineChart. 0 new TS errors.
 
-**Completed R-6 (Patient app v2 UI):** `V2ComboCard` component, `isV2` gate, v2 confirmation mutation, TS cast fixes across 4 files. 0 new TS errors.
+**Completed R-7A (Weekly Cycle Automation — Summary Layer):**
+- `app/services/weekly_summary_service.py` (new) — `compute_weekly_summary()`: idempotent, error-isolated; returns `per_day`, `dish_frequency`, `pattern`, `week_totals`; upserts to `weekly_patient_summary` when v2 rec exists
+- `GET /doctor/patients/{id}/weekly-summary` replaced: 80-line direct query → 3-line service call; optional `?week_start=` param
+- `complete_expired_plans()` Sunday 01:00 UTC cron added to `app/main.py` (`id="complete_weekly_plans", replace_existing=True`)
+- `doctorApi.ts`: `DishFrequencyEntry` + `WeeklySummaryData` interfaces; `getWeeklySummary()` optional `weekStart?` param
+- `WeeklySummaryTab.tsx`: `data.days` → `data.per_day`; Section A expandable per-day choice rows; Section B pattern chips (green=preferred, amber=skipped)
 
-**Completed R-6.5 (Seven targeted fixes):** Calorie ring merge, macro tracking, bottom sheet animation, steps/water removal, notifications empty state, plan history v2 label, beverage dedup.
+**Completed R-7A.1 (rec lookup fix + seed):**
+- `weekly_summary_service.py`: `_compute()` now queries `is_active=True` first; derives week window from `rec.week_start_date` (not caller-supplied Monday floor). Historical fuzzy fallback added for completed-week queries.
+- ORM class names corrected: `PatientMealChoice` / `PatientMealChoiceDish` (singular).
+- Chapati seeded ×3 (Jun 20/21/22 Lunch) → `times_selected=4`.
+- Live verification: `dish_freq=61`, `times_offered>0=61`, `preferred=[Chapati, Dahi]`, `never_selected=27`. DB cache written for rec 180.
+- R-7B thresholds confirmed testable.
 
-**Completed R-6.6 (V2 Combo Detail Screen + Bowl Size + Confirmed State Fix):**
-- `bowl_size` (small/medium/large) added to `POST /confirm-choice`; defaults to `medium`; validated against existing DB constraint
-- `weekly_combo_id` exposed by `GET /choices/{date}` — confirmed state now restores on hard refresh
-- New `GET /meal-plan/combo/{combo_id}/dishes` endpoint with ownership check + JSONB enrichment
-- New screen `app/meals/combo-detail.tsx`: S/M/L bowl selector, live calorie scaling, expandable ingredients, 3-state confirm button
-- `V2ComboCard` tappable — card body navigates to combo-detail; Select button still quick-confirms
-- `getComboDetails` service + `ComboDetailDish`/`ComboDetailResponse` types added
-
-**Completed R-6.7 (Four targeted fixes):**
-- Approve Week button fixed: `approveWeeklyPlan` now sends `{}` body (was sending none → 422)
-- Doctor weekly summary `confirmed_kcal` fallback: uses `actual_calories ?? calories` (NULL-safe)
-- Weight goal null display: shows `"Not set"` instead of `"0 kg"` when `target_weight_kg` null
-- Weight chart: `BarChart` → `LineChart` (curved, area fill, auto-scale Y-axis)
-- Weight data seeded for Priya (5 entries, 66.2→65.0 kg)
-- 0 new TS errors vs R-6.6 baseline
-
-**Rebuild track:** R-0 → R-1 → R-2 → R-3 → R-4 → R-4.5 → R-5 → R-6 → R-6.5 → R-6.6 → **R-6.7 COMPLETE**.
+**Rebuild track:** R-0 → … → R-6.7 → R-7A → **R-7A.1 COMPLETE**.
 
 **Pending / Backlog:**
+- **R-7B (Generator personalization):** Read `dish_frequency` from `weekly_patient_summary` to seed `preferred_food_ids`/`avoided_food_ids` before next-week generation. **STOP — do not start until product owner confirms scope.**
 - **W3 clinical guardrail decision:** Doctor pin of 2nd main_dish → amber fires but no hard block.
 - **Pool expansion (accompaniment/one_pot):** Swap 409s on thin pools for Vegetarian/Healthy.
 - **DB creds note:** `.env` shows `mityahar_user/mityahar_password` but Docker runs `POSTGRES_USER=admin`, `POSTGRES_PASSWORD=mityahar_dev`.
 - **Pre-existing:** `full_backend_test.py` admin login crash, water-log.tsx orphaned, avoid_pcos/avoid_gout tags absent, dish rename ~22% done.
-- **R-6.6/R-6.7 manual verification pending:** Combo detail screen, bowl size persistence, confirmed state across reload, LineChart rendering.
+- **R-7A browser verification pending:** WeeklySummaryTab Section A expandable rows, Section B chips in browser.
 
-**Next action:** R-7 — Weekly Cycle Automation (product owner to confirm scope before starting).
+**Next action:** R-7B — personalization injection into `meal_generator.py`. Do not start until product owner confirms scope.

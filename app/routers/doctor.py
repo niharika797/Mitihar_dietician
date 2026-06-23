@@ -20,8 +20,9 @@ from ..models.db_models import (
     MealLog, ProgressLog, ClinicalNote, FoodItem, PatientVisit,
     DoctorMealOverride, PendingVisitApproval,
     PatientMealConfig, PatientDishPreferences,
-    WeeklyCombo, PatientMealChoice,
+    WeeklyCombo, PatientMealChoice, WeeklyPatientSummary,
 )
+from ..services.weekly_summary_service import compute_weekly_summary
 from ..schemas.doctor import (
     PatientSummary, PaginatedPatients, RecommendationDetail,
     PlanOverrideRequest, PatientRequestDetail, RejectRequest,
@@ -1617,85 +1618,17 @@ async def patch_weekly_combo_dish(
 async def get_weekly_summary(
     patient_id: int,
     request: Request,
+    week_start_param: Optional[date] = Query(None, alias="week_start"),
     doctor: Doctor = Depends(get_current_doctor),
     session: AsyncSession = Depends(get_db),
 ):
-    """7-day planned-vs-confirmed calorie summary for the active week, on-demand (no cache table)."""
+    """Weekly adherence + dish-frequency summary. Computed on-demand, cached in weekly_patient_summary."""
     did = _doctor_id(request)
     await _get_patient_for_doctor(patient_id, did, session)
 
-    rec_result = await session.execute(
-        select(Recommendation)
-        .where(Recommendation.patient_id == patient_id, Recommendation.is_active == True)
-        .order_by(Recommendation.created_at.desc())
-    )
-    rec = rec_result.scalars().first()
-    if rec is None:
-        raise HTTPException(status_code=404, detail="No active recommendation found")
-
-    week_start = rec.week_start_date
-    week_dates = [week_start + timedelta(days=i) for i in range(7)] if week_start else []
-
-    combos_result = await session.execute(
-        select(WeeklyCombo).where(
-            WeeklyCombo.recommendation_id == rec.id,
-            WeeklyCombo.combo_index == 0,
-        )
-    )
-    planned_by_date: dict = {}
-    for c in combos_result.scalars().all():
-        planned_by_date[c.slot_date] = planned_by_date.get(c.slot_date, 0.0) + float(c.total_calories)
-
-    choices_by_date: dict = {}
-    if week_dates:
-        choices_result = await session.execute(
-            select(PatientMealChoice).where(
-                PatientMealChoice.patient_id == patient_id,
-                PatientMealChoice.date.in_(week_dates),
-            )
-        )
-        for ch in choices_result.scalars().all():
-            choices_by_date.setdefault(ch.date, []).append(ch)
-
-    days = []
-    bowl_counter = {"small": 0, "medium": 0, "large": 0}
-    for d in week_dates:
-        day_choices = choices_by_date.get(d, [])
-        confirmed_calories = sum(
-            float(ch.actual_calories if ch.actual_calories is not None else (ch.calories or 0))
-            for ch in day_choices
-        )
-        bowl_breakdown = {"small": 0, "medium": 0, "large": 0, "none": 0}
-        for ch in day_choices:
-            key = ch.bowl_size if ch.bowl_size in ("small", "medium", "large") else "none"
-            bowl_breakdown[key] += 1
-            if key != "none":
-                bowl_counter[key] += 1
-        days.append({
-            "date": d.isoformat(),
-            "planned_calories": round(planned_by_date.get(d, 0.0), 2),
-            "confirmed_calories": round(confirmed_calories, 2),
-            "meals_confirmed": len(day_choices),
-            "meals_total": 3,
-            "bowl_size_breakdown": bowl_breakdown,
-        })
-
-    if max(bowl_counter.values(), default=0) > 0:
-        top_count = max(bowl_counter.values())
-        tied = [k for k, v in bowl_counter.items() if v == top_count]
-        avg_bowl_size = tied[0] if len(tied) == 1 else "mixed"
-    else:
-        avg_bowl_size = "none"
-
-    return {
-        "week_start": week_start.isoformat() if week_start else None,
-        "days": days,
-        "week_totals": {
-            "planned_calories": round(sum(d["planned_calories"] for d in days), 2),
-            "confirmed_calories": round(sum(d["confirmed_calories"] for d in days), 2),
-            "avg_bowl_size": avg_bowl_size,
-        },
-    }
+    target_week = week_start_param or (date.today() - timedelta(days=date.today().weekday()))
+    summary_data = await compute_weekly_summary(session, patient_id, target_week)
+    return summary_data
 
 
 @router.get("/pending-approvals")
