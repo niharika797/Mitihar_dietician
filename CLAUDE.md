@@ -172,7 +172,7 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-06-23 (R-7A.1 complete)_
+> _This section is maintained by Claude. Last updated: 2026-06-26 (dev environment setup complete)_
 
 **Completed R-6.7 (Four targeted fixes):** Approve Week 422 fix, confirmed_kcal NULL fallback, weight goal "Not set", BarChart→LineChart. 0 new TS errors.
 
@@ -190,13 +190,23 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 - Live verification: `dish_freq=61`, `times_offered>0=61`, `preferred=[Chapati, Dahi]`, `never_selected=27`. DB cache written for rec 180.
 - R-7B thresholds confirmed testable.
 
-**Rebuild track:** R-0 → … → R-6.7 → R-7A → **R-7A.1 COMPLETE**.
+**Completed (2026-06-26) — Dev environment setup & team onboarding:**
+- Docker: single `postgres:15` service confirmed running (`admin/mityahar_dev`). Removed obsolete `version: '3.8'` from `docker-compose.yml`.
+- Python `venv/` created, all 65 packages from `requirements.txt` installed.
+- `alembic upgrade head` — 31 migrations applied clean.
+- DB snapshot (`db-backups/mityahar_2026-06-24.sql`) restored: 2143 food_items, 71 doctors, 4 patients, 950 ingredients.
+- `mitihar-frontend/apps` — `pnpm install` + `pnpm dev` now work via `pnpm-workspace.yaml` (approves `esbuild` + `@tailwindcss/oxide` build scripts for pnpm 11).
+- `mitihar-patient-app` — added missing `react-native-css-interop` dep; fixes web bundling error.
+- DB creds note resolved: `.env` correctly uses `admin/mityahar_dev` matching Docker defaults.
+- `README.md` fully rewritten: Docker setup, alembic, snapshot restore, test credentials, common issues.
+- All pushed to `feature/api-remediation-v0.2`.
+
+**Rebuild track:** R-0 → … → R-6.7 → R-7A → R-7A.1 → **DEV ENV COMPLETE**.
 
 **Pending / Backlog:**
 - **R-7B (Generator personalization):** Read `dish_frequency` from `weekly_patient_summary` to seed `preferred_food_ids`/`avoided_food_ids` before next-week generation. **STOP — do not start until product owner confirms scope.**
 - **W3 clinical guardrail decision:** Doctor pin of 2nd main_dish → amber fires but no hard block.
 - **Pool expansion (accompaniment/one_pot):** Swap 409s on thin pools for Vegetarian/Healthy.
-- **DB creds note:** `.env` shows `mityahar_user/mityahar_password` but Docker runs `POSTGRES_USER=admin`, `POSTGRES_PASSWORD=mityahar_dev`.
 - **Pre-existing:** `full_backend_test.py` admin login crash, water-log.tsx orphaned, avoid_pcos/avoid_gout tags absent, dish rename ~22% done.
 - **R-7A browser verification pending:** WeeklySummaryTab Section A expandable rows, Section B chips in browser.
 
