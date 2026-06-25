@@ -139,7 +139,17 @@ This creates all tables in the database. Run this every time you pull new migrat
 
 ## 5. Seed the Database
 
-Run these in order — each is idempotent (safe to re-run):
+**Option A — Restore team snapshot (recommended, fast):**
+
+Restores the full dev DB: food items, recipes, ingredients, patients, doctors, admins — all matching IDs across the team.
+
+```powershell
+docker exec -i mityahar_postgres psql -U admin -d mityahar_db < db-backups\mityahar_2026-06-24.sql
+```
+
+> This takes ~30–60 seconds. Once done, skip to step 6.
+
+**Option B — Run seed scripts from scratch (slower, ~5 min):**
 
 ```powershell
 python -m scripts.seed_admin          # creates the admin account
@@ -148,6 +158,7 @@ python -m scripts.seed_6k_recipes     # 6000+ recipes (takes ~2-3 min)
 ```
 
 > `seed_6k_recipes` is slow on first run. It will print progress. Let it finish.
+> Use Option B only if the snapshot is outdated or you want a clean slate.
 
 ---
 
