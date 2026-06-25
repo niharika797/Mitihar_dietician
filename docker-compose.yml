@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Secrets are read from the shell environment or a .env file in this directory.
 # Copy .env.example and fill in values — never hardcode credentials here.
 #
