@@ -38,6 +38,7 @@
     "react-dom": "19.2.0",
     "react-hook-form": "^7.54.2",
     "react-native": "0.83.2",
+    "react-native-css-interop": "^0.2.6",
     "react-native-gifted-charts": "^1.4.76",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-reanimated": "~4.2.1",

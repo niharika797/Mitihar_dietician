@@ -182,6 +182,8 @@ pnpm dev
 
 Opens at: [http://localhost:5173](http://localhost:5173)
 
+> **pnpm 11 note:** First `pnpm install` runs build scripts for `esbuild` and `@tailwindcss/oxide` — this is normal and approved via `pnpm-workspace.yaml`. If you see `ERR_PNPM_IGNORED_BUILDS`, run `pnpm install` once more.
+
 ---
 
 ## 8. Patient App (Mobile)
@@ -221,6 +223,17 @@ After connecting: expand **Servers → mityahar_db → Schemas → public → Ta
 ## Database Schema
 
 A schema-only SQL export (no real data) is at [`db-backups/schema_only.sql`](db-backups/schema_only.sql). Use it to understand table structure. Do **not** use it to restore — use `alembic upgrade head` instead (it's always up to date).
+
+---
+
+## Test Credentials
+
+| Role | Email | Password |
+|---|---|---|
+| Admin | `admin@mityahar.com` | `Mityahar@2026` |
+| Doctor | `dr.ashok.mehta@mitihar.test` | `DoctorTest@2026` |
+| Patient (Priya) | `priya.test@mityahar.com` | `Test@1234` |
+| Patient (Testaudit) | `testaudit@mityahar.com` | `Test@1234` |
 
 ---
 
