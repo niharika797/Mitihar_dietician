@@ -1,13 +1,12 @@
 import api from "../lib/axios";
-import type { WeeklyPlan, PlanHistoryItem, ShoppingListResponse } from "../types";
+import type { WeeklyPlan, WeekResponseV2, PlanHistoryItem, ShoppingListResponse, SuggestionsResponse, ConfirmChoiceResponse } from "../types";
 
 // ── GET /meal-plan/week ────────────────────────────────────────────────────
-export async function getWeeklyPlan(): Promise<WeeklyPlan> {
+export async function getWeeklyPlan(): Promise<WeeklyPlan | WeekResponseV2> {
   const { data } = await api.get("/meal-plan/week");
-  // Backend now returns flat { "2026-03-18": [...], "2026-03-19": [...] }
-  // Guard: if old shape { days: {...} } is returned, unwrap it
-  if (data && typeof data === "object" && !Array.isArray(data) && data.days) {
-    return data.days as WeeklyPlan;
+  // v2 plans: pass through as-is for caller to branch on generation_version
+  if (data && data.generation_version === 2) {
+    return data as WeekResponseV2;
   }
   return (data ?? {}) as WeeklyPlan;
 }
@@ -36,6 +35,42 @@ export async function getShoppingList(): Promise<ShoppingListResponse> {
   return {};
 }
 
+// ── GET /meal-plan/suggestions/{date}/{meal_type} ─────────────────────────
+export async function getMealSuggestions(date: string, mealType: string): Promise<SuggestionsResponse> {
+  const { data } = await api.get(`/meal-plan/suggestions/${date}/${mealType}`);
+  return data;
+}
+
+// ── POST /meal-plan/confirm-choice ────────────────────────────────────────
+export async function confirmMealChoice(body: {
+  food_item_ids: number[];
+  date: string;
+  meal_type: string;
+  weekly_combo_id?: number;
+  bowl_size?: string;
+}): Promise<ConfirmChoiceResponse> {
+  const { data } = await api.post("/meal-plan/confirm-choice", body);
+  return data;
+}
+
+// ── GET /meal-plan/choices/{date} ─────────────────────────────────────────
+export interface DailyChoicesResponse {
+  date: string;
+  choices: Array<{
+    meal_type: string;
+    food_item_id: number;
+    calories: number;
+    weekly_combo_id: number | null;
+    recipe_name: string;
+    dishes: Array<{ food_item_id: number; slot_type: string; calories: number; recipe_name: string }>;
+  }>;
+}
+
+export async function getDailyChoices(date: string): Promise<DailyChoicesResponse> {
+  const { data } = await api.get(`/meal-plan/choices/${date}`);
+  return data;
+}
+
 // ── POST /meal-plan/shopping-list/toggle ──────────────────────────────────
 // Audit C-4: backend reads query params (not JSON body), and at_home is a required param.
 // Callers must now pass the desired at_home boolean explicitly.
@@ -44,4 +79,43 @@ export async function toggleShoppingItem(ingredient_name: string, at_home: boole
     params: { ingredient_name, at_home },
   });
   return data;
+}
+
+// ── GET /meal-plan/combo/{comboId}/dishes ────────────────────────────────
+export interface ComboDetailDish {
+  food_item_id: number;
+  recipe_name: string;
+  slot_type: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  ingredients: { name: string; amount_g: number }[];
+}
+
+export interface ComboDetailResponse {
+  combo_id: number;
+  dishes: ComboDetailDish[];
+}
+
+export async function getComboDetails(comboId: number): Promise<ComboDetailResponse> {
+  const { data } = await api.get(`/meal-plan/combo/${comboId}/dishes`);
+  return data;
+}
+
+// ── GET /meal-plan/beverages ──────────────────────────────────────────────
+// Session 22E: beverages are logged ad hoc (not auto-generated into slots).
+export interface Beverage {
+  food_item_id: number;
+  recipe_name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+}
+
+export async function getBeverages(): Promise<Beverage[]> {
+  const { data } = await api.get("/meal-plan/beverages");
+  return data.beverages ?? [];
 }

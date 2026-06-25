@@ -29,8 +29,8 @@ export default function EditLogScreen() {
 
   const saveMut = useMutation({
     mutationFn: () => editMealLog(id, {
-      meal_type:         mealType.toLowerCase(),
-      calories_consumed: parseFloat(calories) || 0,
+      meal_type: mealType,
+      calories:  parseFloat(calories) || 0,
       notes:             notes || undefined,
     }),
     onSuccess: () => {

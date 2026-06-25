@@ -6,7 +6,7 @@ import {
   Loader2, X, Plus,
 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { adminApi, DoctorAdminView, CreateDoctorBody } from '../../../lib/adminApi';
+import { adminApi, DoctorAdminView, CreateDoctorBody, UpdateDoctorBody } from '../../../lib/adminApi';
 import { aqk } from '../../../lib/queryKeys';
 
 const PAGE_SIZE = 10;
@@ -126,12 +126,106 @@ function OnboardModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── Edit Doctor Modal ─────────────────────────────────────────────────────────
+function EditDoctorModal({ doctor, onClose }: { doctor: DoctorAdminView; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<UpdateDoctorBody>({
+    name: doctor.name,
+    specialization: doctor.specialization ?? '',
+    clinic_name: doctor.clinic_name ?? '',
+    city: doctor.city ?? '',
+    phone: doctor.phone ?? '',
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: () => adminApi.updateDoctor(doctor.id, {
+      name: form.name?.trim() || undefined,
+      specialization: form.specialization?.trim() || undefined,
+      clinic_name: form.clinic_name?.trim() || undefined,
+      city: form.city?.trim() || undefined,
+      phone: form.phone?.trim() || undefined,
+    }),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: aqk.doctors() });
+      toast.success(`${updated.name} updated`);
+      onClose();
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail ?? 'Failed to update doctor';
+      toast.error(typeof msg === 'string' ? msg : 'Failed to update doctor');
+    },
+  });
+
+  const set = (k: keyof UpdateDoctorBody) =>
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm(prev => ({ ...prev, [k]: e.target.value }));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} onKeyDown={(e) => e.key === 'Escape' && onClose()} role="button" aria-label="Close dialog" tabIndex={0} />
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b border-[#E5E7EB]">
+          <p className="text-base font-semibold text-[#111827]">Edit Doctor</p>
+          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label htmlFor="edit-name" className="block text-xs font-medium text-[#374151] mb-1">Full Name</label>
+              <input value={form.name ?? ''} id="edit-name" onChange={set('name')}
+                className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+            </div>
+            <div>
+              <label htmlFor="edit-specialization" className="block text-xs font-medium text-[#374151] mb-1">Specialization</label>
+              <input value={form.specialization ?? ''} id="edit-specialization" onChange={set('specialization')}
+                className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+            </div>
+            <div>
+              <label htmlFor="edit-phone" className="block text-xs font-medium text-[#374151] mb-1">Phone</label>
+              <input value={form.phone ?? ''} id="edit-phone" onChange={set('phone')}
+                className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+            </div>
+            <div>
+              <label htmlFor="edit-clinic" className="block text-xs font-medium text-[#374151] mb-1">Clinic Name</label>
+              <input value={form.clinic_name ?? ''} id="edit-clinic" onChange={set('clinic_name')}
+                className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+            </div>
+            <div>
+              <label htmlFor="edit-city" className="block text-xs font-medium text-[#374151] mb-1">City</label>
+              <input value={form.city ?? ''} id="edit-city" onChange={set('city')}
+                className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 justify-end p-5 border-t border-[#E5E7EB]">
+          <button onClick={onClose} className="h-9 px-4 rounded-md border border-[#D1D5DB] text-sm text-[#374151] hover:bg-[#F9FAFB]">
+            Cancel
+          </button>
+          <button
+            onClick={() => updateMutation.mutate()}
+            disabled={updateMutation.isPending}
+            className="flex items-center gap-1.5 h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] disabled:opacity-50 transition-colors"
+          >
+            {updateMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export function AdminDoctors() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [showOnboard, setShowOnboard] = useState(false);
+  const [editDoctor, setEditDoctor] = useState<DoctorAdminView | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean; docId: number; docName: string; action: 'deactivate' | 'activate' | 'delete'
   }>({ open: false, docId: 0, docName: '', action: 'deactivate' });
@@ -252,6 +346,12 @@ export function AdminDoctors() {
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setEditDoctor(doc)}
+                        className="h-7 px-2.5 rounded border border-[#D1D5DB] text-xs text-[#374151] hover:bg-[#F9FAFB] transition-colors"
+                      >
+                        Edit
+                      </button>
                       {doc.is_active ? (
                         <button
                           onClick={() => setConfirmDialog({ open: true, docId: doc.id, docName: doc.name, action: 'deactivate' })}
@@ -309,6 +409,9 @@ export function AdminDoctors() {
 
       {/* Onboard modal */}
       {showOnboard && <OnboardModal onClose={() => setShowOnboard(false)} />}
+
+      {/* Edit doctor modal */}
+      {editDoctor && <EditDoctorModal doctor={editDoctor} onClose={() => setEditDoctor(null)} />}
 
       {/* Confirm dialog */}
       <ConfirmDialog

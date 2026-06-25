@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, func, not_, delete as sa_delete
 
 from ..services.user_service import get_current_user
-from ..models.db_models import Patient, ProgressLog, Recommendation
+from ..models.db_models import (
+    Patient, ProgressLog, Recommendation, WeeklyCombo,
+    PatientDishPreferences, PatientMealChoice, PatientMealChoiceDish, FoodItem,
+)
 from ..services.diet_plan_service import DietPlanService
 from ..core.database import get_db
 from typing import List, Dict
@@ -114,28 +117,112 @@ async def get_week_plan(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Returns the active meal plan as a flat date-keyed dict.
-    { "2026-03-18": [ {...meal}, ... ], "2026-03-19": [...] }
-    Returns {} (empty dict) if no active plan exists — frontend handles gracefully.
+    v1 plans: returns flat date-keyed dict { "YYYY-MM-DD": [{...meal},...] }.
+    v2 plans (generation_version=2): returns structured combo response.
     """
-    diet_service = DietPlanService()
-    plan = await diet_service.get_diet_plan(str(current_user.id), session=session)
-    if plan is None:
-        # Audit W-6: the old code had `return {}` here followed by an unreachable
-        # HTTPException. Returning {} silently hid missing plans from the frontend.
-        # Now correctly raises 404 so the mobile app can show an appropriate message.
+    from collections import defaultdict
+
+    rec_result = await session.execute(
+        select(Recommendation)
+        .where(
+            Recommendation.patient_id == current_user.id,
+            Recommendation.is_active == True,
+        )
+        .order_by(Recommendation.created_at.desc())
+        .limit(1)
+    )
+    rec = rec_result.scalars().first()
+    if rec is None:
         raise HTTPException(status_code=404, detail="No active meal plan found")
 
-    # Group meals by Date field
-    week: dict = {}
-    for meal in plan.meals:
-        day = meal.get("Date")
-        if day:
-            week.setdefault(day, []).append(meal)
+    # v1 path — unchanged behavior
+    if (rec.generation_version or 1) == 1:
+        week: dict = {}
+        for meal in (rec.meals or []):
+            day = meal.get("Date")
+            if day:
+                week.setdefault(day, []).append(meal)
+        return week
 
-    # Return the flat date-keyed dict directly — matches the frontend WeeklyPlan type.
-    # { "2026-03-18": [ {...meal}, ... ], "2026-03-19": [...], ... }
-    return week
+    # v2 path
+    active_rec = rec
+    if rec.approval_status == "draft":
+        approved_result = await session.execute(
+            select(Recommendation)
+            .where(
+                Recommendation.patient_id == current_user.id,
+                Recommendation.generation_version == 2,
+                Recommendation.approval_status == "approved",
+            )
+            .order_by(Recommendation.created_at.desc())
+            .limit(1)
+        )
+        active_rec = approved_result.scalars().first()
+        if active_rec is None:
+            return {
+                "generation_version": 2,
+                "approval_status": "pending",
+                "message": "Plan awaiting doctor approval",
+                "days": [],
+            }
+
+    combos_result = await session.execute(
+        select(WeeklyCombo)
+        .where(WeeklyCombo.recommendation_id == active_rec.id)
+        .order_by(WeeklyCombo.slot_date, WeeklyCombo.meal_type, WeeklyCombo.combo_index)
+    )
+    combos = list(combos_result.scalars().all())
+
+    prefs_result = await session.execute(
+        select(PatientDishPreferences.food_item_id)
+        .where(
+            PatientDishPreferences.patient_id == current_user.id,
+            PatientDishPreferences.preference_type == "pin",
+        )
+    )
+    pinned_ids: set = {row[0] for row in prefs_result}
+
+    days_map: dict = defaultdict(lambda: defaultdict(list))
+    min_date = None
+
+    for combo in combos:
+        date_str = str(combo.slot_date)
+        if min_date is None or date_str < min_date:
+            min_date = date_str
+        dishes_out = []
+        pinned_dish_ids = []
+        for dish in (combo.dishes or []):
+            fid = dish.get("food_id") or dish.get("food_item_id")
+            if fid and fid in pinned_ids:
+                pinned_dish_ids.append(fid)
+            dishes_out.append({
+                "food_item_id": fid,
+                "recipe_name": dish.get("recipe_name", ""),
+                "slot_type": dish.get("slot_type", ""),
+                "calories": float(dish.get("calories", 0)),
+            })
+        days_map[date_str][combo.meal_type].append({
+            "combo_id": combo.id,
+            "combo_index": combo.combo_index,
+            "dishes": dishes_out,
+            "total_calories": float(combo.total_calories or 0),
+            "contains_doctor_pick": bool(pinned_dish_ids),
+            "pinned_dish_ids": pinned_dish_ids,
+        })
+
+    days = []
+    for date_str in sorted(days_map.keys()):
+        day_meals: dict = {}
+        for mt in ("Breakfast", "Lunch", "Dinner"):
+            day_meals[mt] = {"combos": days_map[date_str].get(mt, [])}
+        days.append({"date": date_str, "meals": day_meals})
+
+    return {
+        "generation_version": 2,
+        "approval_status": "approved",
+        "week_start": min_date or "",
+        "days": days,
+    }
 
 
 # ─── GET /api/v1/meal-plan/history ───────────────────────────────────────
@@ -295,4 +382,547 @@ async def toggle_ingredient_at_home(
         "ingredient": ingredient_name,
         "at_home": at_home,
         "message": f"Marked as {'available at home' if at_home else 'need to buy'}",
+    }
+
+
+# ─── GET /api/v1/meal-plan/suggestions/{plan_date}/{meal_type} ────────────
+
+_VALID_MEAL_TYPES = {"Breakfast", "Lunch", "Dinner"}
+
+from ..services.meal_generator.meal_generator import BREAKFAST_SLOTS, ONE_POT_SLOTS
+
+DIET_TYPE_HIERARCHY: dict[str, list[str]] = {
+    "Vegetarian":     ["Vegetarian"],
+    "Eggetarian":     ["Vegetarian", "Eggetarian"],
+    "Non-Vegetarian": ["Vegetarian", "Eggetarian", "Non-Vegetarian"],
+}
+
+_STANDARD_SLOT_PCT: dict[str, float] = {
+    "grain": 0.35, "dal_protein": 0.28, "sabzi": 0.22, "accompaniment": 0.15,
+}
+
+
+def _get_slot_composition(meals_json, plan_date: date, meal_type: str) -> list[str]:
+    if not meals_json:
+        return []
+    plan_date_str = str(plan_date)
+    for meal in meals_json:
+        if meal.get("Meal Type") == meal_type and meal.get("Date") == plan_date_str:
+            dishes = meal.get("dishes") or []
+            seen: dict[str, None] = {}
+            for d in dishes:
+                st = d.get("slot_type")
+                if st:
+                    seen[st] = None
+            return list(seen)
+    return []
+
+
+def _slot_budget_pct(slot_type: str, meal_type: str) -> float:
+    if meal_type == "Breakfast":
+        for s in BREAKFAST_SLOTS:
+            if s["slot_type"] == slot_type:
+                return s["calorie_pct"]
+    for s in ONE_POT_SLOTS:
+        if s["slot_type"] == slot_type:
+            return s["calorie_pct"]
+    return _STANDARD_SLOT_PCT.get(slot_type, 0.5)
+
+
+@router.get("/suggestions/{plan_date}/{meal_type}")
+async def get_meal_suggestions(
+    plan_date: date,
+    meal_type: str,
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Returns up to 4 whole-meal combo suggestions for a slot.
+    Slot composition is read from the active plan JSONB for the given date + meal_type.
+    Each combo contains all dishes for that slot's shape (e.g. grain + dal + sabzi + acc).
+    Diet-type filter applied per patient (Backlog B closure).
+    Falls back to 1-dish combos for legacy plans without dishes[] in JSONB.
+    """
+    if meal_type not in _VALID_MEAL_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"meal_type must be one of {sorted(_VALID_MEAL_TYPES)}",
+        )
+
+    from ..services.meal_generator.tag_utils import get_avoid_tags, get_prefer_tags
+
+    conditions = list(current_user.medical_conditions or [])
+    avoid_tags = get_avoid_tags(conditions)
+    prefer_tags = get_prefer_tags(conditions)
+
+    # Patient dish preferences (pinned / blocked)
+    prefs_result = await session.execute(
+        select(PatientDishPreferences.food_item_id, PatientDishPreferences.preference_type)
+        .where(PatientDishPreferences.patient_id == current_user.id)
+    )
+    pinned_ids: set[int] = set()
+    blocked_ids: set[int] = set()
+    for food_id, ptype in prefs_result:
+        (pinned_ids if ptype == "pin" else blocked_ids).add(food_id)
+
+    # Weekly confirmed dishes (child table, 22E)
+    week_start = plan_date - timedelta(days=plan_date.weekday())
+    choices_result = await session.execute(
+        select(PatientMealChoiceDish.food_item_id)
+        .join(PatientMealChoice, PatientMealChoice.id == PatientMealChoiceDish.choice_id)
+        .where(
+            PatientMealChoice.patient_id == current_user.id,
+            PatientMealChoice.date >= week_start,
+        )
+    )
+    used_this_week: set[int] = {row[0] for row in choices_result}
+
+    # Slot calorie target from active recommendation (R1: Target Calories)
+    rec_result = await session.execute(
+        select(Recommendation.meals)
+        .where(
+            Recommendation.patient_id == current_user.id,
+            Recommendation.is_active == True,
+        )
+        .order_by(Recommendation.created_at.desc())
+        .limit(1)
+    )
+    meals_json = rec_result.scalar()
+    slot_calorie_target = float(current_user.tdee or 2000) / 3
+    if meals_json:
+        for meal in meals_json:
+            if meal.get("Meal Type") == meal_type and meal.get("Date") == str(plan_date):
+                slot_calorie_target = float(
+                    meal.get("Target Calories", meal.get("Total Calories", slot_calorie_target))
+                )
+                break
+
+    # Plan-time calories remaining today
+    consumed_result = await session.execute(
+        select(func.coalesce(func.sum(PatientMealChoice.calories), 0.0))
+        .where(
+            PatientMealChoice.patient_id == current_user.id,
+            PatientMealChoice.date == plan_date,
+        )
+    )
+    calories_remaining = float(current_user.tdee or 2000) - float(consumed_result.scalar())
+
+    allowed_diet_types = DIET_TYPE_HIERARCHY.get(current_user.diet_type or "Vegetarian", ["Vegetarian"])
+    exclude_ids = blocked_ids | used_this_week
+
+    slot_composition = _get_slot_composition(meals_json, plan_date, meal_type)
+
+    if slot_composition:
+        # Combo path: one pool query per slot_type, then round-robin combo construction
+        pools: dict[str, list] = {}
+        for st in slot_composition:
+            slot_budget = _slot_budget_pct(st, meal_type) * slot_calorie_target
+            stmt = (
+                select(FoodItem)
+                .where(
+                    FoodItem.is_verified == True,
+                    FoodItem.meal_time_tags.any(meal_type),
+                    FoodItem.slot_type == st,
+                    FoodItem.diet_type.in_(allowed_diet_types),
+                    FoodItem.slot_type != "beverage",
+                )
+            )
+            if exclude_ids:
+                stmt = stmt.where(FoodItem.id.notin_(exclude_ids))
+            for tag in avoid_tags:
+                stmt = stmt.where(not_(FoodItem.avoid_tags.contains([tag])))
+            stmt = stmt.order_by(
+                func.abs(FoodItem.cal_per_serving - slot_budget).asc()
+            ).limit(10)
+            pools[st] = list((await session.execute(stmt)).scalars().all())
+
+        combos = []
+        for i in range(4):
+            combo_dishes = []
+            for st in slot_composition:
+                pool = pools.get(st, [])
+                if not pool:
+                    break
+                dish = pool[i % len(pool)]
+                combo_dishes.append({
+                    "food_item_id": dish.id,
+                    "recipe_name": dish.recipe_name,
+                    "slot_type": dish.slot_type,
+                    "calories": float(dish.cal_per_serving),
+                    "protein": float(dish.protein_per_serving),
+                    "carbs": float(dish.carbs_per_serving),
+                    "fat": float(dish.fat_per_serving),
+                    "fiber": float(dish.fiber_per_serving),
+                })
+            if len(combo_dishes) == len(slot_composition):
+                combos.append({
+                    "combo_id": i,
+                    "total_calories": round(sum(d["calories"] for d in combo_dishes), 2),
+                    "dishes": combo_dishes,
+                })
+
+        if combos:
+            return {
+                "slot_calorie_target": round(slot_calorie_target, 1),
+                "slot_composition": slot_composition,
+                "calories_remaining_today": round(calories_remaining, 1),
+                "suggestions": combos,
+            }
+
+    # Legacy fallback: single-item pool, wrapped as 1-dish combos.
+    # Also used when slot_composition is empty (pre-22E plan or date with no dishes[]).
+    stmt = (
+        select(FoodItem)
+        .where(
+            FoodItem.is_verified == True,
+            FoodItem.meal_time_tags.any(meal_type),
+            FoodItem.slot_type != "beverage",
+            FoodItem.diet_type.in_(allowed_diet_types),
+        )
+    )
+    if exclude_ids:
+        stmt = stmt.where(FoodItem.id.notin_(exclude_ids))
+    for tag in avoid_tags:
+        stmt = stmt.where(not_(FoodItem.avoid_tags.contains([tag])))
+    stmt = stmt.order_by(
+        func.abs(FoodItem.cal_per_serving - slot_calorie_target).asc()
+    ).limit(20)
+    candidates = list((await session.execute(stmt)).scalars().all())
+
+    def _score(fi: FoodItem) -> tuple:
+        prefer_count = sum(1 for t in prefer_tags if t in (fi.prefer_tags or []))
+        cal_dist = abs(float(fi.cal_per_serving) - slot_calorie_target)
+        return (-int(fi.id in pinned_ids), -prefer_count, cal_dist)
+
+    candidates.sort(key=_score)
+    combos = [
+        {
+            "combo_id": i,
+            "total_calories": round(float(fi.cal_per_serving), 2),
+            "dishes": [{
+                "food_item_id": fi.id,
+                "recipe_name": fi.recipe_name,
+                "slot_type": fi.slot_type,
+                "calories": float(fi.cal_per_serving),
+                "protein": float(fi.protein_per_serving),
+                "carbs": float(fi.carbs_per_serving),
+                "fat": float(fi.fat_per_serving),
+                "fiber": float(fi.fiber_per_serving),
+            }],
+        }
+        for i, fi in enumerate(candidates[:4])
+    ]
+    return {
+        "slot_calorie_target": round(slot_calorie_target, 1),
+        "slot_composition": [],
+        "calories_remaining_today": round(calories_remaining, 1),
+        "suggestions": combos,
+    }
+
+
+# ─── POST /api/v1/meal-plan/confirm-choice ───────────────────────────────
+
+_VALID_BOWL_SIZES = {"small", "medium", "large"}
+
+class ConfirmChoiceInput(BaseModel):
+    food_item_ids: list[int]
+    date: date
+    meal_type: str
+    weekly_combo_id: int | None = None
+    bowl_size: str | None = None  # 'small' | 'medium' | 'large'; defaults to 'medium'
+
+
+@router.post("/confirm-choice")
+async def confirm_meal_choice(
+    body: ConfirmChoiceInput,
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Records patient's confirmed combo choice for a meal slot (plan-time, not a consumption log).
+    Accepts 1 or more food_item_ids (N dishes for a combo). One choice per (patient, date,
+    meal_type) — upserts on conflict. Re-confirm rebuilds child dish rows atomically.
+    """
+    if body.meal_type not in _VALID_MEAL_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"meal_type must be one of {sorted(_VALID_MEAL_TYPES)}",
+        )
+    if body.bowl_size is not None and body.bowl_size not in _VALID_BOWL_SIZES:
+        raise HTTPException(status_code=422, detail="bowl_size must be small, medium, or large")
+    if not body.food_item_ids:
+        raise HTTPException(status_code=422, detail="food_item_ids must not be empty")
+
+    # Fetch all food items in one query
+    fi_result = await session.execute(
+        select(FoodItem).where(FoodItem.id.in_(body.food_item_ids))
+    )
+    confirmed_items = list(fi_result.scalars().all())
+    if len(confirmed_items) != len(body.food_item_ids):
+        raise HTTPException(status_code=404, detail="One or more food_item_ids not found")
+
+    # Validate none are blocked (one query)
+    blocked_result = await session.execute(
+        select(PatientDishPreferences.food_item_id)
+        .where(
+            PatientDishPreferences.patient_id == current_user.id,
+            PatientDishPreferences.food_item_id.in_(body.food_item_ids),
+            PatientDishPreferences.preference_type == "block",
+        )
+    )
+    blocked_found = list(blocked_result.scalars().all())
+    if blocked_found:
+        raise HTTPException(status_code=422, detail=f"Dish(es) {blocked_found} are blocked for this patient")
+
+    # v2 path: verify combo ownership + meal_time_tags
+    if body.weekly_combo_id is not None:
+        combo_check = await session.execute(
+            select(WeeklyCombo)
+            .join(Recommendation, WeeklyCombo.recommendation_id == Recommendation.id)
+            .where(
+                WeeklyCombo.id == body.weekly_combo_id,
+                Recommendation.patient_id == current_user.id,
+            )
+        )
+        target_combo = combo_check.scalars().first()
+        if target_combo is None:
+            raise HTTPException(status_code=404, detail="weekly_combo_id not found or not owned by this patient")
+        combo_meal_type = target_combo.meal_type
+        invalid = [fi.id for fi in confirmed_items if combo_meal_type not in (fi.meal_time_tags or [])]
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "meal_time_mismatch", "message": "One or more dishes not valid for this meal type"},
+            )
+
+    total_calories = sum(float(fi.cal_per_serving) for fi in confirmed_items)
+    primary_food_item_id = body.food_item_ids[0]
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    resolved_bowl_size = body.bowl_size or "medium"
+    stmt = pg_insert(PatientMealChoice).values(
+        patient_id=current_user.id,
+        food_item_id=primary_food_item_id,
+        date=body.date,
+        meal_type=body.meal_type,
+        calories=total_calories,
+        weekly_combo_id=body.weekly_combo_id,
+        bowl_size=resolved_bowl_size,
+    ).on_conflict_do_update(
+        constraint="uq_pmc_patient_date_meal",
+        set_={
+            "food_item_id": primary_food_item_id,
+            "calories": total_calories,
+            "weekly_combo_id": body.weekly_combo_id,
+            "bowl_size": resolved_bowl_size,
+            "confirmed_at": func.now(),
+        },
+    ).returning(PatientMealChoice.id)
+    choice_id = (await session.execute(stmt)).scalar_one()
+
+    # Rebuild child dish rows — delete-then-insert keeps re-confirm idempotent.
+    # Both parent upsert and children commit or roll back together.
+    await session.execute(
+        sa_delete(PatientMealChoiceDish).where(PatientMealChoiceDish.choice_id == choice_id)
+    )
+    for fi in confirmed_items:
+        session.add(PatientMealChoiceDish(
+            choice_id=choice_id,
+            food_item_id=fi.id,
+            slot_type=fi.slot_type,
+            calories=float(fi.cal_per_serving),
+        ))
+    await session.flush()
+
+    consumed_result = await session.execute(
+        select(func.coalesce(func.sum(PatientMealChoice.calories), 0.0))
+        .where(
+            PatientMealChoice.patient_id == current_user.id,
+            PatientMealChoice.date == body.date,
+        )
+    )
+    calories_remaining = float(current_user.tdee or 2000) - float(consumed_result.scalar())
+
+    return {
+        "food_item_ids": body.food_item_ids,
+        "date": str(body.date),
+        "meal_type": body.meal_type,
+        "calories": round(total_calories, 2),
+        "calories_remaining_today": round(calories_remaining, 1),
+    }
+
+
+# ─── GET /api/v1/meal-plan/choices/{plan_date} ───────────────────────────
+
+@router.get("/choices/{plan_date}")
+async def get_daily_choices(
+    plan_date: date,
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Returns confirmed meal choices for the patient on a given date.
+    Joins with food_items to include recipe_name.
+    Used by frontend to restore confirmed state on mount/refresh.
+    """
+    result = await session.execute(
+        select(
+            PatientMealChoice.id,
+            PatientMealChoice.meal_type,
+            PatientMealChoice.food_item_id,
+            PatientMealChoice.calories,
+            PatientMealChoice.weekly_combo_id,
+            FoodItem.recipe_name,
+        )
+        .join(FoodItem, FoodItem.id == PatientMealChoice.food_item_id)
+        .where(
+            PatientMealChoice.patient_id == current_user.id,
+            PatientMealChoice.date == plan_date,
+        )
+    )
+    rows = result.all()
+
+    # Session 22E (Part 3): attach the per-dish breakdown from the child table.
+    # recipe_name is a live join to food_items — Option B does not snapshot names,
+    # so a renamed recipe reads with its new name here (acceptable for analytics).
+    # Existing flat fields (food_item_id/calories/recipe_name) are preserved for
+    # backward compatibility; `dishes` is additive.
+    choice_ids = [r.id for r in rows]
+    dishes_by_choice: dict[int, list] = {}
+    if choice_ids:
+        dish_result = await session.execute(
+            select(
+                PatientMealChoiceDish.choice_id,
+                PatientMealChoiceDish.food_item_id,
+                PatientMealChoiceDish.slot_type,
+                PatientMealChoiceDish.calories,
+                FoodItem.recipe_name,
+            )
+            .join(FoodItem, FoodItem.id == PatientMealChoiceDish.food_item_id)
+            .where(PatientMealChoiceDish.choice_id.in_(choice_ids))
+        )
+        for choice_id, dish_food_id, slot_type, dish_cal, dish_name in dish_result:
+            dishes_by_choice.setdefault(choice_id, []).append({
+                "food_item_id": dish_food_id,
+                "slot_type": slot_type,
+                "calories": float(dish_cal) if dish_cal is not None else None,
+                "recipe_name": dish_name,
+            })
+
+    choices = [
+        {
+            "meal_type": meal_type,
+            "food_item_id": food_item_id,
+            "calories": float(calories),
+            "weekly_combo_id": weekly_combo_id,
+            "recipe_name": recipe_name,
+            "dishes": dishes_by_choice.get(cid, []),
+        }
+        for cid, meal_type, food_item_id, calories, weekly_combo_id, recipe_name in rows
+    ]
+    return {"date": str(plan_date), "choices": choices}
+
+
+# ─── GET /api/v1/meal-plan/combo/{combo_id}/dishes ───────────────────────
+
+@router.get("/combo/{combo_id}/dishes")
+async def get_combo_dishes(
+    combo_id: int,
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Returns enriched dish data for a weekly combo — per-dish macros + ingredients.
+    Security: combo must belong to an active recommendation for the requesting patient.
+    """
+    combo_result = await session.execute(
+        select(WeeklyCombo)
+        .join(Recommendation, WeeklyCombo.recommendation_id == Recommendation.id)
+        .where(
+            WeeklyCombo.id == combo_id,
+            Recommendation.patient_id == current_user.id,
+        )
+    )
+    combo = combo_result.scalars().first()
+    if combo is None:
+        raise HTTPException(status_code=404, detail="Combo not found or not owned by this patient")
+
+    dishes_jsonb: list[dict] = combo.dishes or []
+    food_item_ids = [d["food_item_id"] for d in dishes_jsonb if d.get("food_item_id")]
+
+    fi_result = await session.execute(
+        select(FoodItem).where(FoodItem.id.in_(food_item_ids))
+    )
+    fi_map = {fi.id: fi for fi in fi_result.scalars().all()}
+
+    enriched = []
+    for dish in dishes_jsonb:
+        fid = dish.get("food_item_id")
+        fi = fi_map.get(fid)
+        enriched.append({
+            "food_item_id": fid,
+            "recipe_name": fi.recipe_name if fi else dish.get("recipe_name", ""),
+            "slot_type": fi.slot_type if fi else dish.get("slot_type", ""),
+            "calories": float(fi.cal_per_serving) if fi else float(dish.get("calories", 0)),
+            "protein": float(fi.protein_per_serving) if fi else 0.0,
+            "carbs": float(fi.carbs_per_serving) if fi else 0.0,
+            "fat": float(fi.fat_per_serving) if fi else 0.0,
+            "ingredients": fi.ingredients if fi else [],
+        })
+
+    return {"combo_id": combo_id, "dishes": enriched}
+
+
+# ─── GET /api/v1/meal-plan/beverages ─────────────────────────────────────
+
+@router.get("/beverages")
+async def list_beverages(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Lists beverage options for ad-hoc patient logging.
+
+    Session 22E (Part 2): beverages are no longer auto-generated into meal slots.
+    Patients log a tea/coffee/shake on demand via the snack-style quick-log
+    (POST /progress/log/meal with food_id set), following the Session 21 pattern.
+    Queries food_items directly (slot_type='beverage') rather than seeding the
+    empty `beverages` table — fewer moving parts, single source of truth.
+
+    Presentation guard: rows with cal_per_serving >= 300 are excluded. Every
+    legitimate beverage is <=199 kcal; the only rows above 300 are known data
+    errors (id 591 Buttermilk Soup 2857.65, id 2447 Spiced Beetroot Buttermilk
+    403.56) whose source quantity_g is whole-batch scale. This is a display guard
+    only — the underlying nutrition is NOT overridden; those two need a doctor-review
+    recipe re-entry through the IFCT-traced path (tracked in BUILD_TRACKER).
+    """
+    # Dedup by recipe_name: keep one row per name (lowest id = most original entry)
+    dedup_subq = (
+        select(func.min(FoodItem.id))
+        .where(FoodItem.slot_type == "beverage", FoodItem.cal_per_serving < 300)
+        .group_by(FoodItem.recipe_name)
+        .scalar_subquery()
+    )
+    result = await session.execute(
+        select(
+            FoodItem.id, FoodItem.recipe_name, FoodItem.cal_per_serving,
+            FoodItem.protein_per_serving, FoodItem.carbs_per_serving,
+            FoodItem.fat_per_serving, FoodItem.fiber_per_serving,
+        )
+        .where(FoodItem.id.in_(dedup_subq))
+        .order_by(FoodItem.cal_per_serving.asc())
+    )
+    return {
+        "beverages": [
+            {
+                "food_item_id": fid,
+                "recipe_name": name,
+                "calories": float(cal) if cal is not None else 0.0,
+                "protein": float(p) if p is not None else 0.0,
+                "carbs": float(c) if c is not None else 0.0,
+                "fat": float(f) if f is not None else 0.0,
+                "fiber": float(fb) if fb is not None else 0.0,
+            }
+            for fid, name, cal, p, c, f, fb in result
+        ]
     }

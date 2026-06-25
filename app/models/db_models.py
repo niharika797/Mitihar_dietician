@@ -1,6 +1,6 @@
 from sqlalchemy import (
-    Column, Integer, String, Numeric, Boolean, DateTime, Date,
-    Text, Index, UniqueConstraint, ForeignKey, text,
+    Column, Integer, SmallInteger, String, Numeric, Float, Boolean, DateTime, Date,
+    Text, Index, UniqueConstraint, CheckConstraint, ForeignKey, text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
@@ -30,7 +30,11 @@ class FoodItem(Base):
     plan_type_tags      = Column(ARRAY(Text), nullable=False, default=["Healthy", "Diabetic-Friendly", "Gym-Friendly"])
     ingredients         = Column(JSONB, nullable=False, default=[])  # [{"name": str, "amount_g": float}]
     source              = Column(String(20), nullable=False, default="manual")
+    nutrition_source    = Column(Text, nullable=False, server_default="manual")
     is_verified         = Column(Boolean, nullable=False, default=False)
+    submitted_for_review = Column(Boolean, nullable=False, default=False)
+    avoid_tags          = Column(JSONB, nullable=False, server_default='[]')
+    prefer_tags         = Column(JSONB, nullable=False, server_default='[]')
     image_url           = Column(String(500), nullable=True)
     # URL to food image — populated by ETL script in Phase 6
     doctor_id           = Column(Integer, ForeignKey("doctors.id"), nullable=True)
@@ -40,6 +44,7 @@ class FoodItem(Base):
 
     # relationships
     doctor              = relationship("Doctor")
+    recipe_ingredients  = relationship("RecipeIngredient", back_populates="food_item", cascade="all, delete-orphan")
 
 
 Index("idx_fi_slot",       FoodItem.slot_type)
@@ -50,6 +55,8 @@ Index("idx_fi_doctor",     FoodItem.doctor_id)
 Index("idx_fi_regions",    FoodItem.region_tags,   postgresql_using="gin")
 Index("idx_fi_meal_times", FoodItem.meal_time_tags, postgresql_using="gin")
 Index("idx_fi_plan_types", FoodItem.plan_type_tags, postgresql_using="gin")
+Index("idx_fi_avoid_tags",  FoodItem.avoid_tags,     postgresql_using="gin")
+Index("idx_fi_prefer_tags", FoodItem.prefer_tags,    postgresql_using="gin")
 
 # ---------------------------------------------------------------------------
 # MealTemplate  (DO NOT MODIFY)
@@ -165,7 +172,7 @@ class Patient(Base):
     medical_conditions    = Column(JSONB, default=[])
     food_allergies        = Column(JSONB, default=[])
     dietary_preferences   = Column(JSONB, default=[])
-    meals_per_day         = Column(Integer, default=5)
+    meals_per_day         = Column(Integer, default=3)
     fasting_days          = Column(JSONB, default=[])
     sleep_hours           = Column(Numeric, nullable=True)
     water_glasses         = Column(Integer, default=8)
@@ -259,6 +266,10 @@ class Recommendation(Base):
     generated_by         = Column(String(20), default="system")   # system | doctor
     doctor_notes         = Column(Text, nullable=True)
     version              = Column(Integer, default=1)
+    generation_version   = Column(Integer, nullable=False, default=1)
+    # 1 = old single-combo JSONB model, 2 = new multi-combo weekly_combos model
+    approval_status      = Column(String(20), nullable=False, default="approved")
+    # 'draft' | 'approved' — v1 plans default 'approved' (always patient-visible)
     created_at           = Column(DateTime(timezone=True), server_default=func.now())
     updated_at           = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -268,6 +279,60 @@ class Recommendation(Base):
 
     __table_args__ = (
         Index("idx_rec_patient", "patient_id"),
+        CheckConstraint("approval_status IN ('draft', 'approved')", name="ck_rec_approval_status"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# WeeklyCombo  (v2 multi-combo model — 4 pre-generated combos per slot)
+# ---------------------------------------------------------------------------
+
+class WeeklyCombo(Base):
+    __tablename__ = "weekly_combos"
+
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    recommendation_id  = Column(Integer, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False)
+    slot_date          = Column(Date, nullable=False)
+    meal_type          = Column(String(20), nullable=False)   # 'Breakfast' / 'Lunch' / 'Dinner'
+    combo_index        = Column(SmallInteger, nullable=False)   # 0-3, hard cap 4 per slot
+    slot_composition   = Column(ARRAY(Text), nullable=False)   # e.g. ['grain','dal_protein','sabzi']
+    total_calories     = Column(Numeric(7, 2), nullable=False)   # unscaled SUM(cal_per_serving)
+    dishes              = Column(JSONB, nullable=False, default=[])   # same shape as meals[].dishes[]
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+
+    # relationships
+    recommendation      = relationship("Recommendation")
+
+    __table_args__ = (
+        UniqueConstraint("recommendation_id", "slot_date", "meal_type", "combo_index", name="uq_weekly_combo"),
+        CheckConstraint("combo_index BETWEEN 0 AND 3", name="ck_combo_index"),
+        CheckConstraint("meal_type IN ('Breakfast', 'Lunch', 'Dinner')", name="ck_meal_type"),
+        Index("idx_wc_rec_date_meal", "recommendation_id", "slot_date", "meal_type"),
+        Index("idx_wc_rec_id", "recommendation_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# WeeklyPatientSummary  (doctor-visible week-end summary, computed on-demand)
+# ---------------------------------------------------------------------------
+
+class WeeklyPatientSummary(Base):
+    __tablename__ = "weekly_patient_summary"
+
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id         = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    recommendation_id  = Column(Integer, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False)
+    week_start_date    = Column(Date, nullable=False)
+    generated_at       = Column(DateTime(timezone=True), server_default=func.now())
+    summary_data       = Column(JSONB, nullable=False, default={})
+
+    # relationships
+    patient            = relationship("Patient")
+    recommendation     = relationship("Recommendation")
+
+    __table_args__ = (
+        UniqueConstraint("patient_id", "week_start_date", name="uq_wps_patient_week"),
+        Index("idx_wps_patient_id", "patient_id"),
     )
 
 
@@ -367,12 +432,16 @@ class SubscriptionCode(Base):
     is_used            = Column(Boolean, default=False)
     used_by_patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
     used_at            = Column(DateTime(timezone=True), nullable=True)
+    # Three-state lifecycle: AVAILABLE → RESERVED → CONSUMED
+    # reserved_by set at registration; used_by_patient_id set at activation
+    reserved_by        = Column(Integer, ForeignKey("patients.id"), nullable=True)
+    reserved_at        = Column(DateTime(timezone=True), nullable=True)
     expires_at         = Column(DateTime(timezone=True), nullable=True)
     created_at         = Column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
     doctor             = relationship("Doctor", back_populates="subscription_codes")
-    used_by_patient    = relationship("Patient")
+    used_by_patient    = relationship("Patient", foreign_keys=[used_by_patient_id])
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +555,12 @@ class DoctorMealOverride(Base):
     patient_age_bucket       = Column(String(10), nullable=True)   # "18-25" / "26-35" etc.
     patient_bmi_bucket       = Column(String(15), nullable=True)   # "normal" / "overweight" etc.
     created_at               = Column(DateTime(timezone=True), server_default=func.now())
+    # ── Clinical edit-trail enrichment (R-1) ───────────────────────────────
+    patient_condition_snapshot = Column(JSONB, nullable=True)
+    # {"conditions": ["Type 2 Diabetes"], "avoid_tags": ["avoid_diabetes"]}
+    edit_reason               = Column(String(20), nullable=False, default="swap")
+    # 'swap' | 'add' | 'remove' | 'custom_add'
+    doctor_note                = Column(Text, nullable=True)
 
     # relationships
     doctor                   = relationship("Doctor")
@@ -497,6 +572,7 @@ class DoctorMealOverride(Base):
         Index("idx_dmo_doctor",  "doctor_id"),
         Index("idx_dmo_patient", "patient_id"),
         Index("idx_dmo_date",    "override_date"),
+        CheckConstraint("edit_reason IN ('swap', 'add', 'remove', 'custom_add')", name="ck_dmo_edit_reason"),
     )
 
 
@@ -619,4 +695,179 @@ class PendingVisitApproval(Base):
     __table_args__ = (
         Index("idx_pva_patient", "patient_id"),
         Index("idx_pva_status",  "status"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# PatientMealConfig  (doctor TDEE split override per patient)
+# ---------------------------------------------------------------------------
+
+class PatientMealConfig(Base):
+    __tablename__ = "patient_meal_config"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id          = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"),
+                                 nullable=False, unique=True)
+    meal_split_override = Column(JSONB, nullable=True)
+    # {"breakfast_pct": 25, "lunch_pct": 35, "dinner_pct": 25} when set.
+    # NULL = use system defaults. Application layer enforces the three values sum to 85.
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    patient             = relationship("Patient")
+
+    __table_args__ = (
+        Index("idx_pmc_patient", "patient_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# PatientDishPreferences  (doctor pin/block per patient per dish)
+# ---------------------------------------------------------------------------
+
+class PatientDishPreferences(Base):
+    __tablename__ = "patient_dish_preferences"
+
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id         = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    food_item_id       = Column(Integer, ForeignKey("food_items.id", ondelete="CASCADE"), nullable=False)
+    preference_type    = Column(Text, nullable=False)  # 'pin' or 'block'
+    added_by_doctor_id = Column(Integer, ForeignKey("doctors.id", ondelete="RESTRICT"), nullable=False)
+    note               = Column(Text, nullable=True)
+    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+
+    patient   = relationship("Patient")
+    food_item = relationship("FoodItem")
+
+    __table_args__ = (
+        UniqueConstraint("patient_id", "food_item_id", name="uq_patient_dish_preference"),
+        CheckConstraint("preference_type IN ('pin', 'block')", name="ck_pdp_preference_type"),
+        Index("idx_pdp_patient",   "patient_id"),
+        Index("idx_pdp_food_item", "food_item_id"),
+        Index("idx_pdp_doctor",    "added_by_doctor_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# PatientMealChoice  (plan-time dish selection per slot per day)
+# ---------------------------------------------------------------------------
+
+class PatientMealChoice(Base):
+    __tablename__ = "patient_meal_choices"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id   = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    food_item_id = Column(Integer, ForeignKey("food_items.id", ondelete="CASCADE"), nullable=False)
+    date         = Column(Date, nullable=False)
+    meal_type    = Column(String(20), nullable=False)   # 'Breakfast' / 'Lunch' / 'Dinner'
+    calories     = Column(Float, nullable=True)
+    confirmed_at = Column(DateTime(timezone=True), server_default=func.now())
+    weekly_combo_id = Column(Integer, ForeignKey("weekly_combos.id", ondelete="SET NULL"), nullable=True)
+    # NULL for v1 legacy choices; points to the selected combo for v2
+    bowl_size       = Column(String(6), nullable=True)   # 'small' | 'medium' | 'large' (PD-9)
+    actual_calories = Column(Numeric(7, 2), nullable=True)   # bowl_multiplier × cal_per_serving
+
+    patient      = relationship("Patient")
+    food_item    = relationship("FoodItem")
+    weekly_combo = relationship("WeeklyCombo")
+
+    __table_args__ = (
+        UniqueConstraint("patient_id", "date", "meal_type", name="uq_pmc_patient_date_meal"),
+        Index("idx_pmc_patient_date", "patient_id", "date"),
+        CheckConstraint("bowl_size IN ('small', 'medium', 'large')", name="ck_pmc_bowl_size"),
+    )
+
+
+class PatientMealChoiceDish(Base):
+    """
+    Session 22E (Part 3, Option B): per-dish breakdown of a confirmed meal choice.
+
+    Additive child of patient_meal_choices, for future doctor weekly-summary
+    analytics. The parent's `calories` column REMAINS the denormalized summed
+    total and stays the budget-math source of truth (meal_plan.py budget reads
+    only the parent) — these child rows are never read by the budget path.
+
+    `calories` here is UNSCALED per-serving (= food_items.cal_per_serving, same
+    value as dishes[].calories). NOTE: this means a confirm-choice record and the
+    corresponding meal_logs.calories_consumed (which logs Σ scaled_calories) can
+    represent the same meal on two different calorie bases — intentional, not a bug.
+    """
+    __tablename__ = "patient_meal_choice_dishes"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    choice_id    = Column(Integer, ForeignKey("patient_meal_choices.id", ondelete="CASCADE"), nullable=False)
+    food_item_id = Column(Integer, ForeignKey("food_items.id"), nullable=False)
+    slot_type    = Column(String(30), nullable=True)
+    calories     = Column(Float, nullable=True)   # UNSCALED (= cal_per_serving)
+
+    choice    = relationship("PatientMealChoice")
+    food_item = relationship("FoodItem")
+
+    __table_args__ = (
+        Index("idx_pmcd_choice", "choice_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ingredient  (master nutrition source — per 100g, INDB-compatible)
+# ---------------------------------------------------------------------------
+
+class Ingredient(Base):
+    __tablename__ = "ingredients"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    name                = Column(Text, nullable=False)
+    name_hindi          = Column(Text, nullable=True)
+    name_normalized     = Column(Text, nullable=True)
+    calories_per_100g   = Column(Float, nullable=True)
+    protein_per_100g    = Column(Float, nullable=True)
+    carbs_per_100g      = Column(Float, nullable=True)
+    fat_per_100g        = Column(Float, nullable=True)
+    fiber_per_100g      = Column(Float, nullable=True)
+    sodium_per_100g     = Column(Float, nullable=True)
+    iron_per_100g       = Column(Float, nullable=True)
+    calcium_per_100g    = Column(Float, nullable=True)
+    unit_weight_g       = Column(Numeric, nullable=True)
+    source              = Column(Text, nullable=False)
+    is_verified         = Column(Boolean, nullable=False, default=False)
+    added_by_doctor_id  = Column(Integer, ForeignKey("doctors.id", ondelete="SET NULL"), nullable=True)
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    avoid_tags          = Column(JSONB, nullable=False, server_default='[]')
+    prefer_tags         = Column(JSONB, nullable=False, server_default='[]')
+
+    # relationships
+    recipe_ingredients  = relationship("RecipeIngredient", back_populates="ingredient")
+
+    __table_args__ = (
+        UniqueConstraint("name", "source", name="uq_ingredient_name_source"),
+        Index("idx_ing_name",       "name"),
+        Index("idx_ing_source",     "source"),
+        Index("idx_ing_verified",   "is_verified"),
+        Index("idx_ing_avoid_tags", "avoid_tags",  postgresql_using="gin"),
+        Index("idx_ing_prefer_tags","prefer_tags", postgresql_using="gin"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# RecipeIngredient  (links food_items → ingredients with quantity in grams)
+# ---------------------------------------------------------------------------
+
+class RecipeIngredient(Base):
+    __tablename__ = "recipe_ingredients"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    food_item_id  = Column(Integer, ForeignKey("food_items.id",  ondelete="CASCADE"),  nullable=False)
+    ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="RESTRICT"), nullable=False)
+    quantity_g    = Column(Float, nullable=False)
+    notes         = Column(Text, nullable=True)
+
+    # relationships
+    food_item  = relationship("FoodItem",   back_populates="recipe_ingredients")
+    ingredient = relationship("Ingredient", back_populates="recipe_ingredients")
+
+    __table_args__ = (
+        UniqueConstraint("food_item_id", "ingredient_id", name="uq_recipe_ingredient"),
+        Index("idx_ri_food_item",  "food_item_id"),
+        Index("idx_ri_ingredient", "ingredient_id"),
     )

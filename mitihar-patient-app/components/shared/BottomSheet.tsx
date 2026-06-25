@@ -1,8 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Pressable, StyleSheet, ScrollView, useWindowDimensions } from "react-native";
 import Animated, {
   useSharedValue, useAnimatedStyle,
-  withTiming, withSpring,
+  withTiming, Easing, runOnJS,
 } from "react-native-reanimated";
 
 interface BottomSheetProps {
@@ -18,14 +18,18 @@ export function BottomSheet({ open, onClose, children, maxHeight }: BottomSheetP
 
   const translateY = useSharedValue(screenHeight);
   const backdropOpacity = useSharedValue(0);
+  const [mounted, setMounted] = useState(open);
 
   useEffect(() => {
     if (open) {
+      setMounted(true);
       backdropOpacity.value = withTiming(0.5, { duration: 250 });
-      translateY.value = withSpring(0, { damping: 18, stiffness: 200 });
+      translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
     } else {
       backdropOpacity.value = withTiming(0, { duration: 250 });
-      translateY.value = withTiming(screenHeight, { duration: 280 });
+      translateY.value = withTiming(screenHeight, { duration: 280 }, (finished) => {
+        if (finished) runOnJS(setMounted)(false);
+      });
     }
   }, [open, screenHeight]);
 
@@ -37,7 +41,7 @@ export function BottomSheet({ open, onClose, children, maxHeight }: BottomSheetP
     opacity: backdropOpacity.value,
   }));
 
-  if (!open && translateY.value === screenHeight) return null;
+  if (!mounted) return null;
 
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents={open ? "auto" : "none"}>

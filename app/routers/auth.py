@@ -56,6 +56,7 @@ def _patient_token_data(patient: Patient) -> dict:
 def _doctor_token_data(doctor: Doctor) -> dict:
     return {
         "sub": doctor.email,
+        "name": doctor.name,
         "role": "doctor",
         "user_type": "doctor",
         "doctor_id": doctor.id,
@@ -190,7 +191,6 @@ async def register(
         code_result = await session.execute(
             select(SubscriptionCode).where(
                 SubscriptionCode.code == doctor_code,
-                SubscriptionCode.is_used == False,
                 SubscriptionCode.expires_at > now,
             )
         )
@@ -198,14 +198,26 @@ async def register(
 
         if code_row is None:
             return {
-                "message": "Registered successfully. Doctor code was invalid or expired — activate manually via /patients/activate.",
+                "message": "Registered successfully. Doctor code was invalid or expired — enter it manually in Profile → Activate.",
                 "doctor_connected": False,
             }
 
-        # Link the patient to the doctor now, but do NOT consume the code or
-        # activate the subscription yet. Consumption happens at /patients/activate
-        # after onboarding + disclaimer complete. This ensures a network failure
-        # at the final step cannot strand the patient with a burned code.
+        if code_row.is_used:
+            return {
+                "message": "This code has already been used by another account. Ask your doctor for a new code.",
+                "doctor_connected": False,
+            }
+
+        if code_row.reserved_by is not None:
+            return {
+                "message": "This code has already been reserved by another account. Ask your doctor for a new code.",
+                "doctor_connected": False,
+            }
+
+        # Code is AVAILABLE — reserve it for this patient (AVAILABLE → RESERVED).
+        # Consumption (→ CONSUMED) happens at /patients/activate after onboarding.
+        code_row.reserved_by = patient_id
+        code_row.reserved_at = now
         await session.execute(
             sa_update(PatientModel)
             .where(PatientModel.id == patient_id)
@@ -216,7 +228,7 @@ async def register(
         )
         await session.flush()
         return {
-            "message": "Registered and connected to doctor successfully. Complete onboarding then activate your subscription.",
+            "message": "Registered and connected to doctor. Complete onboarding to activate your subscription.",
             "doctor_connected": True,
         }
 

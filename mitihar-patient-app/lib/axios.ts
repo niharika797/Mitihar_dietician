@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "./storage";
 
 // ─── Keys used for SecureStore ─────────────────────────────────────────────
 export const SECURE_KEYS = {
@@ -31,7 +31,7 @@ function processQueue(error: unknown, token: string | null) {
 
 // ─── Request interceptor — attach Bearer token ─────────────────────────────
 api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
-  const token = await SecureStore.getItemAsync(SECURE_KEYS.ACCESS_TOKEN);
+  const token = await storage.getItemAsync(SECURE_KEYS.ACCESS_TOKEN);
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -68,7 +68,7 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      const refreshToken = await SecureStore.getItemAsync(
+      const refreshToken = await storage.getItemAsync(
         SECURE_KEYS.REFRESH_TOKEN
       );
       if (!refreshToken) throw new Error("No refresh token");
@@ -79,7 +79,7 @@ api.interceptors.response.use(
       );
 
       const newAccessToken: string = data.access_token;
-      await SecureStore.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, newAccessToken);
+      await storage.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, newAccessToken);
 
       processQueue(null, newAccessToken);
       if (originalRequest.headers) {
@@ -90,8 +90,8 @@ api.interceptors.response.use(
     } catch (refreshError) {
       processQueue(refreshError, null);
       // Wipe tokens — force re-login
-      await SecureStore.deleteItemAsync(SECURE_KEYS.ACCESS_TOKEN);
-      await SecureStore.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
+      await storage.deleteItemAsync(SECURE_KEYS.ACCESS_TOKEN);
+      await storage.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;

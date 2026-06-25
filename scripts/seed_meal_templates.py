@@ -33,11 +33,7 @@ BREAKFAST_SLOTS = [
     {"slot_type": "beverage",       "calorie_pct": 0.10, "required": False},
 ]
 
-SNACK_SLOTS = [
-    {"slot_type": "snack_item", "calorie_pct": 1.0, "required": True},
-]
-
-MEAL_TIMES = ["Breakfast", "Lunch", "Dinner", "Morning_Snack", "Evening_Snack"]
+MEAL_TIMES = ["Breakfast", "Lunch", "Dinner"]
 REGIONS = ["North", "South", "East", "West"]
 DIET_TYPES = ["Vegetarian", "Non-Vegetarian", "Eggetarian"]
 PLAN_TYPES = ["Healthy", "Diabetic-Friendly", "Gym-Friendly"]
@@ -47,8 +43,6 @@ def get_slots_for_meal(meal_time: str) -> list[dict]:
         return BREAKFAST_SLOTS
     elif meal_time in ["Lunch", "Dinner"]:
         return LUNCH_DINNER_SLOTS
-    elif meal_time in ["Morning_Snack", "Evening_Snack"]:
-        return SNACK_SLOTS
     return []
 
 def main():

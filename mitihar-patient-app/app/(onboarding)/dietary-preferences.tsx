@@ -25,25 +25,23 @@ export default function DietaryPreferencesScreen() {
   const [dietType,           setDietType]           = useState(data.diet_type || "Vegetarian");
   const [nonvegMealsPerWeek, setNonvegMealsPerWeek] = useState(data.nonveg_meals_per_week || 0);
   const [region,             setRegion]             = useState(data.region    || "North");
-  const [meals,        setMeals]        = useState(data.meals_per_day || "3");
   const [fastingDays,  setFastingDays]  = useState<string[]>(data.fasting_days ?? []);
 
   const toggleDay = (d: string) =>
     setFastingDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
 
   const handleContinue = () => {
-    update({ 
-      diet_type: dietType, 
-      region, 
-      meals_per_day: meals, 
+    update({
+      diet_type: dietType,
+      region,
       fasting_days: fastingDays,
-      nonveg_meals_per_week: nonvegMealsPerWeek 
+      nonveg_meals_per_week: nonvegMealsPerWeek
     });
-    router.push("/(onboarding)/lifestyle");
+    router.push("/(onboarding)/disclaimer");
   };
 
   return (
-    <OnboardingShell step={6} totalSteps={8} title="Dietary Preferences" onContinue={handleContinue} onSkip={() => router.push("/(onboarding)/lifestyle")}>
+    <OnboardingShell step={6} totalSteps={7} title="Dietary Preferences" onContinue={handleContinue} onSkip={() => router.push("/(onboarding)/disclaimer")}>
       <View style={s.form}>
         {/* Diet type */}
         <View>
@@ -108,18 +106,6 @@ export default function DietaryPreferencesScreen() {
           </View>
         </View>
 
-        {/* Meals per day */}
-        <View>
-          <Text style={s.sectionLabel}>Meals Per Day</Text>
-          <View style={s.mealsRow}>
-            {[{ v: "3", l: "3 meals" }, { v: "5", l: "5 meals (with snacks)" }].map(o => (
-              <Pressable key={o.v} onPress={() => setMeals(o.v)} style={[s.mealBtn, meals === o.v && s.mealBtnSel]}>
-                <Text style={[s.mealText, meals === o.v && s.mealTextSel]}>{o.l}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
         {/* Fasting days */}
         <View>
           <Text style={s.sectionLabel}>Fasting Days <Text style={s.optional}>(optional)</Text></Text>
@@ -157,11 +143,6 @@ const s = StyleSheet.create({
   regionEmoji:   { fontSize: 18 },
   regionText:    { fontSize: 13, fontWeight: "500", color: "#111827" },
   regionTextSel: { color: "#1E7C45" },
-  mealsRow:      { flexDirection: "row", gap: 8 },
-  mealBtn:       { flex: 1, height: 48, borderRadius: 10, borderWidth: 1.5, borderColor: "#D1D5DB", alignItems: "center", justifyContent: "center", backgroundColor: "#fff" },
-  mealBtnSel:    { borderColor: "#1E7C45", backgroundColor: "#1E7C45" },
-  mealText:      { fontSize: 13, fontWeight: "500", color: "#374151" },
-  mealTextSel:   { color: "#fff" },
   daysRow:       { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   dayBtn:        { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: "#E5E7EB", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   dayBtnSel:     { borderColor: "#1E7C45", backgroundColor: "#1E7C45" },

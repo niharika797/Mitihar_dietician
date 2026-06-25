@@ -124,6 +124,28 @@ export interface OnboardingWizardState {
 }
 
 // ── Meal Plan ─────────────────────────────────────────────────────────────
+export interface DishIngredient {
+  name: string;
+  amount_g: number;
+}
+
+export interface Dish {
+  food_id: number;
+  recipe_name: string;
+  slot_type: string;
+  calories: number;
+  // Session 22E (Bug 2): calories is unscaled per-serving; scaled_calories =
+  // calories × factor matches the (already-scaled) ingredient grams shown
+  // alongside. Optional for legacy dishes generated before 22E.
+  scaled_calories?: number;
+  factor?: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  ingredients?: DishIngredient[];
+}
+
 export interface Meal {
   Date: string;
   "Meal Type": string;
@@ -134,9 +156,48 @@ export interface Meal {
   "Total Carbs": number;
   "Total Fat": number;
   "Total Fiber": number;
+  // Session 22E (Bug 2): "Total Calories" is now Σ(scaled_calories); "Target
+  // Calories" is the generation-time budget (doctor-side reference). Optional —
+  // legacy plans omit it.
+  "Target Calories"?: number;
   doctor_note?: string;
-  food_id?: number | null;
+  food_id?: number | null;        // legacy field — pre-Session 11 plans only
   recommendation_id?: number | null;
+  dishes?: Dish[];                // Session 11+: per-dish breakdown with food_id
+  "Ingredients Scaling"?: Record<string, number>;
+}
+
+// ── Adaptive Meal Suggestions (Bug 6: combo-building) ────────────────────
+export interface SuggestedDish {
+  food_item_id: number;
+  recipe_name: string;
+  slot_type: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+}
+
+export interface SuggestedCombo {
+  combo_id: number;
+  total_calories: number;
+  dishes: SuggestedDish[];
+}
+
+export interface SuggestionsResponse {
+  slot_calorie_target: number;
+  slot_composition: string[];
+  calories_remaining_today: number;
+  suggestions: SuggestedCombo[];
+}
+
+export interface ConfirmChoiceResponse {
+  food_item_ids: number[];
+  date: string;
+  meal_type: string;
+  calories: number;
+  calories_remaining_today: number;
 }
 
 // ── Meal Ratings (Phase 8 Tier 0) ─────────────────────────────────────────
@@ -157,16 +218,17 @@ export interface PlanHistoryItem {
   id: number;
   week_start_date: string;
   version: number;
+  generation_version?: number;
   is_active: boolean;
   created_at: string;
 }
 
 export interface ShoppingItem {
-  ingredient_name: string;
+  ingredient: string;
   quantity: number;
   unit: string;
   category: string;
-  at_home: boolean; // Audit W-5: was have_at_home — backend uses key "at_home"
+  at_home: boolean;
 }
 
 export interface ShoppingListResponse {
@@ -182,6 +244,11 @@ export interface TodaySummary {
     consumed: number;
     target: number;
     remaining: number;
+  };
+  macros?: {
+    protein: number;
+    carbs: number;
+    fat: number;
   };
   water_intake: {
     glasses: number;
@@ -254,6 +321,37 @@ export interface AppNotification {
   time: string;
   date?: string;   // "today" | "yesterday" | "YYYY-MM-DD"
   read: boolean;
+}
+
+// ── v2 weekly combo plan types (R-5/R-6) ─────────────────────────────────
+export interface WeeklyComboV2 {
+  combo_id: number;
+  combo_index: number;
+  dishes: {
+    food_item_id: number;
+    recipe_name: string;
+    slot_type: string;
+    calories: number;
+  }[];
+  total_calories: number;
+  contains_doctor_pick: boolean;
+  pinned_dish_ids: number[];
+}
+
+export interface DayMealsV2 {
+  date: string;
+  meals: {
+    Breakfast: { combos: WeeklyComboV2[] };
+    Lunch: { combos: WeeklyComboV2[] };
+    Dinner: { combos: WeeklyComboV2[] };
+  };
+}
+
+export interface WeekResponseV2 {
+  generation_version: 2;
+  approval_status: string;
+  week_start: string;
+  days: DayMealsV2[];
 }
 
 // ── Computed health stats (derived from PatientProfile) ───────────────────

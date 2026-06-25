@@ -31,7 +31,7 @@ export default function PersonalInfoScreen() {
   };
 
   return (
-    <OnboardingShell step={1} totalSteps={8} title="Personal Information" onContinue={handleContinue} continueDisabled={!canContinue} onBack={async () => {
+    <OnboardingShell step={1} totalSteps={7} title="Personal Information" onContinue={handleContinue} continueDisabled={!canContinue} onBack={async () => {
       // Log out before navigating back. Without this, isAuthenticated stays true
       // and AuthGate immediately bounces the user back to onboarding, creating
       // an infinite redirect loop with no exit.
@@ -99,7 +99,7 @@ export default function PersonalInfoScreen() {
 
         {/* Target weight */}
         <View>
-          <Text style={s.label}>Target Weight</Text>
+          <Text style={s.label}>Target Weight <Text style={s.optional}>(optional)</Text></Text>
           <View style={s.inputWrap}>
             <TextInput style={[s.input, { flex: 1 }]} placeholder="68" value={target} onChangeText={setTarget} keyboardType="numeric" />
             <Text style={s.unit}>kg</Text>
@@ -114,6 +114,7 @@ export default function PersonalInfoScreen() {
 const s = StyleSheet.create({
   form:          { gap: 20 },
   label:         { fontSize: 14, fontWeight: "500", color: "#374151", marginBottom: 8 },
+  optional:      { fontWeight: "400", color: "#9CA3AF" },
   hint:          { fontSize: 12, color: "#9CA3AF", marginTop: 4 },
   dobRow:        { flexDirection: "row", gap: 8 },
   pickerWrap:    { flex: 1, borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, overflow: "hidden" },

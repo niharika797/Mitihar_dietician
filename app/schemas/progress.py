@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import Literal, Optional
 
 class MealLogCreate(BaseModel):
-    meal_type: Literal["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner", "Snack"]
+    meal_type: Literal["Breakfast", "Lunch", "Dinner", "Snack"]
     calories: float    = Field(..., ge=0, le=5000)
     protein:  Optional[float] = Field(default=0, ge=0, le=500)
     carbs:    Optional[float] = Field(default=0, ge=0, le=500)
@@ -11,6 +11,9 @@ class MealLogCreate(BaseModel):
     fiber:    Optional[float] = Field(default=0, ge=0, le=200)
     recommendation_id: Optional[int] = Field(default=None)
     # ID of the recommendation this meal was taken from. Null for custom meals.
+    food_id: Optional[int] = Field(default=None)
+    # Session 22E: food_items.id when logging a catalogued item directly (e.g. the
+    # beverage picker) — log_meal() already reads this for traceability.
 
 class WaterLogCreate(BaseModel):
     glasses: int = Field(..., ge=0, le=50)
@@ -27,7 +30,7 @@ class ActivityLogCreate(BaseModel):
     activity_type: Optional[str] = Field(default="Walking", max_length=100)
 
 class MealLogUpdate(BaseModel):
-    meal_type: Optional[Literal["Breakfast", "MorningSnacks", "Lunch", "EveningSnacks", "Dinner", "Snack"]] = None
+    meal_type: Optional[Literal["Breakfast", "Lunch", "Dinner"]] = None
     calories: Optional[float] = Field(default=None, ge=0, le=5000)
     protein: Optional[float] = Field(default=None, ge=0, le=500)
     carbs: Optional[float] = Field(default=None, ge=0, le=500)

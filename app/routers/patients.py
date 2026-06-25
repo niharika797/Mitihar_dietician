@@ -32,13 +32,6 @@ def _derive_age(dob: date) -> int:
 # ─── POST /api/v1/patients/onboarding ─────────────────────────────────────
 
 async def _generate_plan_background(patient_id: int, user_data: dict, age: int) -> None:
-    """
-    Fire-and-forget plan generation.
-    Runs in a dedicated thread (see _launch_plan_background) so that
-    CPU-heavy pandas/numpy work and synchronous Firebase calls never block
-    the main uvicorn event loop — which would stall all concurrent requests.
-    Each invocation gets its own asyncio event loop isolated from the server's.
-    """
     import logging
     _log = logging.getLogger(__name__)
     from ..core.database import AsyncSessionLocal
@@ -50,6 +43,7 @@ async def _generate_plan_background(patient_id: int, user_data: dict, age: int) 
             if existing is None:
                 diet_plan = await diet_service.generate_diet_plan(user_data, bg_session)
                 await diet_service.store_diet_plan(diet_plan, session=bg_session)
+                await bg_session.commit()
                 _log.info(f"Background: diet plan generated for patient {patient_id}")
                 try:
                     from ..services.notification_service import notify_plan_ready
@@ -65,18 +59,9 @@ async def _generate_plan_background(patient_id: int, user_data: dict, age: int) 
             _log.error(f"Background plan generation failed for patient {patient_id}: {exc}", exc_info=True)
 
 
-def _launch_plan_background(patient_id: int, user_data: dict, age: int) -> None:
-    """
-    Sync wrapper that runs _generate_plan_background in a brand-new event loop
-    inside a daemon thread.  Starlette calls sync BackgroundTasks in a thread-
-    pool executor, so this never touches the server's event loop.
-    """
+async def _launch_plan_background(patient_id: int, user_data: dict, age: int) -> None:
     import asyncio as _asyncio
-    loop = _asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(_generate_plan_background(patient_id, user_data, age))
-    finally:
-        loop.close()
+    _asyncio.create_task(_generate_plan_background(patient_id, user_data, age))
 
 
 @router.post("/onboarding", response_model=PatientProfileResponse)
@@ -133,10 +118,6 @@ async def onboard_patient(
             bmi=round(bmi, 2),
             bmr=round(bmr, 2),
             tdee=round(tdee, 2),
-            # Token 1 — only set if not already assigned (idempotent re-onboarding)
-            token_1=generate_token_1(patient.id) if not patient.token_1 else patient.token_1,
-            token_1_active=True,
-            token_1_expiry=token_1_expiry_from_now(),
             renewal_requested=False,
             expiring_soon=False,
         )
@@ -191,7 +172,7 @@ async def onboard_patient(
         "medical_conditions": list(updated.medical_conditions or []),
         "age": age,
     }
-    background_tasks.add_task(_launch_plan_background, updated.id, user_data, age)
+    background_tasks.add_task(_launch_plan_background, updated.id, user_data, age)  # async task, returns immediately
 
     return updated
 
@@ -205,35 +186,69 @@ async def activate_subscription(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Patient enters a subscription code given by their doctor.
-    Validates code → activates patient → links to doctor.
-    JWT sub_status is stale until next login — that is expected behaviour.
+    Activate subscription. Two paths:
+    - Sub-case A: Patient registered with a code (reserved) — no code needed in body.
+    - Sub-case B: Free user activating later — must supply code in body.
+    Generates token_1 and sets 30-day expiry. Issues fresh JWT.
     """
     now = datetime.now(timezone.utc)
 
-    result = await session.execute(
+    # Sub-case A: look for a code already reserved for this patient at registration
+    reserved_result = await session.execute(
         select(SubscriptionCode).where(
-            SubscriptionCode.code == body.code,
+            SubscriptionCode.reserved_by == patient.id,
             SubscriptionCode.is_used == False,
-            SubscriptionCode.expires_at > now,
         ).with_for_update()
     )
-    code_row = result.scalars().first()
+    code_row = reserved_result.scalars().first()
 
-    if code_row is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid, expired, or already-used subscription code",
+    if code_row is not None:
+        # RESERVED → CONSUMED
+        code_row.is_used = True
+        code_row.used_by_patient_id = patient.id
+        code_row.used_at = now
+    else:
+        # Sub-case B: free user supplying a code manually
+        if not body.code:
+            raise HTTPException(
+                status_code=400,
+                detail="No subscription code provided. Enter the code from your doctor.",
+            )
+
+        b_result = await session.execute(
+            select(SubscriptionCode).where(
+                SubscriptionCode.code == body.code,
+                SubscriptionCode.expires_at > now,
+            ).with_for_update()
         )
+        code_row = b_result.scalars().first()
 
-    # Consume the code exactly once — this is the only correct place to do so.
-    # Registration validated the code but deliberately left it unconsumed so a
-    # network failure at this final step cannot strand the patient with a burned code.
-    code_row.is_used = True
-    code_row.used_by_patient_id = patient.id
-    code_row.used_at = now
+        if code_row is None:
+            raise HTTPException(
+                status_code=400,
+                detail="This code does not exist or has expired. Check with your doctor.",
+            )
+        if code_row.is_used:
+            raise HTTPException(
+                status_code=400,
+                detail="This code has already been used by another account.",
+            )
+        if code_row.reserved_by is not None and code_row.reserved_by != patient.id:
+            raise HTTPException(
+                status_code=400,
+                detail="This code has already been reserved by another account.",
+            )
 
-    # Activate patient
+        # AVAILABLE (or reserved by same patient) → CONSUMED
+        code_row.reserved_by = patient.id
+        code_row.reserved_at = now
+        code_row.is_used = True
+        code_row.used_by_patient_id = patient.id
+        code_row.used_at = now
+
+    # Generate token_1 — idempotent, never overwrite if already set
+    token_1_val = patient.token_1 or generate_token_1(patient.id)
+
     await session.execute(
         update(Patient)
         .where(Patient.id == patient.id)
@@ -241,8 +256,30 @@ async def activate_subscription(
             subscription_status="active",
             doctor_id=code_row.doctor_id,
             user_type="doctor_assigned",
+            token_1=token_1_val,
+            token_1_active=True,
+            token_1_expiry=token_1_expiry_from_now(),
         )
     )
+
+    # Create PatientVisit (Token 2) if none exists for this patient+doctor pair
+    existing_pv = await session.execute(
+        select(PatientVisit).where(
+            PatientVisit.patient_id == patient.id,
+            PatientVisit.doctor_id == code_row.doctor_id,
+        )
+    )
+    if existing_pv.scalars().first() is None:
+        pv = PatientVisit(
+            patient_id=patient.id,
+            doctor_id=code_row.doctor_id,
+            token_2=generate_token_2(),
+            cycle_start=now,
+            cycle_expiry=now + timedelta(days=30),
+            visit_counter=0,
+        )
+        session.add(pv)
+
     await session.flush()
 
     result2 = await session.execute(select(Patient).where(Patient.id == patient.id))

@@ -19,7 +19,8 @@ export default function ShoppingListScreen() {
   });
 
   const toggleMut = useMutation({
-    mutationFn: (ingredient_name: string) => toggleShoppingItem(ingredient_name),
+    mutationFn: ({ name, at_home }: { name: string; at_home: boolean }) =>
+      toggleShoppingItem(name, !at_home),
     onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEYS.SHOPPING_LIST }),
     onError: () => showToast("Failed to update item", "error"),
   });
@@ -62,17 +63,17 @@ export default function ShoppingListScreen() {
                 <View style={s.catCard}>
                   {catItems.map((item, i) => (
                     <Pressable
-                      key={item.ingredient_name}
-                      onPress={() => toggleMut.mutate(item.ingredient_name)}
+                      key={item.ingredient}
+                      onPress={() => toggleMut.mutate({ name: item.ingredient, at_home: item.at_home })}
                       style={[s.itemRow, i < catItems.length - 1 && s.itemBorder]}
                     >
-                      <View style={[s.checkbox, item.have_at_home && s.checkboxChecked]}>
-                        {item.have_at_home && <Check size={12} color="#fff" strokeWidth={3} />}
+                      <View style={[s.checkbox, item.at_home && s.checkboxChecked]}>
+                        {item.at_home && <Check size={12} color="#fff" strokeWidth={3} />}
                       </View>
-                      <Text style={[s.itemName, item.have_at_home && s.itemChecked]}>
-                        {item.ingredient_name}
+                      <Text style={[s.itemName, item.at_home && s.itemChecked]}>
+                        {item.ingredient}
                       </Text>
-                      <Text style={[s.itemQty, item.have_at_home && s.itemChecked]}>
+                      <Text style={[s.itemQty, item.at_home && s.itemChecked]}>
                         {item.quantity} {item.unit}
                       </Text>
                     </Pressable>

@@ -1,14 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, TextInput,
+  View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, TextInput, useWindowDimensions,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Droplets, Footprints, Plus } from "lucide-react-native";
-import { BarChart } from "react-native-gifted-charts";
+import { Plus } from "lucide-react-native";
+import { LineChart } from "react-native-gifted-charts";
 import { QUERY_KEYS } from "../../lib/queryKeys";
-import { getTodaySummary, logWater, logSteps, logWeight, getWeightHistory } from "../../services/progress";
+import { getTodaySummary, logWeight, getWeightHistory, getStreak } from "../../services/progress";
 import { useAuthStore } from "../../store/useAuthStore";
-import { useProgressStore, selectWater, selectSteps } from "../../store/useProgressStore";
+import { useProgressStore } from "../../store/useProgressStore";
 import { BottomSheet, useToast } from "../../components/shared";
 import type { WeightEntry } from "../../types";
 
@@ -18,17 +19,11 @@ export default function ProgressScreen() {
   const qc = useQueryClient();
   const { showToast } = useToast();
   const profile = useAuthStore(s => s.profile);
-  const { setLocalWater, setLocalSteps, hydrateWeightHistory, appendWeightEntry } = useProgressStore();
+  const { hydrateSummary, hydrateWeightHistory, appendWeightEntry } = useProgressStore();
 
-  const [waterSheet,  setWaterSheet]  = useState(false);
-  const [stepsSheet,  setStepsSheet]  = useState(false);
   const [weightSheet, setWeightSheet] = useState(false);
-  const [tempWater,   setTempWater]   = useState(0);
-  const [tempSteps,   setTempSteps]   = useState("");
   const [tempWeight,  setTempWeight]  = useState("");
 
-  const water = useProgressStore(selectWater);
-  const steps = useProgressStore(selectSteps);
   const localWeight = useProgressStore(s => s.localWeight);
   const weightHistory = useProgressStore(s => s.weightHistory);
 
@@ -43,36 +38,34 @@ export default function ProgressScreen() {
     queryFn: () => getWeightHistory(30),
   });
 
+  const { data: streakData } = useQuery({
+    queryKey: QUERY_KEYS.STREAK,
+    queryFn: getStreak,
+    staleTime: 1000 * 60 * 5,
+  });
+
   React.useEffect(() => { if (weightData) hydrateWeightHistory(weightData); }, [weightData]);
+  React.useEffect(() => { if (today) hydrateSummary(today); }, [today]);
+
+  useFocusEffect(useCallback(() => {
+    qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY });
+    qc.invalidateQueries({ queryKey: QUERY_KEYS.WEIGHT_HISTORY(30) });
+  }, [qc]));
 
   const currentWeight = localWeight ?? profile?.weight_kg ?? 0;
-  const targetWeight  = profile?.target_weight_kg ?? 0;
-  const waterPct  = Math.min(100, Math.round((water / 8) * 100));
-  const stepsPct  = Math.min(100, Math.round((steps / 8000) * 100));
-  const streak    = today?.streak ?? 0;
+  const targetWeight  = profile?.target_weight_kg ?? null;
+  const streak    = streakData?.streak_days ?? 0;
 
   // chart data — last 7 weight entries (guard: weightHistory may be undefined on first load)
   const chartData: BarData[] = (Array.isArray(weightHistory) ? weightHistory : []).slice(-7).map(e => ({
     value: e.weight_kg,
     label: e.date.slice(5), // MM-DD
-    frontColor: "#1E7C45",
   }));
 
+  const { width: screenWidth } = useWindowDimensions();
+  const weightValues = chartData.map(d => d.value);
+
   // ── Mutations ─────────────────────────────────────────────────────────────
-  const waterMut = useMutation({
-    mutationFn: (g: number) => logWater(g),
-    onMutate:   (g) => setLocalWater(g),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY }); setWaterSheet(false); showToast("Water saved! 💧", "success"); },
-    onError:    () => showToast("Failed to save water", "error"),
-  });
-
-  const stepsMut = useMutation({
-    mutationFn: (s: number) => logSteps(s),
-    onMutate:   (s) => setLocalSteps(s),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY }); setStepsSheet(false); showToast("Steps logged! 👟", "success"); },
-    onError:    () => showToast("Failed to save steps", "error"),
-  });
-
   const weightMut = useMutation({
     mutationFn: (w: number) => logWeight(w),
     onSuccess:  (_, w) => {
@@ -99,25 +92,6 @@ export default function ProgressScreen() {
         <View style={s.body}>
           <Text style={s.sectionLabel}>TODAY</Text>
 
-          {/* Water card */}
-          <MetricCard
-            icon={<Droplets size={20} color="#2563EB" />}
-            label="💧 Water"
-            value={`${water} / 8 glasses`}
-            pct={waterPct}
-            barColor="#2563EB"
-            onLog={() => { setTempWater(water); setWaterSheet(true); }}
-          />
-          {/* Steps card */}
-          <MetricCard
-            icon={<Footprints size={20} color="#1E7C45" />}
-            label="👟 Steps"
-            value={steps.toLocaleString()}
-            pct={stepsPct}
-            barColor="#1E7C45"
-            note="Goal: 8,000"
-            onLog={() => { setTempSteps(steps.toString()); setStepsSheet(true); }}
-          />
           {/* Weight card */}
           <MetricCard
             icon={<Text style={{ fontSize: 20 }}>⚖️</Text>}
@@ -133,25 +107,33 @@ export default function ProgressScreen() {
           <View style={s.card}>
             <View style={s.weightGrid}>
               <StatPair label="Current" value={`${currentWeight} kg`} highlight />
-              <StatPair label="Goal"    value={`${targetWeight} kg`} />
-              <StatPair label="Left"    value={`${Math.max(0, currentWeight - targetWeight).toFixed(1)} kg`} />
+              <StatPair label="Goal"    value={targetWeight !== null ? `${targetWeight} kg` : "Not set"} />
+              <StatPair label="Left"    value={targetWeight !== null ? `${Math.abs(currentWeight - targetWeight).toFixed(1)} kg` : "—"} />
               <StatPair label="Streak"  value={`${streak}d`} />
             </View>
             {chartData.length > 1 ? (
               <View style={s.chartWrap}>
-                <BarChart
+                <LineChart
                   data={chartData}
-                  barWidth={24}
-                  spacing={16}
+                  color="#1E7C45"
+                  thickness={2.5}
+                  curved
+                  hideDataPoints={false}
+                  dataPointsColor="#1E7C45"
+                  dataPointsRadius={4}
+                  startFillColor="#DCFCE7"
+                  endFillColor="#DCFCE7"
+                  startOpacity={0.3}
+                  endOpacity={0.05}
+                  areaChart
+                  width={screenWidth - 48}
+                  height={180}
+                  yAxisTextStyle={{ fontSize: 10, color: "#9CA3AF" }}
+                  xAxisLabelTextStyle={{ fontSize: 9, color: "#9CA3AF" }}
+                  noOfSections={4}
                   hideRules
                   xAxisThickness={0}
                   yAxisThickness={0}
-                  yAxisTextStyle={{ fontSize: 9, color: "#9CA3AF" }}
-                  xAxisLabelTextStyle={{ fontSize: 9, color: "#9CA3AF" }}
-                  noOfSections={4}
-                  maxValue={Math.max(...chartData.map(d => d.value)) + 2}
-                  height={120}
-                  barBorderRadius={4}
                 />
               </View>
             ) : (
@@ -166,7 +148,7 @@ export default function ProgressScreen() {
             <Text style={s.streakSub}>Keep logging every day</Text>
             <View style={s.dotRow}>
               {STREAK_DOTS.map((done, i) => (
-                <View key={STREAK_LABELS[i]} style={s.dotCol}>
+                <View key={i} style={s.dotCol}>
                   <Text style={s.dotLabel}>{STREAK_LABELS[i]}</Text>
                   <View style={[s.dot, done && s.dotDone]} />
                 </View>
@@ -175,55 +157,6 @@ export default function ProgressScreen() {
           </View>
         </View>
       </ScrollView>
-
-      {/* ── Water Sheet ── */}
-      <BottomSheet open={waterSheet} onClose={() => setWaterSheet(false)}>
-        <View style={sh.gap}>
-          <Text style={sh.title}>Log Water Intake</Text>
-          <View style={sh.counter}>
-            <Pressable onPress={() => setTempWater(Math.max(0, tempWater - 1))} style={sh.btn}>
-              <Text style={sh.btnText}>−</Text>
-            </Pressable>
-            <Text style={sh.counterVal}>{tempWater}</Text>
-            <Pressable onPress={() => setTempWater(Math.min(20, tempWater + 1))} style={sh.btn}>
-              <Text style={sh.btnText}>+</Text>
-            </Pressable>
-          </View>
-          <View style={sh.dropRow}>
-            {Array.from({ length: 8 }, (_, i) => (
-              <Droplets key={`drop-${i}`} size={20} color={i < tempWater ? "#2563EB" : "#E5E7EB"} />
-            ))}
-          </View>
-          <Pressable style={sh.cta} onPress={() => waterMut.mutate(tempWater)} disabled={waterMut.isPending}>
-            {waterMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={sh.ctaText}>Save</Text>}
-          </Pressable>
-        </View>
-      </BottomSheet>
-
-      {/* ── Steps Sheet ── */}
-      <BottomSheet open={stepsSheet} onClose={() => setStepsSheet(false)}>
-        <View style={sh.gap}>
-          <Text style={sh.title}>Log Steps</Text>
-          <TextInput
-            style={sh.stepsInput}
-            value={tempSteps}
-            onChangeText={setTempSteps}
-            keyboardType="number-pad"
-            textAlign="center"
-            placeholder="0"
-          />
-          <View style={sh.presetRow}>
-            {[1000,2000,5000,8000].map(v => (
-              <Pressable key={v} onPress={() => setTempSteps(v.toString())} style={sh.preset}>
-                <Text style={sh.presetText}>{v.toLocaleString()}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Pressable style={sh.cta} onPress={() => stepsMut.mutate(parseInt(tempSteps)||0)} disabled={stepsMut.isPending}>
-            {stepsMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={sh.ctaText}>Save</Text>}
-          </Pressable>
-        </View>
-      </BottomSheet>
 
       {/* ── Weight Sheet ── */}
       <BottomSheet open={weightSheet} onClose={() => setWeightSheet(false)}>
@@ -331,15 +264,6 @@ const s = StyleSheet.create({
 const sh = StyleSheet.create({
   gap:         { gap: 16 },
   title:       { fontSize: 18, fontWeight: "600", color: "#111827" },
-  counter:     { flexDirection: "row", alignItems: "center", gap: 24, alignSelf: "center" },
-  btn:         { width: 48, height: 48, borderRadius: 24, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  btnText:     { fontSize: 24, color: "#fff", lineHeight: 28 },
-  counterVal:  { fontSize: 40, fontWeight: "700", color: "#111827", minWidth: 48, textAlign: "center" },
-  dropRow:     { flexDirection: "row", gap: 6, alignSelf: "center" },
-  stepsInput:  { height: 64, borderRadius: 12, borderWidth: 1.5, borderColor: "#E5E7EB", fontSize: 28, fontWeight: "700", color: "#111827" },
-  presetRow:   { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  preset:      { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#F9FAFB" },
-  presetText:  { fontSize: 13, color: "#374151", fontWeight: "500" },
   weightRow:   { flexDirection: "row", alignItems: "center", gap: 10, alignSelf: "center" },
   weightInput: { width: 100, height: 64, borderRadius: 12, borderWidth: 1.5, borderColor: "#1E7C45", fontSize: 28, fontWeight: "700", color: "#111827" },
   kgLabel:     { fontSize: 20, fontWeight: "600", color: "#374151" },

@@ -172,15 +172,32 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-04-20_
+> _This section is maintained by Claude. Last updated: 2026-06-23 (R-7A.1 complete)_
 
-**Completed this session:**
-- Ultrareview fixes: duplicate `PatientVisit` guard, TOCTOU `.with_for_update()` on `/activate`, CSP built from `CORS_ORIGINS`, dead middleware skip rules removed, Google OAuth `gdpr_consent` gate
-- Contract gap fixes: consultation fee Rs 1,200 → Rs 1,500 (`admin.py`, `doctor.py`), royalty rate 6% → 2% (`admin.py`), annual billing year boundary Jan 1 → Apr 1 (Indian financial year), per-doctor tier assignment + differential in `/admin/consultations/annual`, "Next Visit" follow-up card on patient Home tab (`index.tsx`)
+**Completed R-6.7 (Four targeted fixes):** Approve Week 422 fix, confirmed_kcal NULL fallback, weight goal "Not set", BarChart→LineChart. 0 new TS errors.
 
-**Pending / Blocked:**
-- `mitihar-frontend/apps/` Sprint 5 changes unverified (`PlanTab.tsx` rewrite — check `patientMealsPerDay` prop)
-- Dish rename script ~22% complete (`rename_checkpoint.json`), safe to re-run
-- `Billing.tsx` annual section still uses legacy field names (`royalty_pool_6pct`, `royalty_per_member_2pct`) — values are now correct (2% / 0.67%), labels updated in UI
+**Completed R-7A (Weekly Cycle Automation — Summary Layer):**
+- `app/services/weekly_summary_service.py` (new) — `compute_weekly_summary()`: idempotent, error-isolated; returns `per_day`, `dish_frequency`, `pattern`, `week_totals`; upserts to `weekly_patient_summary` when v2 rec exists
+- `GET /doctor/patients/{id}/weekly-summary` replaced: 80-line direct query → 3-line service call; optional `?week_start=` param
+- `complete_expired_plans()` Sunday 01:00 UTC cron added to `app/main.py` (`id="complete_weekly_plans", replace_existing=True`)
+- `doctorApi.ts`: `DishFrequencyEntry` + `WeeklySummaryData` interfaces; `getWeeklySummary()` optional `weekStart?` param
+- `WeeklySummaryTab.tsx`: `data.days` → `data.per_day`; Section A expandable per-day choice rows; Section B pattern chips (green=preferred, amber=skipped)
 
-**Next action:** Run `pnpm dev` in `mitihar-frontend/apps/` and verify no TypeScript errors before any frontend work.
+**Completed R-7A.1 (rec lookup fix + seed):**
+- `weekly_summary_service.py`: `_compute()` now queries `is_active=True` first; derives week window from `rec.week_start_date` (not caller-supplied Monday floor). Historical fuzzy fallback added for completed-week queries.
+- ORM class names corrected: `PatientMealChoice` / `PatientMealChoiceDish` (singular).
+- Chapati seeded ×3 (Jun 20/21/22 Lunch) → `times_selected=4`.
+- Live verification: `dish_freq=61`, `times_offered>0=61`, `preferred=[Chapati, Dahi]`, `never_selected=27`. DB cache written for rec 180.
+- R-7B thresholds confirmed testable.
+
+**Rebuild track:** R-0 → … → R-6.7 → R-7A → **R-7A.1 COMPLETE**.
+
+**Pending / Backlog:**
+- **R-7B (Generator personalization):** Read `dish_frequency` from `weekly_patient_summary` to seed `preferred_food_ids`/`avoided_food_ids` before next-week generation. **STOP — do not start until product owner confirms scope.**
+- **W3 clinical guardrail decision:** Doctor pin of 2nd main_dish → amber fires but no hard block.
+- **Pool expansion (accompaniment/one_pot):** Swap 409s on thin pools for Vegetarian/Healthy.
+- **DB creds note:** `.env` shows `mityahar_user/mityahar_password` but Docker runs `POSTGRES_USER=admin`, `POSTGRES_PASSWORD=mityahar_dev`.
+- **Pre-existing:** `full_backend_test.py` admin login crash, water-log.tsx orphaned, avoid_pcos/avoid_gout tags absent, dish rename ~22% done.
+- **R-7A browser verification pending:** WeeklySummaryTab Section A expandable rows, Section B chips in browser.
+
+**Next action:** R-7B — personalization injection into `meal_generator.py`. Do not start until product owner confirms scope.

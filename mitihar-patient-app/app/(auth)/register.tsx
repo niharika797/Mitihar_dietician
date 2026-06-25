@@ -6,7 +6,7 @@ import {
 import { useRouter } from "expo-router";
 import { ChevronLeft, Eye, EyeOff, Plus } from "lucide-react-native";
 import { useMutation } from "@tanstack/react-query";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "../../lib/storage";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useToast } from "../../components/shared";
 import { registerPatient } from "../../services/auth";
@@ -50,7 +50,7 @@ export default function RegisterScreen() {
       });
       // Persist code so disclaimer.tsx can activate the subscription after onboarding.
       if (doctorCode.trim()) {
-        await SecureStore.setItemAsync("mityahar_pending_doctor_code", doctorCode.trim());
+        await storage.setItemAsync("mityahar_pending_doctor_code", doctorCode.trim());
       }
       // Auto-login after register
       return loginPatient(email.trim(), password);

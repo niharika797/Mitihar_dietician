@@ -12,33 +12,35 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import bcrypt
 
-# Monkeypatch bcrypt for passlib compatibility
-if not hasattr(bcrypt, "__about__"):
-    bcrypt.__about__ = type("About", (), {"__version__": bcrypt.__version__})
-
 from .config import settings
 from .database import get_db
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/token")
 
 
 # ---------------------------------------------------------------------------
-# Password helpers
+# Password helpers — bypass passlib; use bcrypt directly.
+# passlib's detect_wrap_bug fires a >72-byte internal test that crashes
+# on bcrypt 4.x, breaking backend initialisation before any user code runs.
 # ---------------------------------------------------------------------------
 
+def _to_bytes(password: str) -> bytes:
+    """Encode to UTF-8 and hard-clamp to 72 bytes at a safe character boundary."""
+    encoded = password.encode("utf-8")
+    return encoded[:72] if len(encoded) > 72 else encoded
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    stored = hashed_password.encode("utf-8") if isinstance(hashed_password, str) else hashed_password
+    return bcrypt.checkpw(_to_bytes(plain_password), stored)
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_to_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
 # ---------------------------------------------------------------------------

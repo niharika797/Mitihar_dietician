@@ -6,7 +6,7 @@ import {
   Search, ChevronLeft, ChevronRight, ArrowUpRight,
   UserX, Loader2, AlertCircle, RefreshCw, CheckCircle, Clock, Copy,
 } from 'lucide-react';
-import { doctorApi, PatientSummary, PendingRenewalItem } from '../../../lib/doctorApi';
+import { doctorApi, PatientSummary, PendingRenewalItem, PendingApproval } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -74,6 +74,15 @@ export function Patients() {
     queryFn: doctorApi.getPendingRenewals,
     staleTime: 30_000,
   });
+
+  const { data: pendingApprovalsData } = useQuery({
+    queryKey: qk.pendingApprovals(),
+    queryFn: doctorApi.getPendingApprovals,
+    staleTime: 30_000,
+  });
+  const pendingApprovalIds = new Set(
+    (pendingApprovalsData?.pending ?? []).map((p: PendingApproval) => p.patient_id),
+  );
 
   const approveMut = useMutation({
     mutationFn: (patientId: number) => doctorApi.approveRenewal(patientId),
@@ -170,6 +179,7 @@ export function Patients() {
                   onView={() => navigate(`/doctor/patients/${p.id}`)}
                   onApprove={() => approveMut.mutate(p.id)}
                   approving={approveMut.isPending && approveMut.variables === p.id}
+                  hasPendingApproval={pendingApprovalIds.has(p.id)}
                 />
               ))}
             </tbody>
@@ -211,12 +221,13 @@ export function Patients() {
 
 // ── Patient row ───────────────────────────────────────────────────────────────
 function PatientRow({
-  patient, onView, onApprove, approving,
+  patient, onView, onApprove, approving, hasPendingApproval,
 }: {
   patient: PatientSummary;
   onView: () => void;
   onApprove: () => void;
   approving: boolean;
+  hasPendingApproval: boolean;
 }) {
   return (
     <tr className="border-b border-[#F3F4F6] last:border-0 hover:bg-[#F9FAFB] transition-colors">
@@ -228,7 +239,14 @@ function PatientRow({
             </span>
           </div>
           <div>
-            <p className="text-sm font-medium text-[#111827]">{patient.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-[#111827]">{patient.name}</p>
+              {hasPendingApproval && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] font-medium whitespace-nowrap">
+                  Plan pending
+                </span>
+              )}
+            </div>
             <p className="text-xs text-[#6B7280]">{patient.email}</p>
           </div>
         </div>

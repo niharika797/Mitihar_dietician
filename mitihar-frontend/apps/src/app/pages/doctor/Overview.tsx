@@ -99,7 +99,7 @@ export function DoctorOverview() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">
-            Good morning, {doctorName.split(' ').pop()} 👋
+            Good morning, Dr. {doctorName.split(' ').pop()} 👋
           </h1>
           <p className="text-sm text-[#6B7280] mt-0.5">{dayName}, {dateStr}</p>
         </div>

@@ -10,7 +10,7 @@ from ..core.database import get_db
 from ..core.security import get_current_admin, get_password_hash
 from ..models.db_models import Admin, Doctor, Patient, Recommendation, SubscriptionCode, AuditLog, FoodItem, PatientVisit
 from ..schemas.admin import (
-    CreateDoctorRequest, DoctorAdminView, PlatformStats,
+    CreateDoctorRequest, UpdateDoctorRequest, DoctorAdminView, PlatformStats,
     DoctorDetailView, AuditLogEntry, PaginatedAuditLogs,
     GenerateCodesAdminRequest, CodeAdminView, FoodAdminView,
     AdminPatientView, PaginatedAdminPatients,
@@ -69,6 +69,41 @@ async def list_doctors(
         select(Doctor).order_by(Doctor.created_at.desc())
     )
     return result.scalars().all()
+
+
+# ─── PATCH /api/v1/admin/doctors/{doctor_id} ─────────────────────────────
+
+@router.patch("/doctors/{doctor_id}", response_model=DoctorAdminView)
+async def update_doctor(
+    doctor_id: int,
+    body: UpdateDoctorRequest,
+    request: Request,
+    admin: Admin = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    result = await session.execute(select(Doctor).where(Doctor.id == doctor_id))
+    doctor = result.scalars().first()
+    if doctor is None:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    updates = body.model_dump(exclude_none=True)
+    if updates:
+        await session.execute(update(Doctor).where(Doctor.id == doctor_id).values(**updates))
+        await session.flush()
+        result = await session.execute(select(Doctor).where(Doctor.id == doctor_id))
+        doctor = result.scalars().first()
+
+    await log_action(
+        session,
+        actor_id=admin.id,
+        actor_role="admin",
+        action="update_doctor",
+        entity_type="doctor",
+        entity_id=doctor_id,
+        ip_address=request.client.host if request.client else None,
+        detail=updates,
+    )
+    return doctor
 
 
 # ─── GET /api/v1/admin/stats ──────────────────────────────────────────────

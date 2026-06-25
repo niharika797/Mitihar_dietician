@@ -72,7 +72,7 @@ class OnboardingRequest(BaseModel):
         return v
 
 class ActivationRequest(BaseModel):
-    code: str = Field(..., min_length=1)
+    code: Optional[str] = Field(default=None, min_length=1)
 
 class DoctorRequestBody(BaseModel):
     doctor_id: int = Field(..., gt=0)

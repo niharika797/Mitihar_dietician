@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, update, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,23 +13,32 @@ from ..core.database import get_db
 from ..core.limiter import limiter
 from ..core.security import get_current_doctor
 from ..services.token_service import generate_token_2, token_1_expiry_from_now, is_chargeable_visit
+from ..services.meal_generator.tag_utils import VALID_TAGS, get_avoid_tags, get_prefer_tags
+from ..services.meal_generator.meal_generator import meal_generator
 from ..models.db_models import (
     Doctor, Patient, Recommendation, PatientRequest, SubscriptionCode,
     MealLog, ProgressLog, ClinicalNote, FoodItem, PatientVisit,
     DoctorMealOverride, PendingVisitApproval,
+    PatientMealConfig, PatientDishPreferences,
+    WeeklyCombo, PatientMealChoice, WeeklyPatientSummary,
 )
+from ..services.weekly_summary_service import compute_weekly_summary
 from ..schemas.doctor import (
     PatientSummary, PaginatedPatients, RecommendationDetail,
     PlanOverrideRequest, PatientRequestDetail, RejectRequest,
     GenerateCodesRequest, SubscriptionCodeDetail,
     MealLogEntry, PatientProgressEntry, PatientLogsResponse, PatientProgressResponse,
     ClinicalNoteCreate, ClinicalNoteResponse, MealPlanNoteRequest,
-    FoodItemSummary, RecipeCreateRequest, RecipeAssignRequest,
+    FoodItemSummary, RecipeCreateRequest, RecipeAssignRequest, AddCustomDishRequest,
+    DishAction, CustomDishBody, PatchDishRequest,
     DoctorDashboardStats,
     PatientVisitResponse, RecordVisitResponse, RenewalApproveResponse,
     BulkRenewalResponse, PendingRenewalItem,
     RecordVisitRequest, FlagVisitRequest, PendingVisitApprovalResponse,
     PatientSummaryWithVisit,
+    MealConfigRequest, DishPrefRequest,
+    RecipeTagsResponse, RecipeTagsPatchRequest,
+    WeeklyPlanApproveRequest, ComboSwapRequest, WeeklyDishPatchRequest,
 )
 
 router = APIRouter()
@@ -778,6 +788,876 @@ async def add_meal_plan_note(
     return {"message": "Note added to meal", "meal_date": body.meal_date, "meal_type": body.meal_type}
 
 
+# ─── POST /api/v1/doctor/patients/{patient_id}/plan/meals/{date}/{meal_type}/add ──
+
+@router.post("/patients/{patient_id}/plan/meals/{meal_date}/{meal_type}/add")
+async def add_custom_dish_to_plan(
+    patient_id: int,
+    meal_date: str,
+    meal_type: str,
+    body: AddCustomDishRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Add a custom dish directly to a patient's meal JSONB without creating a food_items record.
+
+    Default path (add_to_library=False):
+        Writes only to recommendations.meals JSONB. No food_items row created.
+
+    Library path (add_to_library=True):
+        Creates a food_items row (submitted_for_review=True, is_verified=False)
+        then writes to JSONB with food_id set to the new row.
+        Requires serving_weight_g.
+    """
+    did = _doctor_id(request)
+
+    # Ownership check
+    owner = await session.execute(
+        select(Patient.id).where(Patient.id == patient_id, Patient.doctor_id == did)
+    )
+    if owner.scalars().first() is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # Fetch active recommendation
+    rec_result = await session.execute(
+        select(Recommendation)
+        .where(Recommendation.patient_id == patient_id, Recommendation.is_active == True)
+        .order_by(Recommendation.created_at.desc())
+    )
+    rec = rec_result.scalars().first()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No active plan found")
+
+    # v2 path: write to WeeklyCombo instead of JSONB
+    if rec.generation_version == 2:
+        from datetime import date as _date_type
+        try:
+            slot_date = _date_type.fromisoformat(meal_date)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Invalid meal_date format: {meal_date}")
+        combo_result_v2 = await session.execute(
+            select(WeeklyCombo).where(
+                WeeklyCombo.recommendation_id == rec.id,
+                WeeklyCombo.slot_date == slot_date,
+                WeeklyCombo.meal_type == meal_type,
+                WeeklyCombo.combo_index == body.combo_index,
+            )
+        )
+        combo_v2 = combo_result_v2.scalars().first()
+        if combo_v2 is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No combo found for {meal_date} {meal_type} combo_index={body.combo_index}",
+            )
+        v2_dish: dict = {
+            "food_id": None,
+            "recipe_name": body.recipe_name,
+            "slot_type": body.slot_type,
+            "calories": body.calories,
+            "scaled_calories": body.calories,
+            "factor": 1.0,
+            "protein": body.protein,
+            "carbs": body.carbs,
+            "fat": body.fat,
+            "fiber": body.fiber,
+            "is_custom_override": True,
+        }
+        if body.add_to_library:
+            if not body.serving_weight_g:
+                raise HTTPException(
+                    status_code=422,
+                    detail="serving_weight_g is required when add_to_library=True",
+                )
+            new_food_v2 = FoodItem(
+                recipe_name=body.recipe_name,
+                slot_type=body.slot_type,
+                cal_per_serving=body.calories,
+                protein_per_serving=body.protein,
+                carbs_per_serving=body.carbs,
+                fat_per_serving=body.fat,
+                fiber_per_serving=body.fiber,
+                serving_weight_g=body.serving_weight_g,
+                diet_type=body.diet_type,
+                meal_time_tags=[meal_type],
+                plan_type_tags=["Healthy"],
+                ingredients=[],
+                region_tags=[],
+                doctor_id=did,
+                source="doctor",
+                is_verified=False,
+                submitted_for_review=True,
+            )
+            session.add(new_food_v2)
+            await session.flush()
+            v2_dish["food_id"] = new_food_v2.id
+            v2_dish["is_custom_override"] = False
+        v2_dishes = list(combo_v2.dishes or [])
+        v2_dishes.append(v2_dish)
+        combo_v2.dishes = v2_dishes
+        combo_v2.total_calories = round(
+            sum(d.get("scaled_calories", d.get("calories", 0)) for d in v2_dishes), 2
+        )
+        await session.flush()
+        return {"message": "Dish added", "meal_type": meal_type, "dish": v2_dish}
+
+    meals = [dict(m) for m in (rec.meals or [])]
+
+    # Find the target meal slot
+    slot_idx = next(
+        (i for i, m in enumerate(meals)
+         if str(m.get("Date")) == meal_date and m.get("Meal Type") == meal_type),
+        None,
+    )
+    if slot_idx is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No meal slot found for {meal_date} {meal_type}",
+        )
+
+    # Build dish dict — default path: no food_id
+    # Session 22E (decision b): doctor-entered macros are the intended portion —
+    # factor 1.0, scaled_calories = calories.
+    dish: dict = {
+        "food_id": None,
+        "recipe_name": body.recipe_name,
+        "slot_type": body.slot_type,
+        "calories": body.calories,
+        "scaled_calories": body.calories,
+        "factor": 1.0,
+        "protein": body.protein,
+        "carbs": body.carbs,
+        "fat": body.fat,
+        "fiber": body.fiber,
+        "is_custom_override": True,
+    }
+
+    # Library path: create food_items record
+    if body.add_to_library:
+        if not body.serving_weight_g:
+            raise HTTPException(
+                status_code=422,
+                detail="serving_weight_g is required when add_to_library=True",
+            )
+        new_food = FoodItem(
+            recipe_name=body.recipe_name,
+            slot_type=body.slot_type,
+            cal_per_serving=body.calories,
+            protein_per_serving=body.protein,
+            carbs_per_serving=body.carbs,
+            fat_per_serving=body.fat,
+            fiber_per_serving=body.fiber,
+            serving_weight_g=body.serving_weight_g,
+            diet_type=body.diet_type,
+            meal_time_tags=[meal_type],
+            plan_type_tags=["Healthy"],
+            ingredients=[],
+            region_tags=[],
+            doctor_id=did,
+            source="doctor",
+            is_verified=False,
+            submitted_for_review=True,
+        )
+        session.add(new_food)
+        await session.flush()  # get new_food.id
+        dish["food_id"] = new_food.id
+        dish["is_custom_override"] = False
+
+    # Append dish to slot's dishes[] and recalculate totals
+    slot = dict(meals[slot_idx])
+    dishes = list(slot.get("dishes") or [])
+    dishes.append(dish)
+    slot["dishes"] = dishes
+
+    # Session 22E (Bug 2): totals on the scaled basis; legacy dishes without the
+    # new fields fall back to unscaled values (factor 1.0). "Target Calories"
+    # is the generation-time budget and is never touched by doctor edits.
+    slot["Total Calories"] = sum(d.get("scaled_calories", d.get("calories", 0)) for d in dishes)
+    slot["Total Protein"]  = sum(d.get("protein",  0) * d.get("factor", 1.0) for d in dishes)
+    slot["Total Carbs"]    = sum(d.get("carbs",    0) * d.get("factor", 1.0) for d in dishes)
+    slot["Total Fat"]      = sum(d.get("fat",      0) * d.get("factor", 1.0) for d in dishes)
+    slot["Total Fiber"]    = sum(d.get("fiber",    0) * d.get("factor", 1.0) for d in dishes)
+    slot["Menu Names"]     = " + ".join(d.get("recipe_name", "") for d in dishes)
+
+    meals[slot_idx] = slot
+
+    from sqlalchemy import update as sa_update
+    await session.execute(
+        sa_update(Recommendation)
+        .where(Recommendation.id == rec.id)
+        .values(meals=meals)
+    )
+    await session.flush()
+    return {"message": "Dish added", "meal_type": meal_type, "dish": dish}
+
+
+# ─── PATCH /api/v1/doctor/patients/{patient_id}/plan/meals/{date}/{meal_type}/dishes/{dish_index} ──
+
+@router.patch("/patients/{patient_id}/plan/meals/{meal_date}/{meal_type}/dishes/{dish_index}")
+async def patch_dish(
+    patient_id: int,
+    meal_date: str,
+    meal_type: str,
+    dish_index: int,
+    body: PatchDishRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Swap, remove, or add an individual dish within a meal slot's dishes[] array.
+
+    swap:   replace dishes[dish_index] with a different dish
+    remove: splice dishes[dish_index] out of the array
+    add:    append a new dish (dish_index ignored)
+
+    In all cases:
+      - Slot totals (Total Calories/Protein/Carbs/Fat/Fiber) are recalculated
+      - Menu Names is rebuilt from remaining dishes
+      - recommendation_id is backfilled onto the slot if null
+      - A DoctorMealOverride row is recorded with patient_id, date, meal_type, food_ids
+    """
+    from datetime import date as _date
+    did = _doctor_id(request)
+
+    # Ownership check
+    pat_result = await session.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.doctor_id == did)
+    )
+    pat = pat_result.scalars().first()
+    if pat is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # Fetch active recommendation
+    rec_result = await session.execute(
+        select(Recommendation)
+        .where(Recommendation.patient_id == patient_id, Recommendation.is_active == True)
+        .order_by(Recommendation.created_at.desc())
+    )
+    rec = rec_result.scalars().first()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No active plan found")
+
+    meals = [dict(m) for m in (rec.meals or [])]
+
+    # Find target meal slot
+    slot_idx = next(
+        (i for i, m in enumerate(meals)
+         if str(m.get("Date")) == meal_date and m.get("Meal Type") == meal_type),
+        None,
+    )
+    if slot_idx is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No meal slot found for {meal_date} {meal_type}",
+        )
+
+    slot = dict(meals[slot_idx])
+    dishes = list(slot.get("dishes") or [])
+
+    # Validate dish_index for swap/remove
+    if body.action in (DishAction.swap, DishAction.remove):
+        if dish_index < 0 or dish_index >= len(dishes):
+            raise HTTPException(
+                status_code=422,
+                detail=f"dish_index {dish_index} out of range (0–{len(dishes) - 1})",
+            )
+
+    # ── Build new dish dict (for swap/add) ────────────────────────────────
+    new_food_id: Optional[int] = None
+    new_dish: Optional[dict] = None
+
+    if body.action != DishAction.remove:
+        effective_slot_type = body.slot_type or "main_dish"
+
+        if body.replacement_food_id is not None:
+            # Use existing food_items record
+            fi_result = await session.execute(
+                select(FoodItem).where(FoodItem.id == body.replacement_food_id)
+            )
+            fi = fi_result.scalars().first()
+            if fi is None:
+                raise HTTPException(status_code=404, detail="replacement_food_id not found")
+            # Session 22E (decision b): doctor-swapped dishes are not rescaled.
+            new_dish = {
+                "food_id":    fi.id,
+                "recipe_name": fi.recipe_name,
+                "slot_type":  fi.slot_type,
+                "calories":   float(fi.cal_per_serving),
+                "scaled_calories": float(fi.cal_per_serving),
+                "factor":     1.0,
+                "protein":    float(fi.protein_per_serving),
+                "carbs":      float(fi.carbs_per_serving),
+                "fat":        float(fi.fat_per_serving),
+                "fiber":      float(fi.fiber_per_serving),
+                "is_custom_override": False,
+            }
+            new_food_id = fi.id
+
+        elif body.custom_dish is not None:
+            cd = body.custom_dish
+            # Library path: create food_items record if flagged
+            if body.flag_for_database:
+                new_food = FoodItem(
+                    recipe_name=cd.recipe_name,
+                    slot_type=effective_slot_type,
+                    cal_per_serving=cd.calories,
+                    protein_per_serving=cd.protein,
+                    carbs_per_serving=cd.carbs,
+                    fat_per_serving=cd.fat,
+                    fiber_per_serving=cd.fiber,
+                    serving_weight_g=None,
+                    diet_type="Vegetarian",
+                    meal_time_tags=[meal_type],
+                    plan_type_tags=["Healthy"],
+                    ingredients=[],
+                    region_tags=[],
+                    doctor_id=did,
+                    source="doctor",
+                    is_verified=False,
+                    submitted_for_review=True,
+                )
+                session.add(new_food)
+                await session.flush()
+                new_food_id = new_food.id
+                is_custom = False
+            else:
+                new_food_id = None
+                is_custom = True
+
+            new_dish = {
+                "food_id":    new_food_id,
+                "recipe_name": cd.recipe_name,
+                "slot_type":  effective_slot_type,
+                "calories":   cd.calories,
+                "scaled_calories": cd.calories,
+                "factor":     1.0,
+                "protein":    cd.protein,
+                "carbs":      cd.carbs,
+                "fat":        cd.fat,
+                "fiber":      cd.fiber,
+                "is_custom_override": is_custom,
+            }
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="Either replacement_food_id or custom_dish must be provided for swap/add",
+            )
+
+    # ── Apply action to dishes[] ──────────────────────────────────────────
+    old_food_id: Optional[int] = None
+
+    if body.action == DishAction.swap:
+        old_dish = dishes[dish_index]
+        old_food_id = old_dish.get("food_id")
+        dishes[dish_index] = new_dish
+
+    elif body.action == DishAction.remove:
+        old_dish = dishes[dish_index]
+        old_food_id = old_dish.get("food_id")
+        dishes.pop(dish_index)
+
+    else:  # add
+        dishes.append(new_dish)
+
+    # ── Recalculate slot totals + rebuild Menu Names ──────────────────────
+    # Session 22E (Bug 2): scaled basis with legacy fallback; Target Calories untouched.
+    slot["dishes"]          = dishes
+    slot["Total Calories"]  = sum(d.get("scaled_calories", d.get("calories", 0)) for d in dishes)
+    slot["Total Protein"]   = sum(d.get("protein",  0) * d.get("factor", 1.0) for d in dishes)
+    slot["Total Carbs"]     = sum(d.get("carbs",    0) * d.get("factor", 1.0) for d in dishes)
+    slot["Total Fat"]       = sum(d.get("fat",      0) * d.get("factor", 1.0) for d in dishes)
+    slot["Total Fiber"]     = sum(d.get("fiber",    0) * d.get("factor", 1.0) for d in dishes)
+    slot["Menu Names"]      = " + ".join(d.get("recipe_name", "") for d in dishes)
+
+    # ── Backfill recommendation_id onto slot if missing ───────────────────
+    if not slot.get("recommendation_id"):
+        slot["recommendation_id"] = rec.id
+
+    meals[slot_idx] = slot
+
+    # ── Write updated meals in single transaction ─────────────────────────
+    from sqlalchemy import update as sa_update
+    await session.execute(
+        sa_update(Recommendation)
+        .where(Recommendation.id == rec.id)
+        .values(meals=meals)
+    )
+
+    # ── Record DoctorMealOverride ─────────────────────────────────────────
+    try:
+        override_date_obj = _date.fromisoformat(meal_date)
+    except ValueError:
+        override_date_obj = _date.today()
+
+    override = DoctorMealOverride(
+        doctor_id=did,
+        patient_id=patient_id,
+        override_date=override_date_obj,
+        slot_type=slot.get("slot_type") or (new_dish.get("slot_type") if new_dish else None),
+        meal_type=meal_type,
+        rejected_food_id=old_food_id,
+        chosen_food_id=new_food_id,
+        patient_health_condition=pat.health_condition,
+        patient_medical_conditions=list(pat.medical_conditions or []),
+        patient_region=pat.region,
+        patient_diet_type=pat.diet_type,
+        patient_age_bucket=_bucket_age(pat.date_of_birth),
+        patient_bmi_bucket=_bucket_bmi(pat.bmi),
+    )
+    session.add(override)
+    await session.flush()
+
+    _past = {"swap": "swapped", "remove": "removed", "add": "added"}
+    return {
+        "message":    f"Dish {_past[body.action.value]}",
+        "meal_type":  meal_type,
+        "dish_count": len(dishes),
+        "total_calories": slot["Total Calories"],
+        "override_id": override.id,
+    }
+
+
+# ─── R-3: Weekly plan (v2 multi-combo) doctor API ──────────────────────────
+# rebuild_spec.md §3/§4 — generation_version=2 plans store 84 WeeklyCombo rows
+# (7 days x 3 meal_types x 4 combo_index) instead of the v1 Recommendation.meals
+# JSONB array. These 4 endpoints let the doctor view, approve, and edit them.
+
+@router.get("/patients/{patient_id}/weekly-plan")
+async def get_weekly_plan(
+    patient_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Active recommendation + all weekly_combos rows, grouped by
+    slot_date -> meal_type -> combo_index (4 combos each).
+
+    v1 plans (generation_version=1) have no weekly_combos rows — returns
+    200 with plan={} and combos_available=False rather than 404, since the
+    patient does have an active plan, just not in the v2 shape.
+    """
+    did = _doctor_id(request)
+    await _get_patient_for_doctor(patient_id, did, session)
+
+    rec_result = await session.execute(
+        select(Recommendation)
+        .where(Recommendation.patient_id == patient_id, Recommendation.is_active == True)
+        .order_by(Recommendation.created_at.desc())
+    )
+    rec = rec_result.scalars().first()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No active recommendation found")
+
+    if rec.generation_version == 1:
+        return {
+            "recommendation_id": rec.id,
+            "generation_version": 1,
+            "approval_status": rec.approval_status,
+            "week_start": rec.week_start_date,
+            "plan": {},
+            "combos_available": False,
+        }
+
+    combos_result = await session.execute(
+        select(WeeklyCombo)
+        .where(WeeklyCombo.recommendation_id == rec.id)
+        .order_by(WeeklyCombo.slot_date, WeeklyCombo.meal_type, WeeklyCombo.combo_index)
+    )
+
+    plan: dict = {}
+    for c in combos_result.scalars().all():
+        day = plan.setdefault(c.slot_date.isoformat(), {})
+        day.setdefault(c.meal_type, []).append({
+            "combo_id": c.id,
+            "combo_index": c.combo_index,
+            "total_calories": float(c.total_calories),
+            "slot_composition": list(c.slot_composition),
+            "dishes": c.dishes,
+        })
+
+    return {
+        "recommendation_id": rec.id,
+        "generation_version": rec.generation_version,
+        "approval_status": rec.approval_status,
+        "week_start": rec.week_start_date,
+        "plan": plan,
+    }
+
+
+@router.post("/patients/{patient_id}/weekly-plan/approve")
+async def approve_weekly_plan(
+    patient_id: int,
+    body: WeeklyPlanApproveRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Flip the active recommendation's approval_status draft -> approved, notify patient."""
+    did = _doctor_id(request)
+    pat = await _get_patient_for_doctor(patient_id, did, session)
+
+    rec_result = await session.execute(
+        select(Recommendation)
+        .where(Recommendation.patient_id == patient_id, Recommendation.is_active == True)
+        .order_by(Recommendation.created_at.desc())
+    )
+    rec = rec_result.scalars().first()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No active recommendation found")
+
+    if rec.approval_status == "approved":
+        return {"status": "already_approved"}
+
+    rec.approval_status = "approved"
+    await session.flush()
+
+    try:
+        from ..services.notification_service import send_push
+        send_push(
+            fcm_token=getattr(pat, "fcm_token", None),
+            title="Your meal plan is ready",
+            body=f"Dr. {doctor.name} has approved your weekly plan.",
+            data={"type": "weekly_plan_approved"},
+        )
+    except Exception:
+        pass  # fire-and-forget — never block approval flow
+
+    return {"status": "approved", "recommendation_id": rec.id}
+
+
+@router.post("/patients/{patient_id}/weekly-plan/combos/{combo_id}/swap")
+async def swap_weekly_combo(
+    patient_id: int,
+    combo_id: int,
+    body: ComboSwapRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Regenerate one WeeklyCombo's dishes, excluding every dish already shown
+    for this (slot_date, meal_type) across all 4 combos — including the one
+    being swapped — so the new pick is guaranteed distinct. Records a
+    doctor_meal_overrides row for the RL training corpus.
+
+    Note: doctor_meal_overrides has no recommendation_id/slot_date/old_dishes/
+    new_dishes columns (R-1 only added patient_condition_snapshot/edit_reason/
+    doctor_note). Rather than a new migration (out of this session's scope),
+    the full old/new dish payload is nested inside patient_condition_snapshot.
+    """
+    did = _doctor_id(request)
+    pat = await _get_patient_for_doctor(patient_id, did, session)
+
+    rec_result = await session.execute(
+        select(Recommendation)
+        .where(Recommendation.patient_id == patient_id, Recommendation.is_active == True)
+        .order_by(Recommendation.created_at.desc())
+    )
+    rec = rec_result.scalars().first()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No active recommendation found")
+
+    combo_result = await session.execute(
+        select(WeeklyCombo).where(WeeklyCombo.id == combo_id, WeeklyCombo.recommendation_id == rec.id)
+    )
+    combo = combo_result.scalars().first()
+    if combo is None:
+        raise HTTPException(status_code=404, detail="Combo not found for this patient's active plan")
+
+    siblings_result = await session.execute(
+        select(WeeklyCombo).where(
+            WeeklyCombo.recommendation_id == rec.id,
+            WeeklyCombo.slot_date == combo.slot_date,
+            WeeklyCombo.meal_type == combo.meal_type,
+        )
+    )
+    excluded_ids = {
+        d["food_id"] for sib in siblings_result.scalars().all() for d in (sib.dishes or [])
+    }
+
+    old_dishes = list(combo.dishes or [])
+    meal_target = float(combo.total_calories) if combo.total_calories else 0.0
+    even_pct = 1.0 / max(len(old_dishes), 1)
+    slots = [
+        {
+            "slot_type": d["slot_type"],
+            "calorie_pct": (float(d.get("scaled_calories", 0)) / meal_target) if meal_target > 0 else even_pct,
+            "required": True,
+        }
+        for d in old_dishes
+    ]
+
+    query_diet = meal_generator._derive_diet_label(old_dishes)
+    user_diet = meal_generator._normalize_diet_label(pat.diet_type)
+
+    conditions = list(pat.medical_conditions or [])
+    patient_avoid_tags = frozenset(get_avoid_tags(conditions))
+    patient_prefer_tags = frozenset(get_prefer_tags(conditions))
+
+    raw_allergies = pat.food_allergies or []
+    allergies = frozenset(
+        a.strip().lower() for a in raw_allergies if a.strip().lower() not in ("", "none")
+    )
+
+    pref_result = await session.execute(
+        select(PatientDishPreferences).where(PatientDishPreferences.patient_id == patient_id)
+    )
+    prefs = pref_result.scalars().all()
+    pinned_food_ids = {p.food_item_id for p in prefs if p.preference_type == "pin"}
+    blocked_food_ids = {p.food_item_id for p in prefs if p.preference_type == "block"}
+
+    new_dishes, ok = await meal_generator._fill_slot_dishes(
+        session, slots, query_diet, pat.region, combo.meal_type, pat.health_condition or "Healthy",
+        meal_target,
+        set(), set(), excluded_ids,
+        user_diet=user_diet,
+        allergies=allergies,
+        blocked_food_ids=frozenset(blocked_food_ids),
+        patient_avoid_tags=patient_avoid_tags,
+        patient_prefer_tags=patient_prefer_tags,
+        pinned_food_ids=pinned_food_ids,
+    )
+
+    if not ok or not new_dishes:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "pool_exhausted", "message": "No distinct dishes available for swap"},
+        )
+
+    combo.dishes = new_dishes
+    combo.slot_composition = [d["slot_type"] for d in new_dishes]
+    combo.total_calories = round(sum(d["scaled_calories"] for d in new_dishes), 2)
+    await session.flush()
+
+    override = DoctorMealOverride(
+        doctor_id=did,
+        patient_id=patient_id,
+        override_date=combo.slot_date,
+        slot_type=",".join(d["slot_type"] for d in new_dishes) or None,
+        meal_type=combo.meal_type,
+        rejected_food_id=old_dishes[0]["food_id"] if old_dishes else None,
+        chosen_food_id=new_dishes[0]["food_id"] if new_dishes else None,
+        patient_health_condition=pat.health_condition,
+        patient_medical_conditions=conditions,
+        patient_region=pat.region,
+        patient_diet_type=pat.diet_type,
+        patient_age_bucket=_bucket_age(pat.date_of_birth),
+        patient_bmi_bucket=_bucket_bmi(pat.bmi),
+        patient_condition_snapshot={
+            "conditions": conditions,
+            "avoid_tags": list(patient_avoid_tags),
+            "recommendation_id": rec.id,
+            "slot_date": combo.slot_date.isoformat(),
+            "old_dishes": old_dishes,
+            "new_dishes": new_dishes,
+        },
+        edit_reason=body.edit_reason,
+        doctor_note=body.doctor_note,
+    )
+    session.add(override)
+    await session.flush()
+
+    return {
+        "status": "swapped",
+        "combo": {
+            "combo_id": combo.id,
+            "combo_index": combo.combo_index,
+            "total_calories": float(combo.total_calories),
+            "slot_composition": list(combo.slot_composition),
+            "dishes": combo.dishes,
+        },
+    }
+
+
+@router.patch("/patients/{patient_id}/weekly-plan/combos/{combo_id}/dishes/{dish_index}")
+async def patch_weekly_combo_dish(
+    patient_id: int,
+    combo_id: int,
+    dish_index: int,
+    body: WeeklyDishPatchRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    did = _doctor_id(request)
+    pat = await _get_patient_for_doctor(patient_id, did, session)
+
+    rec_result = await session.execute(
+        select(Recommendation)
+        .where(Recommendation.patient_id == patient_id, Recommendation.is_active == True)
+        .order_by(Recommendation.created_at.desc())
+    )
+    rec = rec_result.scalars().first()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No active recommendation found")
+
+    combo_result = await session.execute(
+        select(WeeklyCombo).where(
+            WeeklyCombo.id == combo_id,
+            WeeklyCombo.recommendation_id == rec.id,
+        )
+    )
+    combo = combo_result.scalars().first()
+    if combo is None:
+        raise HTTPException(status_code=404, detail="Combo not found")
+
+    dishes = list(combo.dishes or [])
+    old_dishes = [dict(d) for d in dishes]
+
+    slot_type_val = None
+    rejected_food_id = None
+    chosen_food_id = None
+
+    # For remove: prefer food_item_id match over positional dish_index
+    target_idx = dish_index
+    if body.action == DishAction.remove and body.food_item_id is not None:
+        found = next(
+            (i for i, d in enumerate(dishes) if d.get("food_id") == body.food_item_id),
+            None,
+        )
+        if found is not None:
+            target_idx = found
+
+    if body.action == DishAction.remove:
+        if len(dishes) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove last dish from combo")
+        if target_idx < 0 or target_idx >= len(dishes):
+            raise HTTPException(status_code=422, detail=f"dish_index {target_idx} out of range")
+        slot_type_val = old_dishes[target_idx].get("slot_type")
+        rejected_food_id = old_dishes[target_idx].get("food_id")
+        dishes.pop(target_idx)
+
+    elif body.action in (DishAction.swap, DishAction.add):
+        if body.food_item_id is None:
+            raise HTTPException(status_code=422, detail="food_item_id required for swap/add")
+        fi_result = await session.execute(
+            select(FoodItem).where(FoodItem.id == body.food_item_id)
+        )
+        fi = fi_result.scalars().first()
+        if fi is None:
+            raise HTTPException(status_code=404, detail="food_item_id not found")
+        new_dish = {
+            "food_id": fi.id,
+            "recipe_name": fi.recipe_name,
+            "slot_type": fi.slot_type,
+            "calories": float(fi.cal_per_serving),
+            "scaled_calories": float(fi.cal_per_serving),
+            "factor": 1.0,
+            "protein": float(fi.protein_per_serving),
+            "carbs": float(fi.carbs_per_serving),
+            "fat": float(fi.fat_per_serving),
+            "fiber": float(fi.fiber_per_serving),
+            "is_custom_override": False,
+        }
+        if body.action == DishAction.swap:
+            if dish_index < 0 or dish_index >= len(dishes):
+                raise HTTPException(status_code=422, detail=f"dish_index {dish_index} out of range")
+            slot_type_val = old_dishes[dish_index].get("slot_type")
+            rejected_food_id = old_dishes[dish_index].get("food_id")
+            chosen_food_id = fi.id
+            dishes[dish_index] = new_dish
+        else:
+            slot_type_val = fi.slot_type
+            chosen_food_id = fi.id
+            dishes.append(new_dish)
+
+    combo.dishes = dishes
+    combo.slot_composition = [d["slot_type"] for d in dishes]
+    combo.total_calories = round(
+        sum(d.get("scaled_calories", d.get("calories", 0)) for d in dishes), 2
+    )
+    await session.flush()
+
+    conditions = list(pat.medical_conditions or [])
+    patient_avoid_tags = frozenset(get_avoid_tags(conditions))
+    override = DoctorMealOverride(
+        doctor_id=did,
+        patient_id=patient_id,
+        override_date=combo.slot_date,
+        slot_type=slot_type_val,
+        meal_type=combo.meal_type,
+        rejected_food_id=rejected_food_id,
+        chosen_food_id=chosen_food_id,
+        patient_health_condition=pat.health_condition,
+        patient_medical_conditions=conditions,
+        patient_region=getattr(pat, "region", None),
+        patient_diet_type=pat.diet_type,
+        patient_age_bucket=_bucket_age(pat.date_of_birth),
+        patient_bmi_bucket=_bucket_bmi(pat.bmi),
+        patient_condition_snapshot={
+            "conditions": conditions,
+            "avoid_tags": list(patient_avoid_tags),
+            "recommendation_id": rec.id,
+            "slot_date": combo.slot_date.isoformat(),
+            "action": body.action.value,
+            "old_dishes": old_dishes,
+            "new_dishes": dishes,
+        },
+        edit_reason=body.action.value,
+        doctor_note=body.doctor_note,
+    )
+    session.add(override)
+    await session.flush()
+
+    return {
+        "status": "updated",
+        "combo": {
+            "combo_id": combo.id,
+            "combo_index": combo.combo_index,
+            "total_calories": float(combo.total_calories),
+            "slot_composition": list(combo.slot_composition),
+            "dishes": combo.dishes,
+        },
+    }
+
+
+@router.get("/patients/{patient_id}/weekly-summary")
+async def get_weekly_summary(
+    patient_id: int,
+    request: Request,
+    week_start_param: Optional[date] = Query(None, alias="week_start"),
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Weekly adherence + dish-frequency summary. Computed on-demand, cached in weekly_patient_summary."""
+    did = _doctor_id(request)
+    await _get_patient_for_doctor(patient_id, did, session)
+
+    target_week = week_start_param or (date.today() - timedelta(days=date.today().weekday()))
+    summary_data = await compute_weekly_summary(session, patient_id, target_week)
+    return summary_data
+
+
+@router.get("/pending-approvals")
+async def get_pending_approvals(
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Lists all v2 draft plans from this doctor's patients that need approval."""
+    did = _doctor_id(request)
+    result = await session.execute(
+        select(Recommendation.id, Recommendation.patient_id, Patient.name)
+        .join(Patient, Patient.id == Recommendation.patient_id)
+        .where(
+            Recommendation.approval_status == "draft",
+            Recommendation.generation_version == 2,
+            Recommendation.is_active == True,
+            Patient.doctor_id == did,
+        )
+    )
+    rows = result.all()
+    return {
+        "pending": [
+            {"patient_id": r.patient_id, "patient_name": r.name, "recommendation_id": r.id}
+            for r in rows
+        ]
+    }
+
+
 # ─── GET /api/v1/doctor/recipes ───────────────────────────────────────────
 
 @router.get("/recipes", response_model=list[FoodItemSummary])
@@ -786,6 +1666,7 @@ async def browse_recipes(
     diet_type: Optional[str] = Query(default=None),
     meal_time: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
+    is_verified: Optional[bool] = Query(default=None, description="Filter by verification status"),
     my_library: bool = Query(default=False, description="True = show only this doctor's personal library items"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
@@ -794,7 +1675,7 @@ async def browse_recipes(
 ):
     """
     Browse food items.
-    my_library=False (default): global verified items only.
+    my_library=False (default): all items (verified + unverified), filterable by is_verified.
     my_library=True: this doctor's personal library (unverified, doctor_id=doctor.id).
     """
     did = _doctor_id(request)
@@ -806,9 +1687,10 @@ async def browse_recipes(
             FoodItem.source.in_(["doctor", "doctor_global"]),
         )
     else:
-        # Global verified dataset
-        stmt = select(FoodItem).where(FoodItem.is_verified == True)
+        stmt = select(FoodItem)
 
+    if is_verified is not None:
+        stmt = stmt.where(FoodItem.is_verified == is_verified)
     if diet_type:
         stmt = stmt.where(FoodItem.diet_type == diet_type)
     if meal_time:
@@ -843,6 +1725,16 @@ async def add_recipe(
     approves (PATCH /admin/food/{id}/approve), is_verified becomes True and the recipe
     joins the global dataset available to all doctors and the AI meal generator.
     """
+    # Dedup: return existing record if name already matches (case-insensitive, trimmed)
+    existing_result = await session.execute(
+        select(FoodItem).where(
+            func.lower(func.trim(FoodItem.recipe_name)) == body.recipe_name.strip().lower()
+        ).limit(1)
+    )
+    existing = existing_result.scalars().first()
+    if existing:
+        return existing
+
     food = FoodItem(
         recipe_name=body.recipe_name,
         slot_type=body.slot_type,
@@ -851,6 +1743,8 @@ async def add_recipe(
         carbs_per_serving=body.carbs_per_serving,
         fat_per_serving=body.fat_per_serving,
         fiber_per_serving=body.fiber_per_serving,
+        serving_weight_g=body.serving_weight_g,
+        sodium_per_serving=body.sodium_per_serving,
         diet_type=body.diet_type,
         meal_time_tags=body.meal_time_tags,
         plan_type_tags=body.plan_type_tags,
@@ -895,6 +1789,8 @@ async def assign_recipe(
         raise HTTPException(status_code=403, detail="Recipe not accessible")
 
     # Build the meal object to inject
+    # Session 22E (W6): write a 1-dish dishes[] so this path produces the same
+    # slot shape as the generator and PATCH endpoints (was dishes[]-less legacy).
     new_meal = {
         "Date": str(body.meal_date),  # date → str for JSONB compatibility
         "Meal Type": body.meal_type,
@@ -907,6 +1803,20 @@ async def assign_recipe(
         "Total Fiber": float(food.fiber_per_serving),
         "doctor_note": body.note or "",
         "food_id": recipe_id,
+        "dishes": [{
+            "food_id":    food.id,
+            "recipe_name": food.recipe_name,
+            "slot_type":  food.slot_type,
+            "diet_type":  food.diet_type,
+            "calories":   float(food.cal_per_serving),
+            "scaled_calories": float(food.cal_per_serving),
+            "factor":     1.0,
+            "protein":    float(food.protein_per_serving),
+            "carbs":      float(food.carbs_per_serving),
+            "fat":        float(food.fat_per_serving),
+            "fiber":      float(food.fiber_per_serving),
+            "is_custom_override": False,
+        }],
     }
 
     updated_count = 0
@@ -946,6 +1856,63 @@ async def assign_recipe(
         "updated_count": updated_count,
         "failed_patient_ids": failed_ids,
     }
+
+
+# ─── GET /api/v1/doctor/recipes/{food_item_id}/tags ──────────────────────────
+
+@router.get("/recipes/{food_item_id}/tags", response_model=RecipeTagsResponse)
+async def get_recipe_tags(
+    food_item_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    result = await session.execute(select(FoodItem).where(FoodItem.id == food_item_id))
+    food = result.scalars().first()
+    if food is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    return RecipeTagsResponse(
+        food_item_id=food.id,
+        recipe_name=food.recipe_name,
+        avoid_tags=list(food.avoid_tags or []),
+        prefer_tags=list(food.prefer_tags or []),
+        is_verified=food.is_verified,
+    )
+
+
+# ─── PATCH /api/v1/doctor/recipes/{food_item_id}/tags ────────────────────────
+
+@router.patch("/recipes/{food_item_id}/tags", response_model=RecipeTagsResponse)
+async def patch_recipe_tags(
+    food_item_id: int,
+    body: RecipeTagsPatchRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    unknown = (set(body.avoid_tags) | set(body.prefer_tags)) - VALID_TAGS
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown tags: {sorted(unknown)}. Valid tags: {sorted(VALID_TAGS)}",
+        )
+    result = await session.execute(select(FoodItem).where(FoodItem.id == food_item_id))
+    food = result.scalars().first()
+    if food is None:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    await session.execute(
+        update(FoodItem)
+        .where(FoodItem.id == food_item_id)
+        .values(avoid_tags=body.avoid_tags, prefer_tags=body.prefer_tags, is_verified=True)
+    )
+    await session.commit()
+    return RecipeTagsResponse(
+        food_item_id=food_item_id,
+        recipe_name=food.recipe_name,
+        avoid_tags=body.avoid_tags,
+        prefer_tags=body.prefer_tags,
+        is_verified=True,
+    )
 
 
 # ─── POST /api/v1/doctor/recipes/estimate ────────────────────────────────────
@@ -1688,3 +2655,300 @@ async def gemini_recipe_lookup(
         fat=str(data.get("fat",      "0")),
         fiber=str(data.get("fiber",   "0")),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MEAL CONFIG — per-patient TDEE split + dish pin/block
+# ═══════════════════════════════════════════════════════════════════════════
+
+_DEFAULT_MEAL_SPLIT = {"Breakfast": 25, "Lunch": 35, "Dinner": 25}
+_BUFFER_PCT = 15
+
+
+def _build_meal_config_user_data(patient: Patient) -> dict:
+    dob = patient.date_of_birth
+    if dob:
+        today = date.today()
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    else:
+        age = 30
+    return {
+        "id": str(patient.id),
+        "email": patient.email,
+        "name": patient.name,
+        "gender": patient.gender or "Other",
+        "height": float(patient.height_cm),
+        "weight": float(patient.weight_kg),
+        "activity_level": patient.activity_level or "LA",
+        "diet": patient.diet_type or "Vegetarian",
+        "health_condition": patient.health_condition or "Healthy",
+        "region": patient.region or "North",
+        "nonveg_meals_per_week": patient.nonveg_meals_per_week or 3,
+        "health_goals": list(patient.health_goals or []),
+        "medical_conditions": list(patient.medical_conditions or []),
+        "food_allergies": list(patient.food_allergies or []),
+        "age": age,
+    }
+
+
+async def _regen_plan(patient: Patient, session: AsyncSession) -> tuple[bool, str]:
+    """Generate + store a new plan. Rolls back partial writes on failure. Never raises."""
+    try:
+        from ..services.diet_plan_service import DietPlanService
+        svc = DietPlanService()
+        plan = await svc.generate_diet_plan(_build_meal_config_user_data(patient), session)
+        await svc.store_diet_plan(plan, session=session)
+        return True, ""
+    except Exception as exc:
+        await session.rollback()
+        return False, str(exc)
+
+
+async def _get_prefs_for_patient(patient_id: int, session: AsyncSession) -> tuple[list, list]:
+    """Returns (pinned_dishes, blocked_dishes) lists joined with food_items."""
+    result = await session.execute(
+        select(PatientDishPreferences, FoodItem)
+        .join(FoodItem, FoodItem.id == PatientDishPreferences.food_item_id)
+        .where(PatientDishPreferences.patient_id == patient_id)
+    )
+    pinned, blocked = [], []
+    for pref, fi in result.all():
+        entry = {
+            "food_id": fi.id,
+            "recipe_name": fi.recipe_name,
+            "calories_per_serving": float(fi.cal_per_serving),
+        }
+        if pref.preference_type == "pin":
+            pinned.append(entry)
+        else:
+            blocked.append(entry)
+    return pinned, blocked
+
+
+async def _get_patient_for_doctor(patient_id: int, doctor_id: int, session: AsyncSession) -> Patient:
+    result = await session.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.doctor_id == doctor_id)
+    )
+    patient = result.scalar_one_or_none()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return patient
+
+
+# ─── GET /api/v1/doctor/patients/{patient_id}/meal-config ─────────────────
+
+@router.get("/patients/{patient_id}/meal-config")
+async def get_meal_config(
+    patient_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    did = _doctor_id(request)
+    await _get_patient_for_doctor(patient_id, did, session)
+
+    config_result = await session.execute(
+        select(PatientMealConfig).where(PatientMealConfig.patient_id == patient_id)
+    )
+    config = config_result.scalar_one_or_none()
+
+    if config and config.meal_split_override:
+        split = config.meal_split_override
+    else:
+        split = _DEFAULT_MEAL_SPLIT
+
+    pinned, blocked = await _get_prefs_for_patient(patient_id, session)
+    return {
+        "meal_split": split,
+        "buffer_pct": _BUFFER_PCT,
+        "pinned_dishes": pinned,
+        "blocked_dishes": blocked,
+    }
+
+
+# ─── PATCH /api/v1/doctor/patients/{patient_id}/meal-config ───────────────
+
+@router.patch("/patients/{patient_id}/meal-config")
+async def patch_meal_config(
+    patient_id: int,
+    body: MealConfigRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    did = _doctor_id(request)
+    patient = await _get_patient_for_doctor(patient_id, did, session)
+
+    if body.meal_split is not None:
+        required = {"Breakfast", "Lunch", "Dinner"}
+        if set(body.meal_split.keys()) != required or \
+                any(v <= 0 for v in body.meal_split.values()) or \
+                sum(body.meal_split.values()) != 85:
+            raise HTTPException(
+                status_code=422,
+                detail="Meal split must sum to 85. The remaining 15% is the passive buffer.",
+            )
+
+    if body.meal_split is None:
+        existing = (await session.execute(
+            select(PatientMealConfig).where(PatientMealConfig.patient_id == patient_id)
+        )).scalar_one_or_none()
+        if existing:
+            await session.delete(existing)
+        effective_split = _DEFAULT_MEAL_SPLIT
+    else:
+        stmt = pg_insert(PatientMealConfig).values(
+            patient_id=patient_id,
+            meal_split_override=body.meal_split,
+        ).on_conflict_do_update(
+            index_elements=["patient_id"],
+            set_={
+                "meal_split_override": body.meal_split,
+                "updated_at": func.now(),
+            },
+        )
+        await session.execute(stmt)
+        effective_split = body.meal_split
+
+    # Commit config before attempting regen so config is safe even if regen fails
+    await session.commit()
+
+    plan_regenerated = False
+    regen_error = ""
+    if body.regenerate_plan:
+        plan_regenerated, regen_error = await _regen_plan(patient, session)
+
+    pinned, blocked = await _get_prefs_for_patient(patient_id, session)
+    response = {
+        "config_saved": True,
+        "plan_regenerated": plan_regenerated,
+        "meal_split": effective_split,
+        "buffer_pct": _BUFFER_PCT,
+        "pinned_dishes": pinned,
+        "blocked_dishes": blocked,
+    }
+    if regen_error:
+        response["error"] = regen_error
+    return response
+
+
+# ─── POST /api/v1/doctor/patients/{patient_id}/meal-config/pin ────────────
+
+@router.post("/patients/{patient_id}/meal-config/pin")
+async def pin_dish(
+    patient_id: int,
+    body: DishPrefRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    did = _doctor_id(request)
+    await _get_patient_for_doctor(patient_id, did, session)
+
+    food = (await session.execute(
+        select(FoodItem).where(FoodItem.id == body.food_id)
+    )).scalar_one_or_none()
+    if not food:
+        raise HTTPException(status_code=404, detail="Food item not found")
+
+    stmt = pg_insert(PatientDishPreferences).values(
+        patient_id=patient_id,
+        food_item_id=body.food_id,
+        preference_type="pin",
+        added_by_doctor_id=doctor.id,
+    ).on_conflict_do_update(
+        constraint="uq_patient_dish_preference",
+        set_={"preference_type": "pin", "added_by_doctor_id": doctor.id},
+    )
+    await session.execute(stmt)
+
+    pinned, _ = await _get_prefs_for_patient(patient_id, session)
+    return {"pinned_dishes": pinned}
+
+
+# ─── POST /api/v1/doctor/patients/{patient_id}/meal-config/block ──────────
+
+@router.post("/patients/{patient_id}/meal-config/block")
+async def block_dish(
+    patient_id: int,
+    body: DishPrefRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    did = _doctor_id(request)
+    await _get_patient_for_doctor(patient_id, did, session)
+
+    food = (await session.execute(
+        select(FoodItem).where(FoodItem.id == body.food_id)
+    )).scalar_one_or_none()
+    if not food:
+        raise HTTPException(status_code=404, detail="Food item not found")
+
+    stmt = pg_insert(PatientDishPreferences).values(
+        patient_id=patient_id,
+        food_item_id=body.food_id,
+        preference_type="block",
+        added_by_doctor_id=doctor.id,
+    ).on_conflict_do_update(
+        constraint="uq_patient_dish_preference",
+        set_={"preference_type": "block", "added_by_doctor_id": doctor.id},
+    )
+    await session.execute(stmt)
+
+    _, blocked = await _get_prefs_for_patient(patient_id, session)
+    return {"blocked_dishes": blocked}
+
+
+# ─── DELETE /api/v1/doctor/patients/{patient_id}/meal-config/pin/{food_id} ─
+
+@router.delete("/patients/{patient_id}/meal-config/pin/{food_id}")
+async def unpin_dish(
+    patient_id: int,
+    food_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    did = _doctor_id(request)
+    await _get_patient_for_doctor(patient_id, did, session)
+
+    pref = (await session.execute(
+        select(PatientDishPreferences).where(
+            PatientDishPreferences.patient_id == patient_id,
+            PatientDishPreferences.food_item_id == food_id,
+            PatientDishPreferences.preference_type == "pin",
+        )
+    )).scalar_one_or_none()
+    if pref:
+        await session.delete(pref)
+
+    pinned, _ = await _get_prefs_for_patient(patient_id, session)
+    return {"pinned_dishes": pinned}
+
+
+# ─── DELETE /api/v1/doctor/patients/{patient_id}/meal-config/block/{food_id}
+
+@router.delete("/patients/{patient_id}/meal-config/block/{food_id}")
+async def unblock_dish(
+    patient_id: int,
+    food_id: int,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    did = _doctor_id(request)
+    await _get_patient_for_doctor(patient_id, did, session)
+
+    pref = (await session.execute(
+        select(PatientDishPreferences).where(
+            PatientDishPreferences.patient_id == patient_id,
+            PatientDishPreferences.food_item_id == food_id,
+            PatientDishPreferences.preference_type == "block",
+        )
+    )).scalar_one_or_none()
+    if pref:
+        await session.delete(pref)
+
+    _, blocked = await _get_prefs_for_patient(patient_id, session)
+    return {"blocked_dishes": blocked}

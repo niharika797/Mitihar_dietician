@@ -389,7 +389,7 @@ export function DoctorSettings() {
                     <table className="w-full">
                       <thead className="sticky top-0 bg-white">
                         <tr className="border-b border-[#E5E7EB]">
-                          {['Code', 'Status', 'Expires', 'Used At', ''].map(h => (
+                          {['Code', 'Status', 'Expires', 'Issued At', 'Used At', ''].map(h => (
                             <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280]">
                               {h}
                             </th>
@@ -415,6 +415,9 @@ export function DoctorSettings() {
                             </td>
                             <td className="px-4 py-3 text-sm text-[#6B7280]">
                               {formatDate(c.expires_at)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-[#6B7280]">
+                              {formatDate(c.created_at)}
                             </td>
                             <td className="px-4 py-3 text-sm text-[#6B7280]">
                               {formatDate(c.used_at)}

@@ -10,6 +10,8 @@ import { useAuthStore } from "../../store/useAuthStore";
 import { useToast } from "../../components/shared";
 import { loginPatient } from "../../services/auth";
 import { getMyProfile } from "../../services/profile";
+import { storage } from "../../lib/storage";
+import { SECURE_KEYS } from "../../lib/axios";
 
 // ── Mitihar leaf logo (SVG-via-react-native-svg) ──────────────────────────
 import Svg, { Ellipse, Path } from "react-native-svg";
@@ -52,6 +54,9 @@ export default function LoginScreen() {
   const loginMut = useMutation({
     mutationFn: async () => {
       const tokens = await loginPatient(email.trim(), password);
+      // Store access token before fetching profile so the axios interceptor
+      // can attach it as Bearer. loginSuccess will store it again — idempotent.
+      await storage.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, tokens.access_token);
       const profile = await getMyProfile();
       return { tokens, profile };
     },

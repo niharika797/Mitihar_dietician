@@ -10,13 +10,14 @@ export async function getTodaySummary(): Promise<TodaySummary> {
 // ── POST /progress/log/meal ────────────────────────────────────────────────────
 export interface LogMealPayload {
   meal_type: string;
-  calories_consumed: number;
-  protein_g?: number;
-  carbs_g?: number;
-  fat_g?: number;
-  fiber_g?: number;
+  calories: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  fiber?: number;
   logged_date?: string;
   notes?: string;
+  food_id?: number;   // Session 22E: links a logged item to its food_items row
 }
 
 export async function logMeal(payload: LogMealPayload): Promise<MealLogEntry> {

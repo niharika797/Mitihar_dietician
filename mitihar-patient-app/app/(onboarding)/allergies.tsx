@@ -5,7 +5,7 @@ import { AlertTriangle, Check } from "lucide-react-native";
 import { OnboardingShell, ChipGrid } from "../../components/shared";
 import { useOnboardingStore } from "../../store/useOnboardingStore";
 
-const ALLERGIES = ["Dairy / Lactose","Gluten / Wheat","Tree Nuts","Shellfish / Fish","Eggs","Soy","Nightshades","Peanuts"];
+const ALLERGIES = ["Dairy / Lactose","Gluten / Wheat","Tree Nuts","Shellfish / Fish","Eggs","Soy","Peanuts"];
 
 export default function AllergiesScreen() {
   const router = useRouter();
@@ -29,7 +29,7 @@ export default function AllergiesScreen() {
   const noneSelected = allergies.includes("None");
 
   return (
-    <OnboardingShell step={5} totalSteps={8} title="Food Allergies & Intolerances" onContinue={handleContinue} continueDisabled={!canContinue}>
+    <OnboardingShell step={5} totalSteps={7} title="Food Allergies & Intolerances" onContinue={handleContinue} continueDisabled={!canContinue}>
       <View style={s.form}>
         {/* Warning */}
         <View style={s.warning}>

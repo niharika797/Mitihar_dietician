@@ -9,7 +9,6 @@ export default function OnboardingLayout() {
       <Stack.Screen name="medical-conditions" />
       <Stack.Screen name="allergies" />
       <Stack.Screen name="dietary-preferences" />
-      <Stack.Screen name="lifestyle" />
       <Stack.Screen name="disclaimer" />
       <Stack.Screen name="complete" />
     </Stack>

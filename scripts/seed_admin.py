@@ -26,7 +26,7 @@ if not ADMIN_PASSWORD:
     )
 
 from app.core.database import AsyncSessionLocal
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password
 from app.models.db_models import Admin
 
 
@@ -36,7 +36,10 @@ async def seed():
         result = await s.execute(select(Admin).where(Admin.email == ADMIN_EMAIL))
         existing = result.scalars().first()
         if existing:
-            # Update password and reset any lockout state
+            if verify_password(ADMIN_PASSWORD, existing.hashed_password):
+                print(f"Admin already exists with correct password: {ADMIN_EMAIL}")
+                return
+            # Password mismatch — update hash and reset any lockout state
             await s.execute(
                 update(Admin).where(Admin.email == ADMIN_EMAIL).values(
                     hashed_password=get_password_hash(ADMIN_PASSWORD),

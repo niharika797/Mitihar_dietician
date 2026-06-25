@@ -56,13 +56,31 @@ async def clean() -> None:
         except Exception:
             print("  - audit_logs not found, skipping")
 
+        # Tables added in later migrations — skip gracefully if not present yet
+        for table in [
+            "meal_ratings",
+            "patient_meal_choices",
+            "patient_meal_config",
+            "patient_dish_preferences",
+            "doctor_meal_overrides",
+            "pending_visit_approvals",
+            "password_reset_tokens",
+        ]:
+            try:
+                await session.execute(text(f"DELETE FROM {table}"))
+                print(f"  ✓ {table} cleared")
+            except Exception:
+                print(f"  - {table} not found, skipping")
+
         # Reset subscription codes BEFORE deleting patients
-        # (subscription_codes.used_by_patient_id has a FK to patients)
+        # (subscription_codes.reserved_by and used_by_patient_id both FK to patients)
         await session.execute(text("""
             UPDATE subscription_codes
             SET is_used = FALSE,
                 used_at = NULL,
-                used_by_patient_id = NULL
+                used_by_patient_id = NULL,
+                reserved_by = NULL,
+                reserved_at = NULL
         """))
         print("  ✓ subscription_codes reset to available")
 
@@ -76,6 +94,9 @@ async def clean() -> None:
 
         await session.commit()
         print("\nDone! Clean start ready.")
+        print("\n⚠  WARNING: Test patients have been deleted.")
+        print("   Run the following to restore them with Test@1234:")
+        print("   python -m scripts.seed_test_patients")
 
 
 if __name__ == "__main__":

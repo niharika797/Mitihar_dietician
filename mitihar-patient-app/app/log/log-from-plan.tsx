@@ -9,6 +9,7 @@ import { logMeal } from "../../services/progress";
 import { getWeeklyPlan } from "../../services/meals";
 import { useToast } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
+import type { WeeklyPlan } from "../../types";
 
 export default function LogFromPlanScreen() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function LogFromPlanScreen() {
   const { date, type } = useLocalSearchParams<{ date: string; type: string }>();
 
   const { data: plan } = useQuery({ queryKey: QUERY_KEYS.WEEK_PLAN, queryFn: getWeeklyPlan });
-  const meal = plan?.[date ?? ""]?.find(m => m["Meal Type"] === type);
+  const meal = (plan as WeeklyPlan | undefined)?.[date ?? ""]?.find(m => m["Meal Type"] === type);
 
   const [calories, setCalories] = useState(String(Math.round(meal?.["Total Calories"] ?? 0)));
   const [protein,  setProtein]  = useState(String(Math.round(meal?.["Total Protein"]  ?? 0)));
@@ -28,12 +29,12 @@ export default function LogFromPlanScreen() {
 
   const saveMut = useMutation({
     mutationFn: () => logMeal({
-      meal_type:         (type ?? "lunch").toLowerCase(),
-      calories_consumed: parseFloat(calories) || 0,
-      protein_g:         parseFloat(protein)  || undefined,
-      carbs_g:           parseFloat(carbs)    || undefined,
-      fat_g:             parseFloat(fat)      || undefined,
-      fiber_g:           parseFloat(fiber)    || undefined,
+      meal_type: (type ?? "Lunch"),
+      calories:  parseFloat(calories) || 0,
+      protein:   parseFloat(protein)  || undefined,
+      carbs:     parseFloat(carbs)    || undefined,
+      fat:       parseFloat(fat)      || undefined,
+      fiber:     parseFloat(fiber)    || undefined,
       notes:             notes || undefined,
     }),
     onSuccess: () => {

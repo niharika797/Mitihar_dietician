@@ -117,6 +117,42 @@ async def _deactivate_expired_patients() -> None:
             _log.error(f"[cron] deactivate_expired_patients failed: {exc}", exc_info=True)
 
 
+# ─── Weekly cron (Sunday 01:00 UTC): snapshot completed week summaries ────────
+async def complete_expired_plans() -> None:
+    """
+    Run once per week (Sunday 01:00 UTC) for the week that just ended (Mon–Sun).
+    Calls compute_weekly_summary() for every patient who had a v2 plan last week,
+    so the summary is cached before R-7B reads it to seed next-week generation.
+    """
+    from datetime import date, timedelta
+    from sqlalchemy import select
+    from .models.db_models import Recommendation
+    from .services.weekly_summary_service import compute_weekly_summary
+
+    today = datetime.now(timezone.utc).date()
+    last_monday = today - timedelta(days=today.weekday() + 7)
+
+    async with AsyncSessionLocal() as session:
+        try:
+            result = await session.execute(
+                select(Recommendation.patient_id)
+                .where(
+                    Recommendation.generation_version == 2,
+                    Recommendation.week_start_date == last_monday,
+                )
+                .distinct()
+            )
+            patient_ids = [row[0] for row in result.all()]
+            _log.info("[cron] complete_expired_plans: %d patients for week %s", len(patient_ids), last_monday)
+            for pid in patient_ids:
+                try:
+                    await compute_weekly_summary(session, pid, last_monday)
+                except Exception as exc:
+                    _log.error("[cron] complete_expired_plans: patient %s failed: %s", pid, exc, exc_info=True)
+        except Exception as exc:
+            _log.error("[cron] complete_expired_plans: outer failure: %s", exc, exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── T1-8: COOKIE_SECURE startup guard ────────────────────────────────────────
@@ -140,8 +176,14 @@ async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler()
     scheduler.add_job(_flag_expiring_patients,      CronTrigger(hour=1, minute=0))
     scheduler.add_job(_deactivate_expired_patients, CronTrigger(hour=1, minute=5))
+    scheduler.add_job(
+        complete_expired_plans,
+        CronTrigger(day_of_week="sun", hour=1, minute=0),
+        id="complete_weekly_plans",
+        replace_existing=True,
+    )
     scheduler.start()
-    _log.info("APScheduler started — daily token crons registered")
+    _log.info("APScheduler started — daily token crons + weekly summary cron registered")
     yield
     scheduler.shutdown(wait=False)
     _log.info("APScheduler shut down")

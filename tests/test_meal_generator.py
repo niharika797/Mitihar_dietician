@@ -14,11 +14,11 @@ def test_meal_plan_targets_initialization():
     
     ctx = MealPlanTargets(
         targets=targets,
-        meal_targets={"Breakfast": 500, "Lunch": 700, "Dinner": 500, "MorningSnacks": 150, "EveningSnacks": 150},
-        protein_targets={"Breakfast": 25, "Lunch": 35, "Dinner": 25, "MorningSnacks": 7.5, "EveningSnacks": 7.5},
-        carb_targets={"Breakfast": 62.5, "Lunch": 87.5, "Dinner": 62.5, "MorningSnacks": 18.75, "EveningSnacks": 18.75},
-        fiber_targets={"Breakfast": 7.5, "Lunch": 10.5, "Dinner": 7.5, "MorningSnacks": 2.25, "EveningSnacks": 2.25},
-        fat_targets={"Breakfast": 15, "Lunch": 21, "Dinner": 15, "MorningSnacks": 4.5, "EveningSnacks": 4.5},
+        meal_targets={"Breakfast": 500, "Lunch": 700, "Dinner": 500},
+        protein_targets={"Breakfast": 25, "Lunch": 35, "Dinner": 25},
+        carb_targets={"Breakfast": 62.5, "Lunch": 87.5, "Dinner": 62.5},
+        fiber_targets={"Breakfast": 7.5, "Lunch": 10.5, "Dinner": 7.5},
+        fat_targets={"Breakfast": 15, "Lunch": 21, "Dinner": 15},
         user_data=user_data
     )
     
