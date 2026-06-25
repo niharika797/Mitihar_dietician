@@ -141,13 +141,13 @@ This creates all tables in the database. Run this every time you pull new migrat
 
 **Option A — Restore team snapshot (recommended, fast):**
 
-Restores the full dev DB: food items, recipes, ingredients, patients, doctors, admins — all matching IDs across the team.
+> Run this INSTEAD OF `alembic upgrade head` (step 4) — the snapshot includes schema + data together. If you already ran alembic, that's fine too — constraint warnings are harmless, data still loads.
 
 ```powershell
 docker exec -i mityahar_postgres psql -U admin -d mityahar_db < db-backups\mityahar_2026-06-24.sql
 ```
 
-> This takes ~30–60 seconds. Once done, skip to step 6.
+Takes ~30–60 seconds. Restores: food items, recipes, ingredients, patients, doctors, admins — matching IDs across the team. Skip to step 6 when done.
 
 **Option B — Run seed scripts from scratch (slower, ~5 min):**
 
@@ -157,7 +157,7 @@ python -m scripts.seed_food_items     # base food/nutrition data
 python -m scripts.seed_6k_recipes     # 6000+ recipes (takes ~2-3 min)
 ```
 
-> `seed_6k_recipes` is slow on first run. It will print progress. Let it finish.
+> `seed_6k_recipes` is slow on first run — prints progress, let it finish.
 > Use Option B only if the snapshot is outdated or you want a clean slate.
 
 ---
