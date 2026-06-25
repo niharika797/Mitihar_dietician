@@ -119,8 +119,7 @@ app/graphify-out/
 # Backup and temporary scripts
 scripts/backup_food_items.py
 
-# ── Database backups (contain real data — never commit) ───────────────────────
+# ── Database backups (shared with team — dev/test data only, no production data) ──
 db-backups/*.sql.gz
-db-backups/mityahar_*.sql
 
 
