@@ -1,5 +1,5 @@
 # Mityahar — Deployment Checklist
-**Last updated:** 2026-07-02  
+**Last updated:** 2026-07-02 (chaos test + migration audit + backup script + APScheduler analysis)  
 **Branch:** feature/api-remediation-v0.2  
 **Status:** Local verification complete. GCP deployment not yet started.
 
@@ -61,9 +61,43 @@
 
 - [ ] **[HIGH] Dockerfile missing** — Cloud Run requires a container image; no Dockerfile exists in the repo. Deploy is hard-blocked.
 
-- [ ] **[HIGH] No rollback plan** — no `alembic downgrade` procedure documented, no DB snapshot strategy, no blue/green or canary deployment plan. A failed migration has no documented recovery path.
+- [x] **Migration reversibility audit — DONE (Jul 2)**  
+  All 33 migrations have non-trivial `downgrade()`. One broken path found and fixed:  
+  `93ad56085772_remove_plan_type_tags` — downgrade was adding `TEXT[] NOT NULL` with no default to a populated table → `NotNullViolationError`. Fixed: `server_default='{}'` backfills existing rows, then `alter_column` removes the default (matches original schema).  
+  Downgrade cycle tested live: `1a2b3c4d5e6f` → `b5c6d7e8f9a0` → `93ad56085772` → `b4c5d6e7f8a9` → `upgrade head` — all succeeded without error.  
+  **Remaining gap**: `f2a3b4c5d6e7` (weekly_combos) downgrade drops the table — correct DDL but would delete all combo data. Treat as data-destructive; only run with a DB snapshot first.
 
-- [ ] **[HIGH] APScheduler in Cloud Run** — APScheduler runs in-process with FastAPI. If `min-instances=0` (Cloud Run default), the process is killed on idle → cron jobs (01:00 UTC subscription expiry flag, 01:05 UTC deactivation) never fire on idle nights. Fix: set `min-instances=1` in Cloud Run config, OR migrate cron to Cloud Scheduler HTTP triggers against dedicated `/internal/cron/expire-tokens` and `/internal/cron/flag-expiring` endpoints.
+- [x] **Pre-migration DB backup script — IMPLEMENTED (Jul 2)**  
+  `scripts/pre_migrate_backup.py` — runs `pg_dump -Fc` inside Docker container (no local pg_dump needed), writes `backups/pre_migrate_<timestamp>.dump` (1.4 MB for current DB), then runs `alembic upgrade head`. Restore command printed on success.  
+  GCP Cloud SQL procedure documented in script docstring: Console → Backups → Create backup before migration; restore via `gcloud sql backups restore` or Console Restore button.  
+  Usage: `POSTGRES_USER=admin python -m scripts.pre_migrate_backup`
+
+- [ ] **[HIGH] APScheduler in Cloud Run — DECISION NEEDED (Jul 2)**  
+
+  **Jobs registered in `app/main.py` lifespan:**
+  | Job | Schedule | Consequence of missed run |
+  |-----|----------|--------------------------|
+  | `_flag_expiring_patients` | daily 01:00 UTC | Expiring patients not notified; `expiring_soon` flag stale for 24h. No data loss. **MEDIUM** |
+  | `_deactivate_expired_patients` | daily 01:05 UTC | Expired patients keep paid API access for up to 24h. Billing/trust risk. **HIGH** |
+  | `complete_expired_plans` (weekly summary cache) | Sun 01:00 UTC | Doctor weekly-summary view stale until next Sunday or on-demand call. No data loss. **LOW** |
+
+  **Root problem:** APScheduler lives in-process. Cloud Run `min-instances=0` (default) scales the process to zero on idle nights. The 01:00–01:05 UTC window falls during low-traffic hours → process likely asleep → both jobs silently skipped.
+
+  **Option A — min-instances=1**  
+  - Set `--min-instances=1` in Cloud Run service config.  
+  - Cost: ~$5–15/month for a single always-warm instance (depends on memory/CPU config).  
+  - Zero code changes. APScheduler fires as-is.  
+  - Downside: wastes capacity overnight; multiple instances each run their own scheduler (duplicate job fires if scale > 1 — currently not guarded against).
+
+  **Option B — Cloud Scheduler + dedicated HTTP endpoints**  
+  - Remove APScheduler. Add two internal routes: `POST /internal/cron/flag-expiring` and `POST /internal/cron/deactivate-expired` (protected by `X-CloudScheduler-JobName` header or a shared secret).  
+  - Cloud Scheduler fires HTTP POSTs at 01:00 and 01:05 UTC. Cloud Run scales up for the request, runs the job, scales back to zero.  
+  - Cost: Cloud Scheduler is free tier (3 jobs/free). No always-warm instance needed.  
+  - Downside: 2–3 hours of implementation work; cold-start latency (~1–2s) on the cron request is acceptable.  
+  - Also eliminates the duplicate-fires-on-scale-out problem.
+
+  **Recommendation:** Option B for the `_deactivate_expired_patients` job (HIGH business risk, wrong to silently miss). Option A is acceptable as a launch-day shortcut if implementation time is constrained, but Option B should be the target state before the first paid subscriber activates.  
+  **Decision required from user before GCP deploy.**
 
 - [ ] **[HIGH] No staging environment** — all testing has been local Docker; deploying directly to production with no staging rehearsal. Any configuration error (wrong DB URL, bad CORS, missing env var) surfaces live.
 
@@ -73,7 +107,12 @@
 
 - [ ] SECRET_KEY rotation procedure — no documented plan for rotating the JWT signing key; rotation immediately invalidates all active sessions for all users
 
-- [ ] Chaos + load combined test — Redis failure under concurrent 200-user load never tested together; Redis isolated test (PASS 1) and load test (PASS 5) run separately
+- [x] **Chaos + combined load test — PASS (Jul 2)**  
+  40 concurrent httpx requests × 4 phases: baseline 0%, Redis-kill window 0%, DB-terminate window 0%, combined 0% failure.  
+  FailOpenLimiter held under concurrent load — no spike, no pileup, no recovery lag.  
+  SQLAlchemy pool recovered instantly after pg_terminate_backend (20 connections killed) — zero request failures.  
+  Combined Redis+DB chaos produced no additive failure mode.  
+  Evidence: `tests/performance/chaos_test.py`, `tests/performance/reports/chaos_report.json`
 
 - [ ] APScheduler cron smoke test in container — jobs untested in containerized environment; `startup` event registration may behave differently under gunicorn/uvicorn workers
 
