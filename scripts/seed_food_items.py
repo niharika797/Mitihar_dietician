@@ -199,7 +199,6 @@ def main():
                     diet_type=diet_type,
                     region_tags=region_tags,
                     meal_time_tags=config["meal_time_tags"],
-                    plan_type_tags=plan_types,
                     ingredients=ingredients,
                     instructions="",
                     source="excel",

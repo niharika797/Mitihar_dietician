@@ -27,7 +27,6 @@ class FoodItem(Base):
     diet_type           = Column(String(30), nullable=False)   # see diet values below
     region_tags         = Column(ARRAY(Text), nullable=False, default=[])
     meal_time_tags      = Column(ARRAY(Text), nullable=False, default=[])
-    plan_type_tags      = Column(ARRAY(Text), nullable=False, default=["Healthy", "Diabetic-Friendly", "Gym-Friendly"])
     ingredients         = Column(JSONB, nullable=False, default=[])  # [{"name": str, "amount_g": float}]
     source              = Column(String(20), nullable=False, default="manual")
     nutrition_source    = Column(Text, nullable=False, server_default="manual")
@@ -54,7 +53,6 @@ Index("idx_fi_doctor",     FoodItem.doctor_id)
 # GIN indexes for ARRAY columns — declared here so Alembic stops flagging them as drift
 Index("idx_fi_regions",    FoodItem.region_tags,   postgresql_using="gin")
 Index("idx_fi_meal_times", FoodItem.meal_time_tags, postgresql_using="gin")
-Index("idx_fi_plan_types", FoodItem.plan_type_tags, postgresql_using="gin")
 Index("idx_fi_avoid_tags",  FoodItem.avoid_tags,     postgresql_using="gin")
 Index("idx_fi_prefer_tags", FoodItem.prefer_tags,    postgresql_using="gin")
 

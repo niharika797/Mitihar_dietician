@@ -236,6 +236,7 @@ export interface DishPreference {
   food_id: number;
   recipe_name: string;
   calories_per_serving: number;
+  slot_type: string;
 }
 
 export interface MealConfigResponse {

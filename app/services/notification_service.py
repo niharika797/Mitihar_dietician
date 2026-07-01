@@ -150,3 +150,28 @@ def notify_renewal_approved(patient, doctor_name: str) -> None:
         body=f"Dr. {doctor_name} approved your renewal. 30 more days active.",
         data={"type": "renewal_approved"},
     )
+
+
+def notify_weekly_plan_approved(patient, doctor_name: str) -> None:
+    """
+    Called when a doctor approves a patient's weekly meal plan recommendation.
+    """
+    send_push(
+        fcm_token=getattr(patient, "fcm_token", None),
+        title="Your meal plan is ready 🥗",
+        body=f"Dr. {doctor_name} has approved your weekly plan.",
+        data={"type": "weekly_plan_approved"},
+    )
+
+
+def notify_visit_flagged(patient, doctor_name: str) -> None:
+    """
+    Called when a doctor flags a visit (patient forgot phone / no Token 2).
+    Patient must confirm the pending visit approval in the app.
+    """
+    send_push(
+        fcm_token=getattr(patient, "fcm_token", None),
+        title="Visit confirmation needed 📋",
+        body=f"Dr. {doctor_name} flagged a visit. Please confirm in the app.",
+        data={"type": "visit_flagged"},
+    )

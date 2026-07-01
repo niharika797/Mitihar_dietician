@@ -13,9 +13,11 @@ import asyncio
 import json
 from collections import defaultdict
 
-import asyncpg
+from dotenv import load_dotenv
+load_dotenv()
 
-DSN = "postgresql://admin:mityahar_dev@localhost:5432/mityahar_db"
+from sqlalchemy import text
+from app.core.database import AsyncSessionLocal
 
 # Minimum grams of a triggering ingredient to propagate an avoid_tag to the recipe.
 AVOID_MIN_G: dict[str, float] = {
@@ -103,150 +105,143 @@ def derive_tags(
 
 
 async def main() -> None:
-    conn = await asyncpg.connect(DSN)
+    async with AsyncSessionLocal() as db:
+        print("=== Layer 3 — derive_recipe_tags ===\n")
 
-    print("=== Layer 3 — derive_recipe_tags ===\n")
+        # Load all ingredient tags into memory keyed by ingredient_id
+        ing_rows = (await db.execute(text(
+            "SELECT id, avoid_tags, prefer_tags FROM ingredients"
+        ))).fetchall()
+        ing_tags: dict[int, tuple[list[str], list[str]]] = {}
+        for r in ing_rows:
+            ing_tags[r.id] = (
+                parse_tags(r.avoid_tags),
+                parse_tags(r.prefer_tags),
+            )
+        print(f"Loaded tags for {len(ing_tags)} ingredients")
+        tagged_count = sum(1 for a, p in ing_tags.values() if a or p)
+        print(f"  {tagged_count} have at least one tag")
 
-    # Load all ingredient tags into memory keyed by ingredient_id
-    ing_rows = await conn.fetch(
-        "SELECT id, avoid_tags, prefer_tags FROM ingredients"
-    )
-    ing_tags: dict[int, tuple[list[str], list[str]]] = {}
-    for r in ing_rows:
-        ing_tags[r["id"]] = (
-            parse_tags(r["avoid_tags"]),
-            parse_tags(r["prefer_tags"]),
+        # Load all recipe_ingredients
+        ri_rows = (await db.execute(text(
+            "SELECT food_item_id, ingredient_id, quantity_g FROM recipe_ingredients"
+        ))).fetchall()
+        # Group by food_item_id
+        food_ings: dict[int, list[tuple[list[str], list[str], float]]] = defaultdict(list)
+        for r in ri_rows:
+            fid = r.food_item_id
+            iid = r.ingredient_id
+            qty = r.quantity_g or 0.0
+            avoid, prefer = ing_tags.get(iid, ([], []))
+            food_ings[fid].append((avoid, prefer, qty))
+
+        print(f"Loaded {len(ri_rows)} recipe_ingredient links across {len(food_ings)} food_items\n")
+
+        # Derive tags for each food_item
+        updates: list[tuple[str, str, int]] = []   # (avoid_json, prefer_json, food_item_id)
+        avoid_dist: dict[str, int] = defaultdict(int)
+        prefer_dist: dict[str, int] = defaultdict(int)
+
+        all_fids = (await db.execute(text("SELECT id FROM food_items"))).fetchall()
+        for row in all_fids:
+            fid = row.id
+            ings = food_ings.get(fid, [])
+            if not ings:
+                updates.append(("[]", "[]", fid))
+                continue
+            avoid, prefer = derive_tags(ings)
+            for t in avoid:
+                avoid_dist[t] += 1
+            for t in prefer:
+                prefer_dist[t] += 1
+            updates.append((json.dumps(avoid), json.dumps(prefer), fid))
+
+        # Bulk update
+        print(f"Writing tags to {len(updates)} food_items...")
+        await db.execute(
+            text("UPDATE food_items SET avoid_tags=CAST(:avoid AS jsonb), prefer_tags=CAST(:prefer AS jsonb) WHERE id=:id"),
+            [{"avoid": a, "prefer": p, "id": fid} for a, p, fid in updates],
         )
-    print(f"Loaded tags for {len(ing_tags)} ingredients")
-    tagged_count = sum(1 for a, p in ing_tags.values() if a or p)
-    print(f"  {tagged_count} have at least one tag")
+        await db.commit()
 
-    # Load all recipe_ingredients
-    ri_rows = await conn.fetch(
-        "SELECT food_item_id, ingredient_id, quantity_g FROM recipe_ingredients"
-    )
-    # Group by food_item_id
-    food_ings: dict[int, list[tuple[list[str], list[str], float]]] = defaultdict(list)
-    for r in ri_rows:
-        fid = r["food_item_id"]
-        iid = r["ingredient_id"]
-        qty = r["quantity_g"] or 0.0
-        avoid, prefer = ing_tags.get(iid, ([], []))
-        food_ings[fid].append((avoid, prefer, qty))
+        # ── Summary ───────────────────────────────────────────────────────────────
+        any_tagged = sum(1 for a, p, _ in updates if a != "[]" or p != "[]")
+        print(f"Done. {any_tagged}/{len(updates)} food_items received at least one tag.\n")
 
-    print(f"Loaded {len(ri_rows)} recipe_ingredient links across {len(food_ings)} food_items\n")
+        print("avoid_tag distribution (recipes tagged):")
+        for tag, count in sorted(avoid_dist.items(), key=lambda x: -x[1]):
+            print(f"  {tag}: {count}")
 
-    # Derive tags for each food_item
-    updates: list[tuple[str, str, int]] = []   # (avoid_json, prefer_json, food_item_id)
-    avoid_dist: dict[str, int] = defaultdict(int)
-    prefer_dist: dict[str, int] = defaultdict(int)
+        print("\nprefer_tag distribution (recipes tagged):")
+        for tag, count in sorted(prefer_dist.items(), key=lambda x: -x[1]):
+            print(f"  {tag}: {count}")
 
-    all_fids = await conn.fetch("SELECT id FROM food_items")
-    for row in all_fids:
-        fid = row["id"]
-        ings = food_ings.get(fid, [])
-        if not ings:
-            # No recipe_ingredients — write empty tags
-            updates.append(("[]", "[]", fid))
-            continue
-        avoid, prefer = derive_tags(ings)
-        for t in avoid:
-            avoid_dist[t] += 1
-        for t in prefer:
-            prefer_dist[t] += 1
-        updates.append((json.dumps(avoid), json.dumps(prefer), fid))
+        # ── Spot-checks ───────────────────────────────────────────────────────────
+        print("\n── Spot-checks ──")
 
-    # Bulk update in a transaction
-    print(f"Writing tags to {len(updates)} food_items...")
-    async with conn.transaction():
-        await conn.executemany(
-            "UPDATE food_items SET avoid_tags=$1::jsonb, prefer_tags=$2::jsonb WHERE id=$3",
-            updates,
-        )
+        ragi_fi = (await db.execute(text(
+            """SELECT fi.id, fi.recipe_name, fi.avoid_tags, fi.prefer_tags
+               FROM food_items fi
+               JOIN recipe_ingredients ri ON ri.food_item_id = fi.id
+               JOIN ingredients i ON i.id = ri.ingredient_id
+               WHERE LOWER(i.name) = 'ragi flour' AND ri.quantity_g >= 30
+               LIMIT 1"""
+        ))).fetchone()
+        if ragi_fi:
+            prefer = parse_tags(ragi_fi.prefer_tags)
+            print(f"Ragi recipe '{ragi_fi.recipe_name}': "
+                  f"gluten_free={'gluten_free' in prefer} iron_rich={'iron_rich' in prefer}")
+            print(f"  prefer={prefer}")
+        else:
+            print("  WARN: no ragi_flour recipe found for spot-check")
 
-    # ── Summary ───────────────────────────────────────────────────────────────
-    any_tagged = sum(1 for a, p, _ in updates if a != "[]" or p != "[]")
-    print(f"Done. {any_tagged}/{len(updates)} food_items received at least one tag.\n")
+        wheat_fi = (await db.execute(text(
+            """SELECT fi.id, fi.recipe_name, fi.avoid_tags, fi.prefer_tags
+               FROM food_items fi
+               JOIN recipe_ingredients ri ON ri.food_item_id = fi.id
+               JOIN ingredients i ON i.id = ri.ingredient_id
+               WHERE LOWER(i.name) LIKE '%wheat flour%' AND ri.quantity_g >= 10
+               LIMIT 1"""
+        ))).fetchone()
+        if wheat_fi:
+            avoid = parse_tags(wheat_fi.avoid_tags)
+            prefer = parse_tags(wheat_fi.prefer_tags)
+            print(f"Wheat recipe '{wheat_fi.recipe_name}': "
+                  f"avoid_gluten={'avoid_gluten' in avoid} gluten_free={'gluten_free' in prefer}")
+        else:
+            print("  WARN: no wheat_flour recipe found for spot-check")
 
-    print("avoid_tag distribution (recipes tagged):")
-    for tag, count in sorted(avoid_dist.items(), key=lambda x: -x[1]):
-        print(f"  {tag}: {count}")
+        dal_fi = (await db.execute(text(
+            """SELECT fi.id, fi.recipe_name, fi.avoid_tags, fi.prefer_tags
+               FROM food_items fi
+               JOIN recipe_ingredients ri ON ri.food_item_id = fi.id
+               JOIN ingredients i ON i.id = ri.ingredient_id
+               WHERE LOWER(i.name) LIKE '%dal%' AND ri.quantity_g >= 60
+               LIMIT 1"""
+        ))).fetchone()
+        if dal_fi:
+            prefer = parse_tags(dal_fi.prefer_tags)
+            print(f"Dal recipe '{dal_fi.recipe_name}': "
+                  f"diabetes_friendly={'diabetes_friendly' in prefer}")
+            print(f"  prefer={prefer}")
+        else:
+            print("  WARN: no dal recipe found for spot-check")
 
-    print("\nprefer_tag distribution (recipes tagged):")
-    for tag, count in sorted(prefer_dist.items(), key=lambda x: -x[1]):
-        print(f"  {tag}: {count}")
+        jag_fi = (await db.execute(text(
+            """SELECT fi.id, fi.recipe_name, fi.avoid_tags, fi.prefer_tags
+               FROM food_items fi
+               JOIN recipe_ingredients ri ON ri.food_item_id = fi.id
+               JOIN ingredients i ON i.id = ri.ingredient_id
+               WHERE LOWER(i.name) = 'jaggery' AND ri.quantity_g >= 10
+               LIMIT 1"""
+        ))).fetchone()
+        if jag_fi:
+            avoid = parse_tags(jag_fi.avoid_tags)
+            print(f"Jaggery recipe '{jag_fi.recipe_name}': "
+                  f"avoid_diabetes={'avoid_diabetes' in avoid}")
+        else:
+            print("  WARN: no jaggery recipe found for spot-check")
 
-    # ── Spot-checks ───────────────────────────────────────────────────────────
-    print("\n── Spot-checks ──")
-
-    # Ragi-based recipe should have gluten_free + iron_rich
-    ragi_fi = await conn.fetchrow(
-        """SELECT fi.id, fi.recipe_name, fi.avoid_tags, fi.prefer_tags
-           FROM food_items fi
-           JOIN recipe_ingredients ri ON ri.food_item_id = fi.id
-           JOIN ingredients i ON i.id = ri.ingredient_id
-           WHERE LOWER(i.name) = 'ragi flour' AND ri.quantity_g >= 30
-           LIMIT 1"""
-    )
-    if ragi_fi:
-        prefer = parse_tags(ragi_fi["prefer_tags"])
-        print(f"Ragi recipe '{ragi_fi['recipe_name']}': "
-              f"gluten_free={'gluten_free' in prefer} iron_rich={'iron_rich' in prefer}")
-        print(f"  prefer={prefer}")
-    else:
-        print("  WARN: no ragi_flour recipe found for spot-check")
-
-    # Wheat-based recipe should have avoid_gluten, NOT gluten_free
-    wheat_fi = await conn.fetchrow(
-        """SELECT fi.id, fi.recipe_name, fi.avoid_tags, fi.prefer_tags
-           FROM food_items fi
-           JOIN recipe_ingredients ri ON ri.food_item_id = fi.id
-           JOIN ingredients i ON i.id = ri.ingredient_id
-           WHERE LOWER(i.name) LIKE '%wheat flour%' AND ri.quantity_g >= 10
-           LIMIT 1"""
-    )
-    if wheat_fi:
-        avoid = parse_tags(wheat_fi["avoid_tags"])
-        prefer = parse_tags(wheat_fi["prefer_tags"])
-        print(f"Wheat recipe '{wheat_fi['recipe_name']}': "
-              f"avoid_gluten={'avoid_gluten' in avoid} gluten_free={'gluten_free' in prefer}")
-    else:
-        print("  WARN: no wheat_flour recipe found for spot-check")
-
-    # Dal-heavy recipe should have diabetes_friendly
-    dal_fi = await conn.fetchrow(
-        """SELECT fi.id, fi.recipe_name, fi.avoid_tags, fi.prefer_tags
-           FROM food_items fi
-           JOIN recipe_ingredients ri ON ri.food_item_id = fi.id
-           JOIN ingredients i ON i.id = ri.ingredient_id
-           WHERE LOWER(i.name) LIKE '%dal%' AND ri.quantity_g >= 60
-           LIMIT 1"""
-    )
-    if dal_fi:
-        prefer = parse_tags(dal_fi["prefer_tags"])
-        print(f"Dal recipe '{dal_fi['recipe_name']}': "
-              f"diabetes_friendly={'diabetes_friendly' in prefer}")
-        print(f"  prefer={prefer}")
-    else:
-        print("  WARN: no dal recipe found for spot-check")
-
-    # Jaggery recipe should have avoid_diabetes
-    jag_fi = await conn.fetchrow(
-        """SELECT fi.id, fi.recipe_name, fi.avoid_tags, fi.prefer_tags
-           FROM food_items fi
-           JOIN recipe_ingredients ri ON ri.food_item_id = fi.id
-           JOIN ingredients i ON i.id = ri.ingredient_id
-           WHERE LOWER(i.name) = 'jaggery' AND ri.quantity_g >= 10
-           LIMIT 1"""
-    )
-    if jag_fi:
-        avoid = parse_tags(jag_fi["avoid_tags"])
-        print(f"Jaggery recipe '{jag_fi['recipe_name']}': "
-              f"avoid_diabetes={'avoid_diabetes' in avoid}")
-    else:
-        print("  WARN: no jaggery recipe found for spot-check")
-
-    await conn.close()
     print("\nLayer 3 complete.")
 
 

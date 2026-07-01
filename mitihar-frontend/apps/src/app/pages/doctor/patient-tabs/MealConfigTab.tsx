@@ -79,7 +79,7 @@ function DishSection({ patientId, type, title, subtext, dishes, emptyMsg, onChan
               <li key={d.food_id} className="flex items-center justify-between px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-[#111827]">{d.recipe_name}</p>
-                  <p className="text-xs text-[#6B7280]">{d.calories_per_serving} kcal/serving</p>
+                  <p className="text-xs text-[#6B7280]">{d.calories_per_serving} kcal · {d.slot_type}</p>
                 </div>
                 <button
                   onClick={() => removeMutation.mutate(d.food_id)}

@@ -24,7 +24,7 @@ _log = logging.getLogger(__name__)
 async def compute_weekly_summary(
     db: AsyncSession,
     patient_id: int,
-    week_start: date,
+    week_start: "date | None" = None,
 ) -> dict:
     """
     Compute dish-frequency + adherence summary for a patient's given week.
@@ -40,49 +40,64 @@ async def compute_weekly_summary(
             "compute_weekly_summary: unhandled error patient_id=%s week_start=%s: %s",
             patient_id, week_start, exc, exc_info=True,
         )
-        return {"error": str(exc), "week_start": week_start.isoformat()}
+        return {"error": str(exc), "week_start": week_start.isoformat() if week_start else "unknown"}
 
 
-async def _compute(db: AsyncSession, patient_id: int, week_start: date) -> dict:
-    week_start_caller = week_start  # preserve caller input for fallback path
-
-    # 1. Find rec — active first (canonical window comes from rec, not caller)
-    rec_result = await db.execute(
-        select(Recommendation)
-        .where(
-            Recommendation.patient_id == patient_id,
-            Recommendation.generation_version == 2,
-            Recommendation.is_active == True,
-        )
-        .limit(1)
-    )
-    rec = rec_result.scalar_one_or_none()
-
-    if rec:
-        week_start = rec.week_start_date
-        week_end   = week_start + timedelta(days=6)
-        recommendation_id = rec.id
-    else:
-        # No active rec — floor caller input to Monday as window anchor
-        week_start = week_start_caller - timedelta(days=week_start_caller.weekday())
-        week_end   = week_start + timedelta(days=6)
-        recommendation_id = None
-        # Try historical rec within ±6 days of caller's Monday (completed weeks)
-        hist_result = await db.execute(
+async def _compute(db: AsyncSession, patient_id: int, week_start: "date | None") -> dict:
+    # 1. Find rec
+    if week_start is not None:
+        # Explicit week_start: pin to that week's rec regardless of is_active
+        rec_result = await db.execute(
             select(Recommendation)
             .where(
                 Recommendation.patient_id == patient_id,
                 Recommendation.generation_version == 2,
-                Recommendation.week_start_date.between(
-                    week_start - timedelta(days=6), week_start + timedelta(days=6)
-                ),
+                Recommendation.week_start_date == week_start,
             )
-            .order_by(Recommendation.id.desc())
+            .order_by(Recommendation.created_at.desc())
             .limit(1)
         )
-        hist_rec = hist_result.scalar_one_or_none()
-        if hist_rec:
-            recommendation_id = hist_rec.id
+        rec = rec_result.scalar_one_or_none()
+        week_end = week_start + timedelta(days=6)
+        recommendation_id = rec.id if rec else None
+    else:
+        # No explicit week_start — active rec first, fuzzy historical fallback
+        rec_result = await db.execute(
+            select(Recommendation)
+            .where(
+                Recommendation.patient_id == patient_id,
+                Recommendation.generation_version == 2,
+                Recommendation.is_active == True,
+            )
+            .limit(1)
+        )
+        rec = rec_result.scalar_one_or_none()
+
+        if rec:
+            week_start = rec.week_start_date
+            week_end   = week_start + timedelta(days=6)
+            recommendation_id = rec.id
+        else:
+            today = date.today()
+            week_start = today - timedelta(days=today.weekday())
+            week_end   = week_start + timedelta(days=6)
+            recommendation_id = None
+            # Try historical rec within ±6 days of today's Monday
+            hist_result = await db.execute(
+                select(Recommendation)
+                .where(
+                    Recommendation.patient_id == patient_id,
+                    Recommendation.generation_version == 2,
+                    Recommendation.week_start_date.between(
+                        week_start - timedelta(days=6), week_start + timedelta(days=6)
+                    ),
+                )
+                .order_by(Recommendation.id.desc())
+                .limit(1)
+            )
+            hist_rec = hist_result.scalar_one_or_none()
+            if hist_rec:
+                recommendation_id = hist_rec.id
 
     # 2. Fetch all patient_meal_choices for this patient-week
     choices_result = await db.execute(

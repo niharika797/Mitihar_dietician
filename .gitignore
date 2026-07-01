@@ -122,4 +122,22 @@ scripts/backup_food_items.py
 # ── Database backups (shared with team — dev/test data only, no production data) ──
 db-backups/*.sql.gz
 
+# ── Uvicorn process logs (local dev only) ─────────────────────────────────────
+uvicorn_*.txt
+
+# ── Checkpoint files (large/noisy, idempotent — safe to re-run scripts) ───────
+clean_dishes_llm_checkpoint.json
+tag_medical_checkpoint.json
+
+# ── Windows null device artifact ──────────────────────────────────────────────
+NUL
+
+# ── Local throwaway test files ────────────────────────────────────────────────
+test_claude_cli.py
+tests/test_output.txt
+
+# ── Performance test generated artifacts (contains plaintext test passwords) ──
+tests/performance/test_manifest.json
+tests/performance/reports/
+
 

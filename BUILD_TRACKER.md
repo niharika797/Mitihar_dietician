@@ -1,6 +1,7 @@
 # Mityahar — Build Tracker
-**Last updated:** Session 20.5 (2026-06-08, password hash root cause fix complete)  
-**Next session:** Session 21 — Patient App Adaptive UI  
+**Last updated:** 2026-07-01 (PASS 5 complete — all 5 local verification passes done; local verification phase officially closed)  
+**Next session:** GCP deployment phase — commit untracked files (alembic migrations 93ad56085772 + b5c6d7e8f9a0, scripts, perf suite) → set production .env → Cloud Run container build → Memorystore Basic tier → Cloud SQL → deploy  
+**Rate limiter:** Redis-backed via slowapi RedisStorage; multi-instance sharing verified locally; Memorystore deferred to GCP deployment phase.  
 **Maintained by:** Claude Code — read at session start, update at session end.
 
 ---
@@ -200,6 +201,7 @@ All of the following have been built and verified across Sessions 1–8:
 | TS error: MealEntry has no 'id' field — PlanTab.tsx line 888 uses meal.id which doesn't exist in the interface. Pre-existing before Session 16. | Low | Session 18 |
 | TS error: Recipes.tsx AddRecipeForm missing submit_to_global field in addRecipe call. Pre-existing. | Low | Session 18 |
 | recommendation_id backfilled on new dish ops — existing meal slots still null until next PATCH operation or plan regeneration | Low | Resolves gradually via use |
+| full_backend_test.py crashed before reaching admin login (port 8000 vs 8001, no error handling) | ~~P1~~ FIXED | 2026-06-30 — port corrected, health check try/except added, sys.exit(1) on backend-down; gdpr_consent added to Section 8 registration payload; hdr() guarded against empty token; serving_weight_g added + plan_type_tags removed from Section 12 recipe payload. 94/94 passing across 16 sections. |
 | confirm-choice accepts any food_item_id regardless of whether its meal_time_tags match the requested meal_type — a Breakfast dish can be confirmed into a Lunch slot via direct API call. Fix: add `meal_time_tags @> ARRAY[meal_type_lower]` validation in the endpoint before the upsert. Deferred — low risk since the suggestions endpoint only surfaces slot-appropriate dishes to patients. | P2 | Session 20 |
 
 ---
@@ -651,7 +653,7 @@ Tasks:
 
 ### SESSION 21 — Patient App Adaptive UI
 **Type:** Execution (/goal acceptable)  
-**Status:** NOT STARTED  
+**Status:** COMPLETE (2026-06-17/18) — delivered as R-5 (Patient-App v2 Plan Surfacing) + R-6 (Patient App v2 UI) + R-6.5/R-6.6/R-6.7 (targeted fixes)  
 **Dependencies:** Session 19 complete  
 **Goal:** Update patient app to show choice cards and real-time calorie tracking.
 
@@ -1362,11 +1364,15 @@ Live re-verification (2026-06-21): `week_start: 2026-06-18` ✓, `dish_freq: 61`
 
 **TS check (R-7A.1):** No frontend changes in R-7A.1. Pre-existing `ImportMeta.env` baseline errors in `Login.tsx` / `axios.ts` unchanged.
 
+**R-7A.2 (2026-06-28):** `_compute()` historical lookup fixed — explicit `week_start` param pins to that week's rec (ignores `is_active`); `None` preserves active-rec-first behavior. Endpoint default Monday fallback removed. Jun-26 preferred seeds written (Dahi ×2, Chaas ×2). Verified: `preferred_dishes=2`, `never_selected=34`. R-7B thresholds live against active rec id=182.
+
+**R-7B (2026-06-28):** `preferred_food_ids` boost + `avoided_food_ids` exclusion live in `_pick_for_slot()`. Dead code deprecated. Verified: Dahi ×28, Chaas ×28 in new plan; 34 avoided dishes absent.
+
 ---
 
 ### SESSION 22 — Doctor Weekly Patient Summary
 **Type:** Execution (/goal acceptable)  
-**Status:** NOT STARTED  
+**Status:** COMPLETE (2026-06-21) — delivered as R-7A (Weekly Cycle Automation: Summary Service + Doctor UI). R-7A.1 + R-7A.2 fixes applied.  
 **Dependencies:** Session 21 complete  
 **Goal:** Give doctor visibility into what patient actually chose and how they adhered.
 
@@ -1487,6 +1493,7 @@ Tasks:
 - **food_id now stored in dishes[]** — each meal slot in recommendations.meals has `dishes` array containing `food_id` (FoodItem.id PK), `recipe_name`, `slot_type`, per-dish macros. Plans without `dishes` key are legacy (pre-Session 11), shown read-only.
 - **Generator produces 21 meal slots** — 3 meals × 7 days. `EXPECTED_MEAL_COUNT = 7 * 3` in diet_plans.py. Update constant there if structure changes again.
 - **patient_id must be int in generator** — `user_data["id"]` is a string from the API route. `int(patient_id)` cast is required before PatientMealConfig query. asyncpg does not implicit-cast varchar to integer column (raises UndefinedFunctionError).
+- **W3 closed (2026-06-29):** pin=sort boost confirmed (not force-inject); slot_type added to pinned/blocked dish cards in MealConfigTab.
 - **Patient auth endpoint** — `/api/v1/auth/token` with `application/x-www-form-urlencoded` body (not JSON). Username/password as form fields.
 - **Diet plan endpoint** — `/api/v1/diet-plans/my-plan` returns current patient plan. Not `/diet-plans/current`.
 - **DEFAULT_SPLIT** constant at module level in meal_generator.py: `{"Breakfast": 0.25, "Lunch": 0.35, "Dinner": 0.25}`. Used when no PatientMealConfig override exists for patient.
@@ -1514,3 +1521,13 @@ Tasks:
 - **Generator pinned dishes** — one pinned dish per meal slot, injected at front of dishes list. Displaces `dishes[-1]` when slot is at capacity (`len(template.slots)`). Skips if dish already placed that day or meal_time_tag incompatible.
 - **MealConfigTab.tsx** — `patient-tabs/MealConfigTab.tsx`. Props: `{ patientId: number }`. Uses `qk.patientMealConfig(id)` for cache. Debounced recipe search (300ms). Save & Regenerate button disabled when sum ≠ 85. Invalidates `qk.patientPlan(id)` after 2s on save.
 - **/diet-plans/my-plan response shape** — returns `{ user_id, created_at, meals: [...], ingredient_checklist, version, used_food_ids }`. Access `plan["meals"]` not the top-level object. Note for regression scripts.
+- **R-8 gate cleared (2026-06-28):** v1 recs 169/171 deactivated; v2 plans generated for patients 3+4 (rec IDs 184/185, 84 weekly_combos each); gate count=0. R-8 unblocked.
+- **R-8 complete (2026-06-28):** v1 branch + SuggestionSlot + suggestions endpoint removed. v2 is now the only path.
+- **R-9 (2026-06-28):** plan_type_tags removed (migration + code); dead code deleted; orphaned screens removed; TS errors resolved. Rebuild complete R-0→R-9.
+- **Dish cleanup (2026-06-28):** 4-pass hybrid pipeline — migration b5c6d7e8f9a0 adds original_name rollback col; Pass A soft-flags test artifacts (is_verified=False); Pass B initcap() casing fix (0 API calls); Pass C LLM rename (claude-sonnet-4-6) for short/single-word names with slot/diet context; Pass D full change report. Script: scripts/clean_dish_names.py. Checkpoint: clean_dishes_llm_checkpoint.json.
+- **Pool expansion (2026-06-28):** 6k_dataset recipes bulk-verified — calculated 1354 (IFCT-backed, all safe) + manual 13 (50–1500 kcal). Pool: is_verified=True 1551 (was 184). 563 manual outliers remain unverified (bad quantity_g, e.g. 30491 kcal — pending quantity_g audit). Priya rec 186: 84 combos, validation_error=None. Accompaniment pool exhaustion (Level-4 fallback) pre-existing thin-pool issue.
+- **Dish cleanup (2026-06-28, full run):** Dish cleanup complete: 117 changes (13 flagged, 60 casing, 53 LLM); pool=1551; 0 casing issues remain.
+- **Recipe quantity fix (2026-06-28):** 553 bad recipes fixed (÷10 + artifact deletion); 549 verified; pool 184→1551→2100 (11.4× total expansion); 4 flagged.
+- **Flagged recipe review (2026-06-29):** 1779+1789 (Corn Palak) left unverified — missing corn ingredient, duplicates of each other, existing verified Corn Palak (id=1257) covers slot; 3411 verified (Nawabi Mixed Veg Gravy, 49.66 kcal, legit low-cal); 3418 left unverified (exact duplicate of 3411). Pool: 2101.
+- **Cleanup (2026-06-29):** Old Gemini rename artifacts deleted — scripts/rename_checkpoint.json, scripts/rename_dishes_backup.json, docs/archive/scripts/rename_dishes_backup.json. Superseded by clean_dish_names.py + clean_dishes_llm_checkpoint.json.
+- **Test suite (2026-06-30):** 5 modules created (seed, benchmark, locust, quality, playwright). Run order documented in tests/performance/README.md.
