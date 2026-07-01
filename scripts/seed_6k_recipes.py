@@ -99,8 +99,6 @@ CUISINE_TO_REGION = {
     "maharashtra": "West", "sindhi": "West",
 }
 
-PLAN_TYPE_TAGS_DEFAULT = ["Healthy", "Diabetic-Friendly", "Gym-Friendly"]
-
 # ── USDA cache (avoid re-querying same ingredient) ────────────────────────────
 _usda_cache: dict = {}
 
@@ -375,7 +373,6 @@ def main():
                 diet_type           = diet_type,
                 region_tags         = region_tags,
                 meal_time_tags      = meal_time_tags,
-                plan_type_tags      = PLAN_TYPE_TAGS_DEFAULT,
                 ingredients         = nutrition["ingredients"],
                 source              = "6k_dataset",
                 is_verified         = False,

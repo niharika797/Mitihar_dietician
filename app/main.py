@@ -4,9 +4,9 @@ from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from .core.limiter import limiter
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
@@ -173,6 +173,17 @@ async def lifespan(app: FastAPI):
     from .services.notification_service import init_firebase
     init_firebase()
 
+    # ── Redis rate-limiter startup check ──────────────────────────────
+    if settings.REDIS_URL:
+        import redis as redis_lib
+        try:
+            r = redis_lib.from_url(settings.REDIS_URL)
+            r.ping()
+            _log.info("Rate limiter: connected to Redis at %s", settings.REDIS_URL)
+        except Exception as e:
+            _log.error("ERROR: REDIS_URL set but Redis unreachable: %s", e)
+            _log.error("Rate limiter will fail at runtime. Check Docker container is running.")
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(_flag_expiring_patients,      CronTrigger(hour=1, minute=0))
     scheduler.add_job(_deactivate_expired_patients, CronTrigger(hour=1, minute=5))
@@ -188,10 +199,6 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
     _log.info("APScheduler shut down")
 
-# NOTE: slowapi uses in-memory storage by default.
-# Set REDIS_URL in .env before multi-worker production deployment.
-# TODO: Switch to RedisStorage before multi-worker/production deployment
-limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

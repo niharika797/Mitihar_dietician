@@ -29,12 +29,8 @@ interface CustomMealForm {
   diet_type: string;
 }
 
-// Task 1 — meal slots filtered by patient preference
-const ALL_MEAL_TYPES  = ['Breakfast', 'Lunch', 'Dinner'];
-const THREE_MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
-
-function getMealTypes(mealsPerDay: number): string[] {
-  return mealsPerDay >= 5 ? ALL_MEAL_TYPES : THREE_MEAL_TYPES;
+function getMealTypes(): string[] {
+  return ['Breakfast', 'Lunch', 'Dinner'];
 }
 
 function inferSlotType(_mealType: string): string {
@@ -1105,7 +1101,7 @@ export function PlanTab({
   const [editingNotes,   setEditingNotes]    = useState(false);
   const [notesValue,     setNotesValue]      = useState('');
   const [addCustomFor,   setAddCustomFor]    = useState<{ mealType: string; combos: ComboEntry[] } | null>(null);
-  const mealTypes = getMealTypes(patientMealsPerDay); // Task 1
+  const mealTypes = getMealTypes();
 
   const overrideMutation = useMutation({
     mutationFn: (notes: string) =>

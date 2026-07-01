@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from pydantic import BaseModel
 
-from sqlalchemy import select, case as sa_case, func as sa_func, or_, not_
+from sqlalchemy import select, case as sa_case, func as sa_func, or_, not_, false
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_models import MealTemplate, FoodItem, PatientMealConfig, PatientDishPreferences
@@ -15,6 +15,13 @@ from .tag_utils import get_avoid_tags, get_prefer_tags
 from .calculations import calculate_bmi, calculate_bmr, calculate_tdee, calculate_macronutrients
 
 logger = logging.getLogger(__name__)
+
+# NOTE: meal_templates DB table (180 rows, schema: id/meal_time/region/diet_type/plan_type/slots)
+# is NOT used in the live generation path. Slot composition is handled by
+# in-code constants (BREAKFAST_SLOTS, LUNCH_SLOTS, DINNER_SLOTS etc.) established in R-2.
+# meal_templates was only referenced in _find_food_item_single_diet() which was
+# removed in R-9. The table is retained for historical reference only.
+# Do not query meal_templates in new code without product owner approval.
 
 # ── Upgrade 4: Slot-quality blocklist ─────────────────────────────────────────
 BLOCKLIST_PATTERNS = [
@@ -211,6 +218,8 @@ class MealGenerator:
         prior_seed      = frozenset(user_data.get("prior_used_food_ids") or [])
         weekly_used_ids = set(prior_seed)
         # Acts as SOFT preference — dropped at Level 2 if pool is exhausted.
+        preferred_food_ids: frozenset = frozenset(user_data.get("preferred_food_ids") or frozenset())
+        avoided_food_ids: frozenset = frozenset(user_data.get("avoided_food_ids") or frozenset())
 
         # ── Upgrade 1: Non-veg weekly budget pre-allocation ────────────────
         nonveg_assigned: set = set()   # (day_idx, db_meal_time) tuples
@@ -326,6 +335,8 @@ class MealGenerator:
                             patient_avoid_tags=patient_avoid_tags,
                             patient_prefer_tags=patient_prefer_tags,
                             pinned_food_ids=pinned_food_ids,
+                            preferred_food_ids=preferred_food_ids,
+                            avoided_food_ids=avoided_food_ids,
                             combo0_lookup=combo0_lookup,
                             combo_idx=combo_idx,
                         )
@@ -484,6 +495,8 @@ class MealGenerator:
         patient_avoid_tags: frozenset = frozenset(),
         patient_prefer_tags: frozenset = frozenset(),
         pinned_food_ids: frozenset = frozenset(),
+        preferred_food_ids: frozenset = frozenset(),
+        avoided_food_ids: frozenset = frozenset(),
     ) -> Optional[FoodItem]:
         """
         R-2 pool query for one combo's one slot. Pin is a PREFERENCE SIGNAL
@@ -501,6 +514,7 @@ class MealGenerator:
         prefer_sort = or_(
             *[FoodItem.prefer_tags.contains([tag]) for tag in patient_prefer_tags],
             FoodItem.id.in_(pinned_food_ids),
+            FoodItem.id.in_(preferred_food_ids) if preferred_food_ids else false(),
         ).desc()
 
         def base_stmt(try_diet: str, include_weekly: bool):
@@ -508,7 +522,6 @@ class MealGenerator:
                 FoodItem.slot_type == slot_type,
                 FoodItem.diet_type == try_diet,
                 FoodItem.meal_time_tags.any(meal_time),
-                FoodItem.plan_type_tags.any(plan_type),
                 FoodItem.is_verified == True,  # noqa: E712 — Change 1: never serve unverified/test dishes
             )
             if target_cal > 0:
@@ -520,6 +533,8 @@ class MealGenerator:
                 s = s.where(FoodItem.id.notin_(excluded))
             if blocked_food_ids:
                 s = s.where(FoodItem.id.notin_(blocked_food_ids))
+            if avoided_food_ids:
+                s = s.where(FoodItem.id.notin_(avoided_food_ids))
             if patient_avoid_tags:
                 s = s.where(not_(or_(*[FoodItem.avoid_tags.contains([tag]) for tag in patient_avoid_tags])))
             return s.order_by(prefer_sort, region_sort, cal_sort).limit(10)
@@ -584,6 +599,8 @@ class MealGenerator:
         patient_avoid_tags: frozenset = frozenset(),
         patient_prefer_tags: frozenset = frozenset(),
         pinned_food_ids: frozenset = frozenset(),
+        preferred_food_ids: frozenset = frozenset(),
+        avoided_food_ids: frozenset = frozenset(),
         combo0_lookup: Optional[dict] = None,
         combo_idx: int = 0,
     ) -> tuple[list, bool]:
@@ -619,6 +636,8 @@ class MealGenerator:
                 patient_avoid_tags=patient_avoid_tags,
                 patient_prefer_tags=patient_prefer_tags,
                 pinned_food_ids=pinned_food_ids,
+                preferred_food_ids=preferred_food_ids,
+                avoided_food_ids=avoided_food_ids,
             )
 
             if food_item is not None:
@@ -645,147 +664,6 @@ class MealGenerator:
             # optional slot, no candidate, no combo-0 fallback to duplicate — skip it
 
         return dishes, True
-
-    async def _find_food_item(
-        self,
-        session: AsyncSession,
-        slot_type: str,
-        diet_type: str,
-        region: str,
-        meal_time: str,
-        plan_type: str,
-        daily_used_ids: set,
-        weekly_used_ids: set,
-        target_cal: float = 0,
-        user_diet: str = None,       # original user diet — used for breakfast-egg fallback
-        allergies: frozenset = frozenset(),  # lowercase allergen strings to exclude
-        blocked_food_ids: frozenset = frozenset(),  # doctor-blocked food IDs for this patient
-        patient_avoid_tags: frozenset = frozenset(),
-        patient_prefer_tags: frozenset = frozenset(),
-    ) -> Optional[FoodItem]:
-        """
-        4-level waterfall wrapped with a diet-type fallback chain.
-        BETWEEN and daily_used_ids are NEVER dropped.
-
-        user_diet: the patient's original diet preference (Non-Vegetarian / Eggetarian).
-                   diet_type: the per-slot override (query_diet).
-                   The fallback chain uses user_diet for breakfast so Non-Veg/Eggetarian
-                   users can still get egg dishes at Breakfast even though query_diet="Vegetarian".
-        """
-        # Breakfast uses user_diet so the breakfast-egg exception fires correctly.
-        # Lunch/Dinner honor the per-slot diet_type (query_diet) so the non-veg
-        # weekly budget is enforced — only nonveg_assigned slots get non-veg candidates.
-        chain_diet = user_diet if (meal_time == "Breakfast" and user_diet is not None) else diet_type
-        diet_chain = self._diet_fallback_chain(chain_diet, meal_time)
-
-        for try_diet in diet_chain:
-            result = await self._find_food_item_single_diet(
-                session, slot_type, try_diet, region, meal_time, plan_type,
-                daily_used_ids, weekly_used_ids, target_cal,
-                allergies=allergies,
-                blocked_food_ids=blocked_food_ids,
-                patient_avoid_tags=patient_avoid_tags,
-                patient_prefer_tags=patient_prefer_tags,
-            )
-            if result is not None:
-                return result
-
-        return None
-
-    async def _find_food_item_single_diet(
-        self,
-        session: AsyncSession,
-        slot_type: str,
-        diet_type: str,
-        region: str,
-        meal_time: str,
-        plan_type: str,
-        daily_used_ids: set,
-        weekly_used_ids: set,
-        target_cal: float = 0,
-        allergies: frozenset = frozenset(),
-        blocked_food_ids: frozenset = frozenset(),
-        patient_avoid_tags: frozenset = frozenset(),
-        patient_prefer_tags: frozenset = frozenset(),
-    ) -> Optional[FoodItem]:
-        """
-        2-level lookup with region as a sort-priority (not a hard filter).
-
-        Level 1 — full filters + weekly memory:
-          Candidates ordered: regional items first, then by calorie proximity.
-          weekly_used_ids excluded (soft preference — cross-week variety).
-
-        Level 2 — drop weekly memory:
-          Same ordering, weekly exclusion removed.
-          daily_used_ids hard block is NEVER dropped.
-
-        This replaces the old 4-level waterfall where region was a hard filter,
-        causing silent fallback to Level 4 (no region, no memory) for most queries
-        on the ~2k dataset.
-        """
-        # ── region-priority sort: regional items bubble to top ──────────────
-        region_sort = sa_case((FoodItem.region_tags.any(region), 0), else_=1)
-        cal_sort    = sa_func.abs(FoodItem.cal_per_serving - target_cal) if target_cal > 0 else FoodItem.id
-        prefer_sort = (
-            or_(*[FoodItem.prefer_tags.contains([tag]) for tag in patient_prefer_tags]).desc()
-            if patient_prefer_tags else None
-        )
-
-        def base_stmt():
-            s = select(FoodItem).where(
-                FoodItem.slot_type == slot_type,
-                FoodItem.diet_type == diet_type,
-                FoodItem.meal_time_tags.any(meal_time),
-                FoodItem.plan_type_tags.any(plan_type),
-            )
-            if target_cal > 0:
-                s = s.where(FoodItem.cal_per_serving.between(target_cal / 3.0, target_cal / 0.5))
-            if daily_used_ids:
-                s = s.where(FoodItem.id.notin_(daily_used_ids))
-            if blocked_food_ids:
-                s = s.where(FoodItem.id.notin_(blocked_food_ids))
-            if patient_avoid_tags:
-                s = s.where(not_(or_(*[FoodItem.avoid_tags.contains([tag]) for tag in patient_avoid_tags])))
-            order = [c for c in [prefer_sort, region_sort, cal_sort] if c is not None]
-            return s.order_by(*order).limit(10)
-
-        def _is_allergenic(item: FoodItem) -> bool:
-            if not allergies:
-                return False
-            for ing in (item.ingredients or []):
-                ing_name = str(ing.get("name") or "").lower()
-                if any(allergen in ing_name for allergen in allergies):
-                    return True
-            return False
-
-        def _pick(items: list) -> Optional[FoodItem]:
-            """Apply blocklist + allergy filtering. Return first valid candidate."""
-            for item in items:
-                if slot_type in PROTECTED_SLOTS:
-                    name_lower = item.recipe_name.lower()
-                    if any(pat in name_lower for pat in BLOCKLIST_PATTERNS):
-                        continue
-                if _is_allergenic(item):
-                    continue
-                return item
-            return None
-
-        async def fetch(s) -> list:
-            return (await session.execute(s)).scalars().all()
-
-        # Level 1 — exclude weekly memory (soft variety preference)
-        s = base_stmt()
-        if weekly_used_ids:
-            s = s.where(FoodItem.id.notin_(weekly_used_ids))
-        if (picked := _pick(await fetch(s))) is not None:
-            return picked
-
-        # Level 2 — drop weekly memory (weekly exclusion exhausted)
-        s = base_stmt()
-        if (picked := _pick(await fetch(s))) is not None:
-            return picked
-
-        return None
 
     def generate_ingredient_checklist(self, meals):
         all_ingredients = {}

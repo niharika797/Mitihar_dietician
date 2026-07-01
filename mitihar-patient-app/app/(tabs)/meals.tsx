@@ -6,11 +6,11 @@ import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuthStore } from "../../store/useAuthStore";
-import { generatePlan, getMealSuggestions, confirmMealChoice, getDailyChoices, getWeeklyPlan } from "../../services/meals";
+import { generatePlan, confirmMealChoice, getDailyChoices, getWeeklyPlan } from "../../services/meals";
 import { useToast } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { MacroRow } from "../../components/shared";
-import type { Meal, SuggestedCombo, SuggestionsResponse, WeeklyComboV2, WeekResponseV2 } from "../../types";
+import type { Meal, WeeklyComboV2, WeekResponseV2 } from "../../types";
 
 const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner"];
 const MEAL_CALORIE_LABELS: Record<string, string> = {
@@ -131,51 +131,6 @@ function PastDayView({ date }: { date: string }) {
   );
 }
 
-// ── Skeleton card while suggestions load ───────────────────────────────────
-function SkeletonCard() {
-  return (
-    <View style={s.suggCard}>
-      <View style={[s.skelLine, { width: "70%", height: 14, marginBottom: 8 }]} />
-      <View style={[s.skelLine, { width: "40%", height: 12, marginBottom: 12 }]} />
-      <View style={[s.skelLine, { width: "90%", height: 10, marginBottom: 4 }]} />
-      <View style={[s.skelLine, { width: "60%", height: 32, marginTop: 8, borderRadius: 8 }]} />
-    </View>
-  );
-}
-
-// ── Combo suggestion card ──────────────────────────────────────────────────
-interface ComboCardProps {
-  combo: SuggestedCombo;
-  onSelect: () => void;
-  isPending: boolean;
-}
-
-function ComboCard({ combo, onSelect, isPending }: ComboCardProps) {
-  const dishNames = combo.dishes.map(d => d.recipe_name).join(" + ");
-  return (
-    <View style={s.suggCard}>
-      <Text style={s.suggName} numberOfLines={3}>{dishNames}</Text>
-      <Text style={s.suggCal}>~{Math.round(combo.total_calories)} kcal</Text>
-      <View style={{ gap: 3, marginTop: 4 }}>
-        {combo.dishes.map(d => (
-          <View key={d.food_item_id} style={s.slotTag}>
-            <Text style={s.slotTagText}>{d.slot_type}</Text>
-          </View>
-        ))}
-      </View>
-      <Pressable
-        style={[s.selectBtn, isPending && s.selectBtnDisabled]}
-        onPress={onSelect}
-        disabled={isPending}
-      >
-        {isPending
-          ? <ActivityIndicator size="small" color="#fff" />
-          : <Text style={s.selectBtnText}>Select</Text>}
-      </Pressable>
-    </View>
-  );
-}
-
 // ── v2 combo card (weekly plan combos from doctor) ─────────────────────────
 interface V2ComboCardProps {
   combo: WeeklyComboV2;
@@ -220,109 +175,6 @@ function V2ComboCard({ combo, onSelect, onCardPress, isPending, isConfirmedThisC
         </Pressable>
       )}
     </Pressable>
-  );
-}
-
-// ── One meal slot (Breakfast / Lunch / Dinner) ─────────────────────────────
-interface SuggestionSlotProps {
-  mealType: string;
-  today: string;
-  initialConfirmedId: number | null;
-  initialConfirmedName: string | null;
-  onConfirm: () => void;
-}
-
-function SuggestionSlot({
-  mealType, today, initialConfirmedId, initialConfirmedName, onConfirm,
-}: SuggestionSlotProps) {
-  const qc = useQueryClient();
-  const { showToast } = useToast();
-  const [confirmedId, setConfirmedId] = useState<number | null>(initialConfirmedId);
-  const [confirmedName, setConfirmedName] = useState<string | null>(initialConfirmedName);
-
-  // Sync when parent's dailyChoices query resolves after mount
-  React.useEffect(() => {
-    if (initialConfirmedId !== null) {
-      setConfirmedId(initialConfirmedId);
-      setConfirmedName(initialConfirmedName);
-    }
-  }, [initialConfirmedId]);
-
-  const { data, isLoading } = useQuery<SuggestionsResponse>({
-    queryKey: QUERY_KEYS.SUGGESTIONS(today, mealType),
-    queryFn: () => getMealSuggestions(today, mealType),
-    staleTime: 1000 * 60 * 5,
-  });
-
-  const confirmMut = useMutation({
-    mutationFn: (combo: SuggestedCombo) =>
-      confirmMealChoice({
-        food_item_ids: combo.dishes.map(d => d.food_item_id),
-        date: today,
-        meal_type: mealType,
-      }),
-    onSuccess: (_, combo) => {
-      setConfirmedId(combo.dishes[0].food_item_id);
-      setConfirmedName(combo.dishes.map(d => d.recipe_name).join(" + "));
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY });
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.DAILY_CHOICES(today) });
-      onConfirm();
-    },
-    onError: () => showToast("Failed to confirm choice. Try again.", "error"),
-  });
-
-  const slotTarget = data?.slot_calorie_target ?? 0;
-
-  return (
-    <View style={s.slotContainer}>
-      <View style={s.slotHeader}>
-        <Text style={s.slotTitle}>{mealType.toUpperCase()}</Text>
-        {slotTarget > 0 && (
-          <Text style={s.slotTarget}>{Math.round(slotTarget)} {MEAL_CALORIE_LABELS[mealType]}</Text>
-        )}
-      </View>
-
-      {confirmedId !== null ? (
-        // Confirmed state — show selected dish + Change button
-        <View style={s.confirmedContainer}>
-          <View style={s.confirmedRow}>
-            <Text style={s.confirmedCheck}>✓</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={s.confirmedName} numberOfLines={2}>{confirmedName}</Text>
-              <Text style={s.confirmedLabel}>Confirmed for {mealType}</Text>
-            </View>
-            <Pressable
-              style={s.changeBtn}
-              onPress={() => { setConfirmedId(null); setConfirmedName(null); }}
-            >
-              <Text style={s.changeBtnText}>Change</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : isLoading ? (
-        // Loading skeleton
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.cardRow}>
-          <SkeletonCard />
-          <SkeletonCard />
-        </ScrollView>
-      ) : (data?.suggestions?.length ?? 0) === 0 ? (
-        <View style={s.noSugg}>
-          <Text style={s.noSuggText}>No suggestions available for this slot.</Text>
-        </View>
-      ) : (
-        // Combo cards
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.cardRow}>
-          {data!.suggestions.map((combo) => (
-            <ComboCard
-              key={combo.combo_id}
-              combo={combo}
-              onSelect={() => confirmMut.mutate(combo)}
-              isPending={confirmMut.isPending && confirmMut.variables?.combo_id === combo.combo_id}
-            />
-          ))}
-        </ScrollView>
-      )}
-    </View>
   );
 }
 
@@ -451,8 +303,7 @@ export default function MealsScreen() {
     enabled: isSubscribed,
   });
   const weekData = weekPlanQuery.data;
-  const isV2 = !!(weekData && "generation_version" in weekData && (weekData as WeekResponseV2).generation_version === 2);
-  const v2Plan = isV2 ? (weekData as WeekResponseV2) : null;
+  const v2Plan = weekData as WeekResponseV2 | undefined;
 
   // v2 slot confirmed state: key="${date}-${mealType}", value=combo_id
   const [v2ConfirmedSlots, setV2ConfirmedSlots] = useState<Record<string, number>>({});
@@ -501,19 +352,6 @@ export default function MealsScreen() {
     return <TeaserView onFindDoctor={() => router.push("/doctor/find-doctor")} />;
   }
 
-  // Build a lookup: meal_type → { food_item_id, recipe_name } from today's confirmed choices.
-  // For combos, recipe_name joins all dish names so the confirmed state shows the full meal.
-  const choicesByMeal: Record<string, { food_item_id: number; recipe_name: string }> = {};
-  for (const choice of (dailyChoices?.choices ?? [])) {
-    const displayName = choice.dishes && choice.dishes.length > 1
-      ? choice.dishes.map(d => d.recipe_name).join(" + ")
-      : choice.recipe_name;
-    choicesByMeal[choice.meal_type] = {
-      food_item_id: choice.food_item_id,
-      recipe_name: displayName,
-    };
-  }
-
   // Format selected date for display
   const [selY, selM, selD] = selectedDate.split("-").map(Number);
   const selDateLabel = new Date(selY, selM - 1, selD).toLocaleDateString("en-IN", {
@@ -533,13 +371,12 @@ export default function MealsScreen() {
         <Text style={s.dateLabel}>{selDateLabel}</Text>
 
         {isPastDay ? (
-          // Past days: read-only confirmed choices (v1 + v2 both use this)
+          // Past days: read-only confirmed choices
           <>
             <Text style={s.subLabel}>What you planned for this day</Text>
             <PastDayView date={selectedDate} />
           </>
-        ) : isV2 ? (
-          // v2 path: show weekly combos from doctor-approved plan
+        ) : (
           (() => {
             const v2DayData = v2Plan?.days.find(d => d.date === selectedDate);
             const v2IsPending = v2Plan?.approval_status === "pending";
@@ -595,26 +432,6 @@ export default function MealsScreen() {
               </>
             );
           })()
-        ) : (
-          // v1 path: suggestion cards — UNTOUCHED
-          <>
-            <Text style={s.subLabel}>
-              {selectedDate === today ? "Choose what you'd like to eat" : "Plan ahead — choose dishes for this day"}
-            </Text>
-            {MEAL_ORDER.map((mealType) => {
-              const confirmed = choicesByMeal[mealType] ?? null;
-              return (
-                <SuggestionSlot
-                  key={`${selectedDate}-${mealType}`}
-                  mealType={mealType}
-                  today={selectedDate}
-                  initialConfirmedId={confirmed?.food_item_id ?? null}
-                  initialConfirmedName={confirmed?.recipe_name ?? null}
-                  onConfirm={() => {}}
-                />
-              );
-            })}
-          </>
         )}
 
         <View style={s.actionRow}>

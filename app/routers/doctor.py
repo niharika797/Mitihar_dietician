@@ -23,6 +23,7 @@ from ..models.db_models import (
     WeeklyCombo, PatientMealChoice, WeeklyPatientSummary,
 )
 from ..services.weekly_summary_service import compute_weekly_summary
+from ..services.notification_service import notify_weekly_plan_approved, notify_visit_flagged
 from ..schemas.doctor import (
     PatientSummary, PaginatedPatients, RecommendationDetail,
     PlanOverrideRequest, PatientRequestDetail, RejectRequest,
@@ -881,7 +882,6 @@ async def add_custom_dish_to_plan(
                 serving_weight_g=body.serving_weight_g,
                 diet_type=body.diet_type,
                 meal_time_tags=[meal_type],
-                plan_type_tags=["Healthy"],
                 ingredients=[],
                 region_tags=[],
                 doctor_id=did,
@@ -951,7 +951,6 @@ async def add_custom_dish_to_plan(
             serving_weight_g=body.serving_weight_g,
             diet_type=body.diet_type,
             meal_time_tags=[meal_type],
-            plan_type_tags=["Healthy"],
             ingredients=[],
             region_tags=[],
             doctor_id=did,
@@ -1110,7 +1109,6 @@ async def patch_dish(
                     serving_weight_g=None,
                     diet_type="Vegetarian",
                     meal_time_tags=[meal_type],
-                    plan_type_tags=["Healthy"],
                     ingredients=[],
                     region_tags=[],
                     doctor_id=did,
@@ -1314,16 +1312,7 @@ async def approve_weekly_plan(
     rec.approval_status = "approved"
     await session.flush()
 
-    try:
-        from ..services.notification_service import send_push
-        send_push(
-            fcm_token=getattr(pat, "fcm_token", None),
-            title="Your meal plan is ready",
-            body=f"Dr. {doctor.name} has approved your weekly plan.",
-            data={"type": "weekly_plan_approved"},
-        )
-    except Exception:
-        pass  # fire-and-forget — never block approval flow
+    notify_weekly_plan_approved(pat, doctor.name)
 
     return {"status": "approved", "recommendation_id": rec.id}
 
@@ -1626,8 +1615,7 @@ async def get_weekly_summary(
     did = _doctor_id(request)
     await _get_patient_for_doctor(patient_id, did, session)
 
-    target_week = week_start_param or (date.today() - timedelta(days=date.today().weekday()))
-    summary_data = await compute_weekly_summary(session, patient_id, target_week)
+    summary_data = await compute_weekly_summary(session, patient_id, week_start_param)
     return summary_data
 
 
@@ -1747,7 +1735,6 @@ async def add_recipe(
         sodium_per_serving=body.sodium_per_serving,
         diet_type=body.diet_type,
         meal_time_tags=body.meal_time_tags,
-        plan_type_tags=body.plan_type_tags,
         ingredients=[i.model_dump() for i in body.ingredients],  # IngredientItem → plain dict for JSONB
         region_tags=body.region_tags,
         doctor_id=doctor.id,
@@ -2352,6 +2339,8 @@ async def flag_visit(
     session.add(pending)
     await session.flush()
 
+    notify_visit_flagged(patient, doctor.name)
+
     return {
         "message": "Visit flagged. The patient will receive a notification to confirm.",
         "pending_visit_id": pending.id,
@@ -2717,6 +2706,7 @@ async def _get_prefs_for_patient(patient_id: int, session: AsyncSession) -> tupl
             "food_id": fi.id,
             "recipe_name": fi.recipe_name,
             "calories_per_serving": float(fi.cal_per_serving),
+            "slot_type": fi.slot_type,
         }
         if pref.preference_type == "pin":
             pinned.append(entry)

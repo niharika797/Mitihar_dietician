@@ -53,11 +53,6 @@ notes.append("U2 PASS: fallback chain has Eggetarian/Vegetarian tiers")
 assert BLOCKLIST_PATTERNS and PROTECTED_SLOTS, "U4: constants missing"
 notes.append(f"U4 PASS: {len(BLOCKLIST_PATTERNS)} blocklist patterns, {len(PROTECTED_SLOTS)} protected slots")
 
-# 10. LIMIT 5 + _pick
-single_src = inspect.getsource(mg._find_food_item_single_diet)
-assert 'limit(5)' in single_src and '_pick' in single_src, "U4: LIMIT5/_pick missing"
-notes.append("U4 PASS: LIMIT 5 + _pick() in _find_food_item_single_diet")
-
 # 11. title-case normalization
 checklist_src = inspect.getsource(mg.generate_ingredient_checklist)
 assert '.strip().title()' in checklist_src, "U5: title-case missing"

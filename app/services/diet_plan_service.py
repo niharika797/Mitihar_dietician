@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from enum import Enum
 
 from ..schemas.diet_plan import DietPlanResponse as DietPlan
-from ..models.db_models import Recommendation, WeeklyCombo
+from ..models.db_models import Recommendation, WeeklyCombo, WeeklyPatientSummary
 from ..core.config import settings
 from .meal_generator.meal_generator import meal_generator
 
@@ -50,6 +50,36 @@ class DietPlanService:
         # Cross-week seeding removed (Session 22A): seeding prior plans' used_food_ids
         # snowballed the exclusion set across regenerations until variety collapsed.
         # Within-week variety is handled by the generator's weekly_used_ids.
+
+        # R-7B: read prior week's summary for behavioral personalization signals
+        patient_id = user_data.get("id")
+        if patient_id:
+            prev_row = await session.execute(
+                select(WeeklyPatientSummary)
+                .where(WeeklyPatientSummary.patient_id == int(patient_id))
+                .order_by(WeeklyPatientSummary.week_start_date.desc())
+                .limit(1)
+            )
+            prev_summary = prev_row.scalar_one_or_none()
+        else:
+            prev_summary = None
+
+        if prev_summary and prev_summary.summary_data:
+            dish_freq = prev_summary.summary_data.get("dish_frequency", [])
+            preferred_food_ids = frozenset(
+                r["food_item_id"] for r in dish_freq
+                if r.get("times_selected", 0) >= 2
+            )
+            avoided_food_ids = frozenset(
+                r["food_item_id"] for r in dish_freq
+                if r.get("times_offered", 0) >= 3 and r.get("times_selected", 0) == 0
+            )
+        else:
+            preferred_food_ids = frozenset()
+            avoided_food_ids = frozenset()
+
+        user_data["preferred_food_ids"] = preferred_food_ids
+        user_data["avoided_food_ids"] = avoided_food_ids
         meal_plan = await meal_generator.generate_meal_plan(user_data, session)
         return DietPlan(
             user_id=str(user_data["id"]),

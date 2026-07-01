@@ -1,26 +1,64 @@
-fastapi
-google-auth
-uvicorn
-pydantic
-python-jose[cryptography]
-passlib[bcrypt]
-bcrypt==4.0.1
-python-multipart
-pydantic[email]
-pydantic-settings
-pandas
-numpy
-scikit-learn
-openpyxl
-pytest
-httpx
-python-dotenv
-slowapi
-pyotp
-sqlalchemy
-asyncpg
-greenlet
-alembic
-psycopg2-binary
-apscheduler
-firebase-admin
+# ──────────────────────────────────────────────────────────────────────────────
+# Mityahar Backend — pinned requirements
+# Generated from venv inspection on 2026-06-24
+#
+# Setup:
+#   python -m venv venv
+#   venv\Scripts\activate          # Windows
+#   pip install -r requirements.txt
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Web framework
+fastapi==0.136.0
+uvicorn==0.45.0
+python-multipart==0.0.26       # required for FastAPI form parsing (OAuth2PasswordRequestForm)
+
+# Database
+sqlalchemy==2.0.49
+asyncpg==0.31.0                # async PostgreSQL driver
+greenlet==3.4.0                # required by SQLAlchemy async greenlet mode
+alembic==1.18.4                # schema migrations
+psycopg2-binary==2.9.12        # sync driver (used in seed/test scripts)
+
+# Validation & settings
+pydantic==2.13.3
+pydantic-settings==2.14.0
+email-validator==2.3.0         # required for pydantic EmailStr fields
+annotated-types==0.7.0
+
+# Auth & security
+python-jose[cryptography]==3.5.0   # JWT encode/decode
+bcrypt==5.0.0                      # password hashing (passlib NOT used — bypassed in security.py)
+
+# Config
+python-dotenv==1.2.2
+
+# Rate limiting
+slowapi==0.1.9
+
+# MFA (TOTP)
+pyotp==2.9.0
+
+# Task scheduling (APScheduler cron jobs — diet plan completion, subscription expiry)
+apscheduler==3.11.2
+
+# Firebase push notifications (FCM)
+firebase-admin==7.4.0
+
+# Google OAuth (patient login)
+google-auth==2.49.2
+
+# HTTP client (tests + Gemini API calls in scripts)
+httpx==0.28.1
+requests==2.33.1
+
+# Data processing
+pandas==3.0.2
+numpy==2.4.4
+openpyxl==3.1.5                # Excel read/write (food data import)
+
+# Testing
+pytest==9.0.3
+
+# ── One-time data-import scripts only (not required to run the server) ────────
+pdfplumber==0.11.9             # scripts/import_ifct.py — IFCT nutrition PDF parsing

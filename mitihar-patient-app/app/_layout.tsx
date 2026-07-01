@@ -188,8 +188,6 @@ export default function RootLayout() {
               <Stack.Screen name="log/log-from-plan" options={MODAL} />
               <Stack.Screen name="log/edit-log"      options={MODAL} />
               <Stack.Screen name="progress/weight-log" options={SLIDE} />
-              <Stack.Screen name="progress/water-log"  options={SLIDE} />
-              <Stack.Screen name="progress/steps-log"  options={SLIDE} />
               <Stack.Screen name="progress/charts"     options={SLIDE} />
               <Stack.Screen name="profile/edit-profile"   options={SLIDE} />
               <Stack.Screen name="profile/notifications"  options={SLIDE} />

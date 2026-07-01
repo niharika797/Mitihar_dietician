@@ -272,8 +272,8 @@ def run_tests():
     res = requests.post(f"{BASE_URL}/doctor/recipes", json={
         "recipe_name": f"Moong Dal Chilla {ts}", "slot_type": "main_dish", "cal_per_serving": 280,
         "protein_per_serving": 14, "carbs_per_serving": 38, "fat_per_serving": 6, "fiber_per_serving": 5,
-        "diet_type": "Vegetarian", "meal_time_tags": ["Breakfast", "MorningSnacks"], 
-        "plan_type_tags": ["Healthy", "Diabetic-Friendly"], "ingredients": [{"name": "Moong Dal", "amount_g": 80}],
+        "diet_type": "Vegetarian", "meal_time_tags": ["Breakfast", "MorningSnacks"],
+        "ingredients": [{"name": "Moong Dal", "amount_g": 80}],
         "region_tags": ["North", "West"]
     }, headers=doc_auth)
     is_pass = res.status_code == 201

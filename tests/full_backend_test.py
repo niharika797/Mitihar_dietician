@@ -1,10 +1,11 @@
 import httpx
 import json
 import os
+import sys
 from dotenv import load_dotenv
 load_dotenv()
 
-BASE = "http://localhost:8000/api/v1"
+BASE = "http://localhost:8001/api/v1"
 ADMIN_PASSWORD = os.getenv("ADMIN_SEED_PASSWORD", "admin1234")
 DOCTOR_EMAIL = os.getenv("TEST_DOCTOR_EMAIL", "dr.ashok.mehta@mitihar.test")
 DOCTOR_PASSWORD = os.getenv("TEST_DOCTOR_PASSWORD", "DoctorTest@2026")
@@ -21,6 +22,8 @@ def check(label, condition, detail=""):
     results.append((label, condition))
 
 def hdr(token):
+    if not token:
+        return {}
     return {"Authorization": f"Bearer {token}"}
 
 print("\n" + "="*60)
@@ -31,7 +34,13 @@ print("="*60)
 # SECTION 1 — SERVER HEALTH
 # ─────────────────────────────────────────────
 print("\n── SECTION 1: Server Health ──")
-r = httpx.get(f"{BASE.replace('/api/v1', '')}/")
+try:
+    r = httpx.get(f"{BASE.replace('/api/v1', '')}/", timeout=5)
+    print(f"Health check: {r.status_code}")
+except Exception as e:
+    print(f"ERROR: Backend not reachable at {BASE} — {e}")
+    print("Start backend: python -m uvicorn app.main:app --reload --port 8001")
+    sys.exit(1)
 check("GET / returns welcome message", r.status_code == 200 and "Welcome" in r.text, r.text)
 
 r = httpx.get(f"{BASE.replace('/api/v1', '')}/docs")
@@ -179,7 +188,8 @@ r = httpx.post(f"{BASE}/auth/register", json={
     "activity_level": "MA",
     "diet": "Vegetarian",
     "health_condition": "Healthy",
-    "region": "North"
+    "region": "North",
+    "gdpr_consent": True
 })
 check("POST /auth/register returns 200 or 409", r.status_code in (200, 409, 429), r.text)
 
@@ -388,7 +398,7 @@ r = httpx.post(f"{BASE}/doctor/recipes", headers=hdr(doctor_token), json={
     "fiber_per_serving": 4.0,
     "diet_type": "Vegetarian",
     "meal_time_tags": ["Lunch", "Dinner"],
-    "plan_type_tags": ["Healthy", "Diabetic-Friendly"],
+    "serving_weight_g": 250.0,
     "ingredients": [{"name": "Toor Dal", "quantity": "80", "unit": "g"}],
     "region_tags": ["North"]
 })

@@ -107,7 +107,9 @@ pnpm ios
 - 01:05 UTC — deactivate patients whose `token_1_expiry` has passed
 
 ### Rate limiting
-- Uses `slowapi` with in-memory storage. Switch to `REDIS_URL` before multi-worker deployment.
+- Uses `slowapi` with Redis-backed storage (`app/core/limiter.py`); falls back to in-memory with warning if `REDIS_URL` unset.
+- Dev: local Docker container `mityahar-redis` (redis:7-alpine, port 6379).
+- Production: GCP Memorystore (provision at deployment phase); `REDIS_URL` in .env must point to Memorystore IP.
 
 ---
 
@@ -145,7 +147,10 @@ GEMINI_API_KEY_1=      # Only KEY_1 is used; rotating keys doesn't help (quota i
 COOKIE_SECURE=False    # Set True in production
 ALLOW_HARD_DELETE=False
 REQUIRE_EMAIL_VERIFICATION=False
-REDIS_URL=             # Required for multi-worker deployments
+REDIS_URL=redis://localhost:6379/0   # Dev: local Docker (mityahar-redis container)
+                                     # Production (GCP): redis://:<AUTH_PASSWORD>@<MEMORYSTORE_IP>:6379/0
+                                     # Production notes: use AUTH password, keep within same VPC as Cloud Run,
+                                     # TLS not required for Memorystore Basic tier within VPC (confirm at deploy time)
 ```
 
 ---
@@ -172,42 +177,122 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-06-26 (dev environment setup complete)_
+> _This section is maintained by Claude. Last updated: 2026-07-01 (PASS 5 complete — all 5 local verification passes done; ready for GCP deployment phase)_
 
-**Completed R-6.7 (Four targeted fixes):** Approve Week 422 fix, confirmed_kcal NULL fallback, weight goal "Not set", BarChart→LineChart. 0 new TS errors.
+**PASS 5 — Network Latency & Connection Pool Stress: COMPLETE (2026-07-01)**
+- `playwright.config.ts`: added exported `INDIAN_SLOW_4G` constant (offline: false, latency: 150ms, 10 Mbps/3 Mbps); apply via `page.emulateNetworkConditions(INDIAN_SLOW_4G)` in tests
+- Locust 2.44.4 installed in venv
+- Headless run: 100 users, 10/s spawn, 60s, port 8001
+- Data endpoints: GET /meal-plan/week 19.8ms avg, GET /progress/today 24.5ms avg, GET /users/me 7.5ms avg — all under 200ms ✅
+- Zero 500s, zero ConnectionErrors, zero DB pool failures — connection pool healthy at 29.59 req/s
+- All failures were logical 4xx (rate-limit 429s + cascaded 401s + 404s); bcrypt serialization noted as local-only concern
+- VERIFICATION_PLAYBOOK.md: all 5 passes marked complete
 
-**Completed R-7A (Weekly Cycle Automation — Summary Layer):**
-- `app/services/weekly_summary_service.py` (new) — `compute_weekly_summary()`: idempotent, error-isolated; returns `per_day`, `dish_frequency`, `pattern`, `week_totals`; upserts to `weekly_patient_summary` when v2 rec exists
-- `GET /doctor/patients/{id}/weekly-summary` replaced: 80-line direct query → 3-line service call; optional `?week_start=` param
-- `complete_expired_plans()` Sunday 01:00 UTC cron added to `app/main.py` (`id="complete_weekly_plans", replace_existing=True`)
-- `doctorApi.ts`: `DishFrequencyEntry` + `WeeklySummaryData` interfaces; `getWeeklySummary()` optional `weekStart?` param
-- `WeeklySummaryTab.tsx`: `data.days` → `data.per_day`; Section A expandable per-day choice rows; Section B pattern chips (green=preferred, amber=skipped)
+**LOCAL VERIFICATION PHASE: COMPLETE — all 5 passes done**
 
-**Completed R-7A.1 (rec lookup fix + seed):**
-- `weekly_summary_service.py`: `_compute()` now queries `is_active=True` first; derives week window from `rec.week_start_date` (not caller-supplied Monday floor). Historical fuzzy fallback added for completed-week queries.
-- ORM class names corrected: `PatientMealChoice` / `PatientMealChoiceDish` (singular).
-- Chapati seeded ×3 (Jun 20/21/22 Lunch) → `times_selected=4`.
-- Live verification: `dish_freq=61`, `times_offered>0=61`, `preferred=[Chapati, Dahi]`, `never_selected=27`. DB cache written for rec 180.
-- R-7B thresholds confirmed testable.
+**Next: GCP deployment phase (in order):**
+1. Commit all modified/untracked files (see deployment prep items below)
+2. Fix `getMealTypes()` logic bug (`PlanTab.tsx:36–38`) if ≥5-meal support needed
+3. Production `.env`: `COOKIE_SECURE=True`, `REDIS_URL=redis://:<AUTH>@<MEMORYSTORE_IP>:6379/0`, `REQUIRE_EMAIL_VERIFICATION=True`
+4. GCP Cloud Run: container build → Memorystore Basic tier (same VPC) → Cloud SQL → deploy
 
-**Completed (2026-06-26) — Dev environment setup & team onboarding:**
-- Docker: single `postgres:15` service confirmed running (`admin/mityahar_dev`). Removed obsolete `version: '3.8'` from `docker-compose.yml`.
-- Python `venv/` created, all 65 packages from `requirements.txt` installed.
-- `alembic upgrade head` — 31 migrations applied clean.
-- DB snapshot (`db-backups/mityahar_2026-06-24.sql`) restored: 2143 food_items, 71 doctors, 4 patients, 950 ingredients.
-- `mitihar-frontend/apps` — `pnpm install` + `pnpm dev` now work via `pnpm-workspace.yaml` (approves `esbuild` + `@tailwindcss/oxide` build scripts for pnpm 11).
-- `mitihar-patient-app` — added missing `react-native-css-interop` dep; fixes web bundling error.
-- DB creds note resolved: `.env` correctly uses `admin/mityahar_dev` matching Docker defaults.
-- `README.md` fully rewritten: Docker setup, alembic, snapshot restore, test credentials, common issues.
-- All pushed to `feature/api-remediation-v0.2`.
+---
 
-**Rebuild track:** R-0 → … → R-6.7 → R-7A → R-7A.1 → **DEV ENV COMPLETE**.
+**SESSION 21 — Patient App Adaptive UI: COMPLETE** (R-5/R-6, 2026-06-17/18)
+- V2ComboCard, combo confirm-choice, optimistic confirmed state, bowl size (S/M/L), doctor's pick badge
+- Full detail in BUILD_TRACKER under R-5, R-6, R-6.5, R-6.6, R-6.7
 
-**Pending / Backlog:**
-- **R-7B (Generator personalization):** Read `dish_frequency` from `weekly_patient_summary` to seed `preferred_food_ids`/`avoided_food_ids` before next-week generation. **STOP — do not start until product owner confirms scope.**
-- **W3 clinical guardrail decision:** Doctor pin of 2nd main_dish → amber fires but no hard block.
-- **Pool expansion (accompaniment/one_pot):** Swap 409s on thin pools for Vegetarian/Healthy.
-- **Pre-existing:** `full_backend_test.py` admin login crash, water-log.tsx orphaned, avoid_pcos/avoid_gout tags absent, dish rename ~22% done.
-- **R-7A browser verification pending:** WeeklySummaryTab Section A expandable rows, Section B chips in browser.
+**SESSION 22 — Doctor Weekly Patient Summary: COMPLETE** (R-7A, 2026-06-21)
+- `compute_weekly_summary()` service, `GET /doctor/patients/{id}/weekly-summary?week_start=` endpoint
+- `WeeklySummaryTab.tsx`: adherence table + per-day choice breakdown + preferred/never_selected patterns
+- R-7A.1 (rec lookup date mismatch fixed) + R-7A.2 (preferred boost + avoided exclusion in generator) applied
+- Full detail in BUILD_TRACKER under R-7A
 
-**Next action:** R-7B — personalization injection into `meal_generator.py`. Do not start until product owner confirms scope.
+**Completed performance test suite + quality validation (2026-06-30):**
+- `seed_test_patients.py`: 50 patients across 12 condition profiles, IDs 1–50, `health_condition="Healthy"` for all (medical_conditions[] JSONB handles tag filtering — condition-specific templates don't exist)
+- `bulk_generate_plans.py`: 50/50 OK, 0 FAIL, total ~37s; per-patient 0.47–1.14s; rec_ids 283–332
+- `test_plan_quality.py`: **50/50 PASS** — calorie ✅, combos ✅ (84 each), avoid_tags ✅, variety ✅
+- Key calibration: `CALORIE_TARGET_RATIO = 0.85 * 0.85 = 0.7225` — generator uses `effective_tdee = TDEE × 0.85`, then `DEFAULT_SPLIT` sums to 0.85 of effective_tdee → total meals = TDEE × 0.7225
+- accompaniment pool exhaustion on combo_idx 2/3 (pool of 21, needs 4 distinct) — known pre-existing, non-blocking, falls back to combo-0 dish
+
+**Completed Redis-backed rate limiting (2026-06-30):**
+- Local Redis via Docker (`mityahar-redis`, `redis:7-alpine`, port 6379)
+- `REDIS_URL=redis://localhost:6379/0` in `.env`; `Limiter` uses `RedisStorage` when set, falls back to in-memory with warning otherwise
+- `redis-py` upgraded `3.5.3` → `8.0.1` (old version used `distutils` — removed in Python 3.12, caused `ConfigurationError` at startup)
+- Startup PING check in lifespan confirms connectivity; logs error loudly if REDIS_URL set but unreachable
+- `test_redis_shared_limit.py` **PASS** — 429 at total req #11 across ports 8001 + 8002; Cloud Run multi-instance sharing confirmed
+- Known gap: `Retry-After` header absent in 429 responses (slowapi 0.1.9) — non-blocking, cosmetic
+- Production note in `.env`: GCP Memorystore (Basic tier, ~$35-50/mo) with AUTH + VPC-internal — deferred to deployment phase
+
+**Deployment prep — critical items:**
+- **MUST commit before deployment:** `alembic/versions/93ad56085772_remove_plan_type_tags.py` (R-9) and `alembic/versions/b5c6d7e8f9a0_add_original_name_to_food_items.py` (dish cleanup) — both untracked
+- **Also commit:** `scripts/clean_dish_names.py`, `scripts/fix_recipe_quantities.py`, `scripts/tag_medical_ingredients.py`, `tests/performance/` directory
+- **TypeScript check:** pnpm not in PATH on this machine; last verified state (BUILD_TRACKER R-7A) = 6 pre-existing `ImportMeta.env` errors only, 0 new errors — install pnpm then run `pnpm tsc --noEmit` to confirm
+- **Known logic bug:** `getMealTypes()` at `PlanTab.tsx:36–38` — `ALL_MEAL_TYPES` and `THREE_MEAL_TYPES` are identical arrays; ≥5 branch is dead code. Logic-only, no TypeScript error. Low severity (3-meal plan only mode in production).
+- **Add to `.gitignore`:** `__pycache__/`, `*.pyc`, `uvicorn_*.txt`, `clean_dishes_llm_checkpoint.json`, `tag_medical_checkpoint.json`
+
+**Deployment phase next steps (in order):**
+1. Commit: the 2 alembic migrations, 3 scripts above, `tests/performance/`, all modified backend files
+2. Run `pnpm tsc --noEmit` in `mitihar-frontend/apps/` — expect 6 ImportMeta.env errors only
+3. Fix `getMealTypes()` logic bug (`PlanTab.tsx:36–38`) — both arrays must differ for ≥5-meal support
+4. Production `.env`: `COOKIE_SECURE=True`, `REDIS_URL=redis://:<AUTH>@<MEMORYSTORE_IP>:6379/0`, `REQUIRE_EMAIL_VERIFICATION=True`, `ALLOW_HARD_DELETE=False`
+5. GCP Cloud Run: container build → Memorystore provisioning (Basic tier, same VPC) → Cloud SQL or hosted PostgreSQL → deploy
+
+**Completed avoid_pcos / avoid_gout ingredient tagging (2026-06-29):**
+- 95 ingredients tagged via Claude CLI (18 batches of 50); 432 total ingredients have at least one tag
+- Fixed `::jsonb` cast syntax in `derive_recipe_tags.py` (CAST() form required for asyncpg)
+- Propagated to food_items via recipe_ingredients join
+- Recipes tagged avoid_pcos: 554
+- Recipes tagged avoid_gout: 130
+- Generator now applies exclusions for PCOS and Gout patients automatically
+
+**Completed flagged recipe review (2026-06-29):**
+- 1779 & 1789 (Corn Palak): both left unverified — missing corn ingredient entirely
+  (only spice/garnish rows present, ~30 kcal artifacts); duplicates of each other;
+  existing verified Corn Palak (id=1257) already in pool
+- 3411 (Nawabi Mixed Vegetable Gravy): verified — all ingredients present, 65g serving,
+  49.66 kcal is mathematically correct for a water-heavy vegetable gravy with 3g ghee
+- 3418: left unverified — exact duplicate of 3411
+- Final verified pool: 2101 recipes
+
+**Completed recipe quantity fix (fix_recipe_quantities.py):**
+- Pass A–E: 553 bad recipes fixed; 549 verified; pool 184→1551→2100
+- Generation verified: Priya rec confirmed 84 combos, no 409 errors
+
+**Completed W3 UX fix (MealConfigTab slot_type display):**
+- Pinned dish cards now show slot_type alongside kcal (e.g. "245 kcal · grain")
+- Blocked dish cards same fix applied
+
+**Completed full_backend_test.py — 94/94 passing (2026-06-30):**
+- BASE port corrected 8000 → 8001
+- `import sys` added; health check wrapped in try/except with clear error + sys.exit(1)
+- `gdpr_consent: True` added to Section 8 patient registration payload
+- `hdr()` guarded against empty token — returns `{}` instead of `Bearer ` (prevented httpx LocalProtocolError)
+- `serving_weight_g: 250.0` added to Section 12 recipe creation payload (now required field)
+- `plan_type_tags` removed from Section 12 recipe creation payload (deleted in R-9)
+- All 16 sections passing: 94/94
+- Note: seed_admin.py has no default password — `ADMIN_SEED_PASSWORD` must be in .env
+
+**Created performance test suite (2026-06-30):**
+- `tests/performance/seed_test_patients.py` — seeds 50 patients across 12 condition profiles; idempotent; writes `test_manifest.json`
+- `tests/performance/benchmark_api.py` — single-user p50/p95/p99 for 10 endpoints; saves `reports/benchmark_baseline.json`
+- `tests/performance/locustfile.py` — PatientUser + DoctorUser Locust classes; ramp/spike scenarios; run via UI or headless
+- `tests/performance/test_plan_quality.py` — calorie range, 84-combo count, avoid_tags compliance, dish variety; `--generate-first` flag
+- `tests/performance/e2e/` — Playwright config + doctor_flow.spec.ts + patient_flow.spec.ts (patient skips if Expo web not running)
+- `tests/performance/run_all_tests.py` — master runner; `tests/performance/README.md` — execution order
+- No application code modified — additive only
+
+**Added bulk generator + rate limit test (2026-06-30):**
+- `tests/performance/bulk_generate_plans.py` — calls `DietPlanService.generate_diet_plan` + `store_diet_plan` directly for all 50 test patients; no HTTP, no rate limiter; prints per-patient timing; saves `reports/bulk_generation.json`
+- `tests/performance/test_rate_limit.py` — verifies 429 fires at 10/min on doctor login, checks Retry-After header, confirms X-Forwarded-For is NOT honored
+- `tests/performance/locustfile.py` — added rate limiter caveat block in module docstring
+
+**X-Forwarded-For finding (affects load test validity):**
+- `slowapi` uses `key_func=get_remote_address` → `request.client.host` (raw TCP socket IP)
+- X-Forwarded-For is NOT read by the rate limiter
+- All local Locust workers share one `127.0.0.1` rate bucket — per-IP isolation untestable locally
+- Must re-validate rate limit isolation post-GCP-deployment (load balancer will supply real client IPs)
+
+**Remaining backlog:**
+- 563 manual-source original outliers → 10 under-50 left untouched (correct)
+- `rename_dishes_gemini.py` superseded by `clean_dish_names.py`; `rename_checkpoint.json` already deleted (2026-06-29 cleanup)

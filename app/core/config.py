@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # Example: redis://localhost:6379
     REDIS_URL: Optional[str] = None
 
+    # ── Trusted proxy CIDR (rate limiter X-Forwarded-For support) ───────────
+    # Comma-separated CIDRs whose X-Forwarded-For header is trusted.
+    # Dev: 127.0.0.1 (loopback). Production: GCP load balancer IP range.
+    # Leave unset to use raw TCP socket IP (safe default, no header trust).
+    TRUSTED_PROXY_CIDR: Optional[str] = None
+
     GEMINI_API_KEY_1: Optional[str] = None
     GEMINI_API_KEY_2: Optional[str] = None
     GEMINI_API_KEY_3: Optional[str] = None

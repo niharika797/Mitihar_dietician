@@ -1,5 +1,5 @@
 import api from "../lib/axios";
-import type { WeeklyPlan, WeekResponseV2, PlanHistoryItem, ShoppingListResponse, SuggestionsResponse, ConfirmChoiceResponse } from "../types";
+import type { WeeklyPlan, WeekResponseV2, PlanHistoryItem, ShoppingListResponse, ConfirmChoiceResponse } from "../types";
 
 // ── GET /meal-plan/week ────────────────────────────────────────────────────
 export async function getWeeklyPlan(): Promise<WeeklyPlan | WeekResponseV2> {
@@ -33,12 +33,6 @@ export async function getShoppingList(): Promise<ShoppingListResponse> {
   if (data && data.grouped && typeof data.grouped === "object") return data.grouped;
   if (data && typeof data === "object" && !data.total_items) return data;
   return {};
-}
-
-// ── GET /meal-plan/suggestions/{date}/{meal_type} ─────────────────────────
-export async function getMealSuggestions(date: string, mealType: string): Promise<SuggestionsResponse> {
-  const { data } = await api.get(`/meal-plan/suggestions/${date}/${mealType}`);
-  return data;
 }
 
 // ── POST /meal-plan/confirm-choice ────────────────────────────────────────
