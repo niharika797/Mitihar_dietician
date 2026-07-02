@@ -154,3 +154,6 @@ tests/performance/test_manifest.json
 tests/performance/reports/
 
 
+
+# ── Local Claude Code config (machine-specific paths, personal hooks) ────────
+.claude/
