@@ -55,6 +55,11 @@
 - [ ] **FCM push notifications in production** — Firebase project + real device  
   Locally untestable; `notification_service.py` sends to FCM but real delivery unverified
 
+- [ ] **Auth endpoint QueuePool behavior under concurrent load** — Cloud Run deployed (2+ instances)  
+  Fixed in code (3-phase bcrypt refactor in `app/routers/auth.py`), unverified at scale.  
+  Must re-run chaos+load test against `/auth/token` specifically once real Cloud Run staging exists with 2+ instances.  
+  Prior local test only exercised read endpoints; DB-kill chaos was a no-op there because reads finish too fast to be caught.
+
 ---
 
 ## Section C — Blocked / not started

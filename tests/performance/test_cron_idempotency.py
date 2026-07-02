@@ -150,12 +150,9 @@ async def test_flag_expiring_sequential():
 async def test_flag_expiring_concurrent():
     """
     Concurrent double-fire on flag-expiring-patients.
-    Both calls SELECT newly_expiring before either commits the UPDATE.
-    DB state will be correct (idempotent UPDATE), but both may return nonzero 'flagged'
-    AND both may fire FCM for the same patients.
-
-    This is the known race: we verify DB state is correct (second sequential call → 0),
-    and document (not assert) that FCM may double-fire.
+    Atomic UPDATE...RETURNING means only one caller wins the row lock and gets patients
+    back; the concurrent caller sees 0 rows → sends 0 FCM pushes.
+    Asserts: at most one of {c1, c2} is nonzero (no duplicate FCM sends).
     """
     async with httpx.AsyncClient(base_url=BASE, timeout=30) as client:
         r1, r2 = await asyncio.gather(
@@ -175,15 +172,11 @@ async def test_flag_expiring_concurrent():
         f"DB STATE FAILURE: after concurrent flag calls (c1={c1}, c2={c2}), "
         f"sequential call returned {c3} (should be 0 — all eligible already flagged)."
     )
-    if c1 > 0 and c2 > 0:
-        print(
-            f"  WARN FCM DOUBLE-FIRE RISK: both concurrent calls returned flagged>0 "
-            f"(c1={c1}, c2={c2}). DB state is correct, but FCM notifications "
-            f"may have fired twice for {max(c1,c2)} patients. "
-            f"Mitigation: Cloud Scheduler minimum_backoff > job runtime, or add FCM dedup key."
-        )
-    else:
-        print(f"  PASS No FCM double-fire observed (only one call returned nonzero flagged)")
+    assert not (c1 > 0 and c2 > 0), (
+        f"FCM DOUBLE-FIRE: both concurrent calls returned flagged>0 (c1={c1}, c2={c2}). "
+        f"Atomic UPDATE fix failed — SELECT gap still present."
+    )
+    print(f"PASS Concurrent flag: at most one call returned nonzero (c1={c1}, c2={c2})")
 
 
 # ── Complete expired plans: sequential ────────────────────────────────────────

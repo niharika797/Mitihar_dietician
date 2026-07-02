@@ -26,10 +26,9 @@ def _check_secret(x_cron_secret: str | None) -> None:
 async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None)):
     """
     Mark patients whose token_1_expiry is within 4 days as expiring_soon=True.
-    Idempotent: UPDATE WHERE expiring_soon=False — second call finds 0 matching rows.
-    Side-effect risk: FCM fires once per call for newly-flagged patients.
-    Concurrent calls may double-fire FCM for the same patient (SELECT gap before commit).
-    Cloud Scheduler should not overlap — use a minimum_backoff that exceeds job runtime.
+    Atomic UPDATE...RETURNING closes the SELECT-before-UPDATE FCM race: only the caller
+    that wins the row lock gets patient IDs back; a concurrent caller sees 0 rows and
+    sends 0 FCM pushes. Idempotent: WHERE expiring_soon=False eliminates re-runs.
     """
     _check_secret(x_cron_secret)
     from ..services.notification_service import notify_sub_expiring
@@ -37,18 +36,8 @@ async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None
     warning_cutoff = now + timedelta(days=4)
     async with AsyncSessionLocal() as session:
         try:
-            newly_expiring_result = await session.execute(
-                select(Patient).where(
-                    Patient.token_1_active == True,
-                    Patient.token_1_expiry != None,
-                    Patient.token_1_expiry <= warning_cutoff,
-                    Patient.token_1_expiry > now,
-                    Patient.expiring_soon == False,
-                )
-            )
-            newly_expiring = newly_expiring_result.scalars().all()
-
-            await session.execute(
+            # Atomic: winner gets rows back; concurrent loser gets 0 → no duplicate FCM
+            flagged_result = await session.execute(
                 update(Patient)
                 .where(
                     Patient.token_1_active == True,
@@ -58,7 +47,10 @@ async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None
                     Patient.expiring_soon == False,
                 )
                 .values(expiring_soon=True)
+                .returning(Patient.id, Patient.token_1_expiry)
             )
+            newly_flagged = flagged_result.fetchall()  # [(id, expiry), ...]
+
             await session.execute(
                 update(Patient)
                 .where(
@@ -71,14 +63,20 @@ async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None
             await session.commit()
             _log.info("[cron] expiring_soon flags updated")
 
-            for pat in newly_expiring:
-                try:
-                    days_left = max(0, (pat.token_1_expiry - now).days)
-                    notify_sub_expiring(pat, days_left)
-                except Exception:
-                    pass
+            if newly_flagged:
+                patient_ids = [row[0] for row in newly_flagged]
+                expiry_map = {row[0]: row[1] for row in newly_flagged}
+                pat_result = await session.execute(
+                    select(Patient).where(Patient.id.in_(patient_ids))
+                )
+                for pat in pat_result.scalars().all():
+                    try:
+                        days_left = max(0, (expiry_map[pat.id] - now).days)
+                        notify_sub_expiring(pat, days_left)
+                    except Exception:
+                        pass
 
-            return {"flagged": len(newly_expiring)}
+            return {"flagged": len(newly_flagged)}
         except Exception as exc:
             await session.rollback()
             _log.error("[cron] flag_expiring_patients failed: %s", exc, exc_info=True)
