@@ -1,5 +1,5 @@
 # Mityahar — Deployment Checklist
-**Last updated:** 2026-07-02 (chaos test + migration audit + backup script + APScheduler analysis)  
+**Last updated:** 2026-07-03 (Dockerfile ✓, APScheduler → Cloud Scheduler Option B ✓, container cron smoke test rewritten)  
 **Branch:** feature/api-remediation-v0.2  
 **Status:** Local verification complete. GCP deployment not yet started.
 
@@ -25,7 +25,7 @@
 - [ ] `.gitignore` cleanup — add `__pycache__/`, `*.pyc`, `frontend_dev.txt`, `frontend_err.txt`, `rename_checkpoint.json`, `tag_medical_checkpoint.json`, `*.txt` uvicorn logs
 - [ ] Commit all untracked files — `alembic/versions/a1b2c3d4e5f6_*`, modified `app/core/database.py`, `app/core/limiter.py`, `app/routers/auth.py`, full `tests/performance/` suite, `DEPLOY_CHECKLIST.md`
 - [ ] `requirements.txt` verified — no dev-only packages (pytest, locust) included in production image
-- [ ] Dockerfile created — not yet written; Cloud Run deploy is blocked without it
+- [x] Dockerfile created — multi-stage python:3.13-slim build from `requirements.lock`; committed with `.dockerignore` (Jul 3)
 
 ---
 
@@ -67,7 +67,7 @@
 
 ## Section C — Blocked / not started
 
-- [ ] **[HIGH] Dockerfile missing** — Cloud Run requires a container image; no Dockerfile exists in the repo. Deploy is hard-blocked.
+- [x] **Dockerfile — DONE (Jul 3)** — multi-stage python:3.13-slim image builds from `requirements.lock`; build verified locally, pytest absent from final image.
 
 - [x] **Migration reversibility audit — DONE (Jul 2)**  
   All 33 migrations have non-trivial `downgrade()`. One broken path found and fixed:  
@@ -80,7 +80,8 @@
   GCP Cloud SQL procedure documented in script docstring: Console → Backups → Create backup before migration; restore via `gcloud sql backups restore` or Console Restore button.  
   Usage: `POSTGRES_USER=admin python -m scripts.pre_migrate_backup`
 
-- [ ] **[HIGH] APScheduler in Cloud Run — DECISION NEEDED (Jul 2)**  
+- [x] **APScheduler in Cloud Run — RESOLVED: Option B implemented (Jul 2)**  
+  APScheduler removed from `app/main.py`; three `X-Cron-Secret`-protected endpoints in `app/routers/internal.py` (`/internal/cron/flag-expiring-patients`, `/deactivate-expired-patients`, `/complete-expired-plans`). 6/6 idempotency tests pass; FCM double-fire race closed with atomic UPDATE...RETURNING. Remaining: create the 3 Cloud Scheduler jobs at GCP deploy time (commands in CLAUDE.md). Original analysis kept below for reference.
 
   **Jobs registered in `app/main.py` lifespan:**
   | Job | Schedule | Consequence of missed run |
@@ -122,7 +123,7 @@
   Combined Redis+DB chaos produced no additive failure mode.  
   Evidence: `tests/performance/chaos_test.py`, `tests/performance/reports/chaos_report.json`
 
-- [ ] APScheduler cron smoke test in container — jobs untested in containerized environment; `startup` event registration may behave differently under gunicorn/uvicorn workers
+- [ ] Cron endpoint smoke test in container — run the Docker image locally and hit all three `/internal/cron/*` endpoints with `X-Cron-Secret` (valid + missing/wrong secret), confirming 200/401 responses and job effects inside the containerized environment
 
 - [ ] `ALLOW_HARD_DELETE=False` confirmed in production `.env` — easy to miss; hard deletes would permanently destroy patient records
 
