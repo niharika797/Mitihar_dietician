@@ -177,7 +177,16 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-07-02 (on-device SecureStore token test PASSED, harness removed)_
+> _This section is maintained by Claude. Last updated: 2026-07-03 (commit sweep: junk triage, dev requirements split, functional sweep, checklist update)_
+
+**COMMIT SWEEP — COMPLETE (2026-07-03, commits 8680c12..195b099)**
+
+- 5 commits: (1) gitignore junk triage — backups/, frontend dev logs, scripts/debug/ (all `scripts/_22e_*.py` moved there, untracked reference); (2) pytest split into `requirements-dev.in/.lock` (constrained `-c requirements.lock`) — production lockfile pytest-free, Docker rebuild verified, pytest absent from image (81 pkgs); (3) tracked `__pycache__` *.pyc deletions; (4) functional sweep — auth 3-phase decoupling, FailOpenLimiter, statement_timeout, cron endpoints, migration a1b2c3d4e5f6, Dockerfile + .dockerignore, full tests/performance/ suite; (5) DEPLOY_CHECKLIST.md — Dockerfile ✓, APScheduler Option B ✓, new item: cron smoke test inside container.
+- Pre-commit verification: `tsc --noEmit` 0 errors; `full_backend_test.py` 98/98 (2 initial failures = 6 stale "Test Dal Tadka" rows from prior runs hitting the dedup path in POST /doctor/recipes — rows deleted, clean pass; NOT a code bug).
+- Security fix during sweep: `test_fcm_race_real.py` had dev CRON_SECRET + DB creds hardcoded — now reads from `.env` via load_dotenv before it was ever committed.
+- Known test flaw (pre-existing, not fixed): `full_backend_test.py` Section 12 is not idempotent — dedup `.limit(1)` on "Test Dal Tadka" returns nondeterministic row across reruns once one copy is approved.
+- Remaining uncommitted (intentional): `.claude/` local config, `mitihar-patient-app/test-results/` + `tests/performance/e2e/test-results/` (Playwright artifacts), ~35 `scripts/_*` one-off session scripts + `scripts/audit_22c/`, `audit_22d/` — need same triage decision (move to scripts/debug/ or delete).
+- Next action: dev venv install note — run `pip install -r requirements-dev.lock` for pytest locally (production lockfile no longer carries it).
 
 **ON-DEVICE SECURESTORE TOKEN TEST — VERIFIED (2026-07-02)**
 
