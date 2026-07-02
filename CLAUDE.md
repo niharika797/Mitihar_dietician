@@ -177,7 +177,17 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-07-02 (patient app: token rotation fix + EAS/Sentry setup)_
+> _This section is maintained by Claude. Last updated: 2026-07-02 (on-device SecureStore token test PASSED, harness removed)_
+
+**ON-DEVICE SECURESTORE TOKEN TEST — VERIFIED (2026-07-02)**
+
+- Item 1 verified on-device via Expo Go (SecureStore, both scenarios PASS). Not yet verified in a compiled dev/production build — flag for pre-launch smoke test (tracked in DEPLOY_CHECKLIST.md Section B).
+- Scenario A (corrupt-access): access token corrupted in SecureStore → GET /users/me → silent refresh → `RESULT corrupt-access: PASS (accessRepaired=true, refreshRotated=true)` — rotated refresh token persisted to SecureStore.
+- Scenario B (corrupt-both): both tokens corrupted → 401 → refresh 401 → `RESULT corrupt-both: PASS (tokensWiped=true, loggedOut=true)` — AuthGate routed to /login.
+- Device: physical Android via Expo Go SDK 55 (APK from expo.dev/go; Play Store version was SDK 54). Test patient: priya.test@mityahar.com.
+- Harness removed: `lib/tokenCorruptTest.ts` deleted, arm block reverted in `app/_layout.tsx`.
+- Ops note: `expo start` piped through Tee-Object crashes on the Expo-login prompt ("Input is required... non-interactive"); CI=1 makes it exit after startup. Run interactive, unpiped.
+- pnpm allowBuilds audit: patient-app scoped to `@sentry/cli` only ✓; frontend workspace has separate pre-existing entries (`@tailwindcss/oxide`, `esbuild`) — also package-scoped.
 
 **PATIENT APP — TOKEN ROTATION + EAS/SENTRY — COMPLETE (2026-07-02)**
 

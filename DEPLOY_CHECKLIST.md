@@ -55,6 +55,9 @@
 - [ ] **FCM push notifications in production** — Firebase project + real device  
   Locally untestable; `notification_service.py` sends to FCM but real delivery unverified
 
+- [ ] **Patient-app token rotation in compiled build** — EAS development/production build + device  
+  Verified on-device via Expo Go (SecureStore path, corrupt-access + corrupt-both both PASS, Jul 2). Expo Go is NOT a compiled build — re-run smoke test in an EAS build before launch.
+
 - [ ] **Auth endpoint QueuePool behavior under concurrent load** — Cloud Run deployed (2+ instances)  
   Fixed in code (3-phase bcrypt refactor in `app/routers/auth.py`), unverified at scale.  
   Must re-run chaos+load test against `/auth/token` specifically once real Cloud Run staging exists with 2+ instances.  
