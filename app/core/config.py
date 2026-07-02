@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: Optional[str] = None
 
+    # ── Internal cron secret ──────────────────────────────────────────────
+    # Shared secret for /internal/cron/* endpoints called by Cloud Scheduler.
+    # Must be set in production. Requests with a missing/wrong header get 401.
+    CRON_SECRET: Optional[str] = None
+
     # ── Dev-only flags ────────────────────────────────────────────────────
     # ALLOW_HARD_DELETE=True enables DELETE /admin/patients/{id}/hard-delete
     # which physically removes the patient row (vs the DPDP anonymise).

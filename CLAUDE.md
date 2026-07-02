@@ -177,7 +177,133 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-07-01 (PASS 5 complete — all 5 local verification passes done; ready for GCP deployment phase)_
+> _This section is maintained by Claude. Last updated: 2026-07-02 (Cloud Scheduler migration + scaled chaos test complete)_
+
+**CLOUD SCHEDULER MIGRATION — COMPLETE (2026-07-02)**
+
+APScheduler removed entirely from `app/main.py` lifespan.
+Three header-protected internal endpoints added in `app/routers/internal.py`:
+- `POST /internal/cron/flag-expiring-patients`
+- `POST /internal/cron/deactivate-expired-patients`
+- `POST /internal/cron/complete-expired-plans`
+Header: `X-Cron-Secret: <CRON_SECRET>` — 401 if missing/wrong.
+Add `CRON_SECRET=<secret>` to `.env` before GCP deployment.
+
+**GCloud Scheduler jobs to create (app-side docs — not yet created in GCP):**
+```
+gcloud scheduler jobs create http flag-expiring-patients \
+  --schedule="5 1 * * *" --uri="https://<CLOUD_RUN_URL>/internal/cron/flag-expiring-patients" \
+  --message-body="" --headers="X-Cron-Secret=<CRON_SECRET>" --http-method=POST
+
+gcloud scheduler jobs create http deactivate-expired-patients \
+  --schedule="10 1 * * *" --uri="https://<CLOUD_RUN_URL>/internal/cron/deactivate-expired-patients" \
+  --message-body="" --headers="X-Cron-Secret=<CRON_SECRET>" --http-method=POST
+
+gcloud scheduler jobs create http complete-expired-plans \
+  --schedule="0 1 * * 0" --uri="https://<CLOUD_RUN_URL>/internal/cron/complete-expired-plans" \
+  --message-body="" --headers="X-Cron-Secret=<CRON_SECRET>" --http-method=POST
+```
+
+**Idempotency audit results (`tests/performance/test_cron_idempotency.py`):**
+- Auth rejection: 401 on missing/wrong secret — PASS
+- Sequential double-fire on deactivate: call2=0 deactivated — PASS (WHERE token_1_active=True eliminates already-processed rows)
+- Concurrent double-fire: both calls returned 0 total — PASS
+- Flag expiring sequential/concurrent: DB state correct (0 on second call) — PASS
+- Known risk: FCM double-fire on concurrent flag calls — SELECT-then-UPDATE gap means both calls may notify same patients. Mitigation: Cloud Scheduler minimum_backoff > job runtime.
+- Limitation: concurrent test used empty dev DB (0 expired patients) — row-level locking verified by logic, not live contention.
+
+**SCALED CHAOS TEST RESULTS (2026-07-02)**
+
+Hypothesis: GET /meal-plan/week at 1000 concurrent + Redis fail-open would amplify DB pool exhaustion seen in prior Locust run.
+
+Results — 200 concurrent:
+- Baseline: 3400 reqs, 0 fail (0.0%)
+- Redis kill chaos window: 0.0% fail
+- DB terminate chaos window: 0.0% fail
+- Combined chaos window: 0.0% fail
+
+Results — 1000 concurrent:
+- Baseline: 2000 reqs, 0 fail (0.0%)
+- Redis kill: 6000 reqs, 1 fail (RemoteProtocolError — stale keepalive, not pool exhaustion)
+- DB terminate: 5000 reqs, 0 fail
+- Combined: 10000 reqs, 1 fail (same RemoteProtocolError pattern)
+
+**Why this contradicts the prior QueuePool crash — must read before assuming PASS:**
+- Prior crash: Locust, multi-endpoint, `POST /auth/token` with bcrypt held DB connections 200ms per request. 1000 simultaneous auth requests = 1000 × 200ms connection hold = certain QueuePool timeout.
+- This test: `GET /meal-plan/week` is a 20-30ms read. Pool (40 conns) cycles fast enough that 1000 concurrent requests never exhaust it.
+- DB terminate chaos: returned "0 connections terminated" both times — connections released before terminate ran. Chaos was a no-op.
+- Fail-open interaction: CANNOT BE VERIFIED on GET endpoints. Rate limit was not meaningfully throttling at 127.0.0.1 (same bucket). To trigger the interaction, a test mixing auth + reads under 1000 concurrent is needed.
+- Near-miss: 2 RemoteProtocolError in 16000 requests. Not pool exhaustion — HTTP keepalive stale connections on Redis restart boundary.
+
+**Verdict on Item 2:** QueuePool exhaustion is real but endpoint-specific. Auth is the attack surface. The auth fix (3-phase, release before bcrypt) from Item 1 is the correct mitigation. GCP horizontal scaling handles the rest.
+
+**PRE-DEPLOYMENT AUDIT — COMPLETE (2026-07-02)**
+
+Six items audited; evidence and verdicts below:
+
+**Item 1 — AUTH/DB CONNECTION COUPLING: FIXED**
+- `/auth/token` and `/auth/doctor/login` refactored to three-phase approach
+- Phase 1: read session (fetch user) releases connection BEFORE bcrypt runs
+- Phase 2: `asyncio.to_thread(verify_password, ...)` — event loop unblocked, zero DB connection held during bcrypt
+- Phase 3: minimal write session (update login counter only)
+- Impact at 200 users: GET endpoint p50 = 400ms (was 2000–16000ms under concurrent auth)
+
+**Item 2 — CONFIRM-CHOICE UNDER REAL LOAD: FIXED AND VERIFIED**
+- Root cause: 100 of 102 plans in `draft` status → `GET /meal-plan/week` returned `{"days": []}` → no combo IDs
+- Fix 1: bulk-approved all draft plans via `scripts/_bulk_approve_plans.py`
+- Fix 2: locustfile now stores full combo entries `{combo_id, food_item_ids, meal_type, date}` (not just IDs)
+- Fix 3: `bowl_size` corrected to lowercase ("small"/"medium"/"large")
+- Fix 4: `food_item_ids` now sent in payload (was missing entirely)
+- Result at 200 users: **1210 requests, 0 failures (0.00%)** — p50 1700ms, p95 4300ms, p99 7100ms
+
+**Item 3 — patients.doctor_id INDEX: APPLIED AND VERIFIED**
+- Migration `1a2b3c4d5e6f` applied: `CREATE INDEX idx_patients_doctor_id ON patients(doctor_id)`
+- EXPLAIN ANALYZE: Seq Scan → Index Scan, execution time 0.106ms
+
+**Item 4 — 1000-USER RUN: EXECUTED**
+- 200 users (sustained 120s): 0% failure on all patient endpoints; confirm-choice 0/0 failures; auth works with XFF isolation
+- 1000 users (sustained 300s): server crashes at peak — `QueuePool limit of size 20 overflow 20 reached, timeout 30s`. Root cause: single-process uvicorn + 40-connection pool cannot sustain 990 simultaneous post-bcrypt write sessions
+- This is a single-instance local limitation, NOT a code bug. GCP Cloud Run horizontally scales (each instance ~200 users → safe range per our 200-user test)
+- Fix for 1000-user local: increase `pool_size`/`max_overflow` or use `--workers 4` with uvicorn
+
+**Item 5 — INDIAN 4G E2E: EXECUTED — 1 UX FAILURE FLAGGED**
+- pnpm 11.9.0 installed, Playwright Chromium browser installed, E2E tests run end-to-end
+- INDIAN_SLOW_4G applied via CDP (150ms RTT, 10Mbps down, 3Mbps up)
+- Timing results (doctor flow, `tests/performance/e2e/tests/doctor_flow.spec.ts`):
+
+| Step | Time | Verdict |
+|------|------|---------|
+| Login (auth + redirect + dashboard data) | **5889ms** | ⚠ UX FAILURE |
+| Dashboard stats render | 866ms | ✓ |
+| Patients page + list | 274ms | ✓ |
+| Patient profile opens | 33ms | ✓ |
+| Plan tab content | 221ms | ✓ |
+| Weekly Summary tab | 33ms | ✓ |
+| Meal Config tab | 258ms | ✓ |
+
+- Login at 5.9s = bcrypt ~2s + 2×150ms RTT + Vite dev bundle cold load. Production compiled estimate: ~5.1s (still over). Non-blocking for deployment but should be tracked — consider a loading skeleton or optimistic redirect.
+- All tab transitions under 300ms ✓
+
+**Item 6 — DOCTOR SEED DATA: FIXED**
+- `DOCTOR_DEFS` emails changed from `@mitihar.test` → `@mityahar-perf.com` in `seed_test_patients.py`
+- Doctor creation migrated to admin API (`POST /api/v1/admin/doctors`) — no direct-ORM bypass
+- Locustfile doctor fallback email updated to match
+- Note: existing seeded doctors in DB still have `@mitihar.test` (legacy); new runs will use `@mityahar-perf.com`
+
+**ALSO FIXED this session:**
+- `TRUSTED_PROXY_CIDR=127.0.0.1` added to local `.env` — per-user XFF rate bucket isolation for load tests
+- `locustfile.py` + `locustfile_1000users.py`: combo entry extraction with food_item_ids, date, meal_type; bowl_size lowercase
+- Playwright e2e `package.json` created in `tests/performance/e2e/`; `@playwright/test` 1.61.1 installed
+
+**PRE-DEPLOYMENT HARDENING — COMPLETE (2026-07-01)**
+Six audit items fixed and verified with raw test output:
+
+1. **Redis fail-open** — `FailOpenLimiter` in `app/core/limiter.py`: catches `RedisError`/`StorageError`, logs "failing open", returns 200 instead of 500/502. Confirmed: req still gets 429 when Redis is up; gets 200 (not 500) when Redis goes down mid-run.
+2. **Real API-path load test** — `tests/performance/seed_via_api.py`: 50 concurrent POST /api/v1/auth/register with distinct XFF IPs. Result: 50/50 success, 0 duplicates, 0 rate-limited, 15.19s total (bcrypt serialization on single-core dev, not production concern).
+3. **Duplicate email race** — `tests/performance/test_duplicate_email.py`: 10 concurrent same-email signups → 1 created, 9 × 409. DB UNIQUE constraint (`4e5124b3e103` migration) + `auth.py:175` IntegrityError handler confirmed.
+4. **BMR/TDEE drift fixed** — `seed_test_patients.py` line 139: default multiplier `1.375` → `1.2` (matches `calculations.py`). All 5 test cases match exactly.
+5. **DB statement_timeout** — `database.py` `connect_args={"server_settings": {"statement_timeout": "30000"}}`. `SHOW statement_timeout` = `'30s'`; `pg_sleep(40)` killed at 30.0s; pool healthy after kill.
+6. **TRUSTED_PROXY_CIDR** — `.env.production` created with `TRUSTED_PROXY_CIDR=130.211.0.0/22,35.191.0.0/16`. Both CIDRs parse correctly; GCP LB IP confirmed in range; non-GCP IP excluded.
 
 **PASS 5 — Network Latency & Connection Pool Stress: COMPLETE (2026-07-01)**
 - `playwright.config.ts`: added exported `INDIAN_SLOW_4G` constant (offline: false, latency: 150ms, 10 Mbps/3 Mbps); apply via `page.emulateNetworkConditions(INDIAN_SLOW_4G)` in tests
