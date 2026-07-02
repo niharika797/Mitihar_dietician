@@ -52,6 +52,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         project: "mitihar-patient-app",
       },
     ],
+    "expo-web-browser",
   ],
   experiments: {
     typedRoutes: true,
