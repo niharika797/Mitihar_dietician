@@ -177,7 +177,16 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-07-03 (commit sweep: junk triage, dev requirements split, functional sweep, checklist update)_
+> _This section is maintained by Claude. Last updated: 2026-07-03 (session-script triage + .claude/ untrack)_
+
+**SESSION-SCRIPT TRIAGE + .claude/ CLEANUP — COMPLETE (2026-07-03, commit a719ce0)**
+
+- Verified-then-deleted 19 read-only session scripts (`_audit_s19*`, `_pilot_*`, `_q8_bevlist/dryrun/investigate*`, `_s22b_classify*/probe/dumps/spotcheck`, `_r2_verify`, `_s22e_verify`, `_w3_pin_verify`, `_task4_regression_s19`, `_verify_tags_cols`) — each script's findings quoted from BUILD_TRACKER before deletion; post-mutation DB backup confirmed (`backups/pre_migrate_20260702_*.dump`, 2026-07-02, postdates all write-script mtimes ≤2026-06-13).
+- Moved to `scripts/debug/` (gitignored, kept on disk): 10 one-time DB write scripts (`_q8_commit`, `_s22b_final_classify` + `_s22b_updates.sql`, `_task1_safety_writes`, `_task1_v2`, `_task2_promotes/fixups`, `_task4_bt_promotes`, `_s22a_regen`, `_s22e_regen`) + 6 scripts whose findings were NOT in BUILD_TRACKER (`_check_kidney` — turned out to be a self-reverting WRITE script, `_task_pretask_check`, `_task1_preflight`, `_task2_schema_check`, `_task2_verify`, `_task3_verify`) + `audit_22c/` + `audit_22d/`.
+- `.claude/` gitignored; `.claude/settings.local.json` untracked via `git rm --cached` (machine-specific approvals; hooks/commands reference personal Obsidian vault — none team-shareable).
+- OPEN ITEM (decide later): 12 already-tracked `_*` scripts left untouched — `_explore_ifct*/indb*/usda*`, `_fix_outliers`, `_investigate_outliers`, `_r7a1_verify`, `_sanity_check`. Same triage logic applies but requires rewriting tracked state.
+- Still untracked (intentional): Playwright `test-results/` dirs (patient app + e2e).
+- Next action: unchanged — GCP deployment phase (Cloud Run + Cloud SQL + Scheduler jobs).
 
 **COMMIT SWEEP — COMPLETE (2026-07-03, commits 8680c12..195b099)**
 
