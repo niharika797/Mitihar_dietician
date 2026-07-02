@@ -1,3 +1,4 @@
+import hmac
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -15,8 +16,9 @@ router = APIRouter(prefix="/internal/cron", tags=["internal"])
 
 
 def _check_secret(x_cron_secret: str | None) -> None:
-    """Reject 401 if secret is unconfigured or wrong."""
-    if not settings.CRON_SECRET or x_cron_secret != settings.CRON_SECRET:
+    """Reject 401 if secret is unconfigured or wrong. Constant-time compare prevents timing attacks."""
+    if not settings.CRON_SECRET or not x_cron_secret or \
+            not hmac.compare_digest(x_cron_secret, settings.CRON_SECRET):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
