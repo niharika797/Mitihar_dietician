@@ -19,6 +19,12 @@ engine = create_async_engine(
     pool_timeout=30,
     pool_recycle=1800,
     pool_pre_ping=True,
+    connect_args={
+        # Kill any query that runs longer than 30s at the PostgreSQL level.
+        # Prevents runaway queries from holding connections indefinitely.
+        # asyncpg passes server_settings as SET commands on each new connection.
+        "server_settings": {"statement_timeout": "30000"},
+    },
 )
 
 AsyncSessionLocal = async_sessionmaker(

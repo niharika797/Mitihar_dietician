@@ -1,5 +1,7 @@
+import asyncio
 import hmac
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Header, HTTPException
@@ -60,6 +62,11 @@ async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None
                 )
                 .values(expiring_soon=False)
             )
+            # TEST-ONLY: widen UPDATE→commit window so concurrent callers provably contend.
+            # Set TEST_RACE_DELAY_SECONDS=0.1 in env; no-op (0) in production.
+            _rd = float(os.environ.get("TEST_RACE_DELAY_SECONDS", "0"))
+            if _rd > 0:
+                await asyncio.sleep(_rd)
             await session.commit()
             _log.info("[cron] expiring_soon flags updated")
 
