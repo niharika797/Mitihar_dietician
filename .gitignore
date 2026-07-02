@@ -132,9 +132,22 @@ tag_medical_checkpoint.json
 # ── Windows null device artifact ──────────────────────────────────────────────
 NUL
 
+# ── Docker smoke test env file ────────────────────────────────────────────────
+smoke.env
+
 # ── Local throwaway test files ────────────────────────────────────────────────
 test_claude_cli.py
 tests/test_output.txt
+
+# ── Pre-migration DB dumps (local only) ───────────────────────────────────────
+backups/
+
+# ── Frontend dev-server logs (local dev only) ─────────────────────────────────
+frontend_dev.txt
+frontend_err.txt
+
+# ── One-off debug scripts kept as untracked reference ─────────────────────────
+scripts/debug/
 
 # ── Performance test generated artifacts (contains plaintext test passwords) ──
 tests/performance/test_manifest.json
