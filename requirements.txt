@@ -35,12 +35,10 @@ python-dotenv==1.2.2
 
 # Rate limiting
 slowapi==0.1.9
+redis==8.0.1                       # Redis client for slowapi RedisStorage (rate limiting)
 
 # MFA (TOTP)
 pyotp==2.9.0
-
-# Task scheduling (APScheduler cron jobs — diet plan completion, subscription expiry)
-apscheduler==3.11.2
 
 # Firebase push notifications (FCM)
 firebase-admin==7.4.0
