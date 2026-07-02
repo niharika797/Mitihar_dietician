@@ -11,7 +11,7 @@
 # Web framework
 fastapi==0.136.0
 uvicorn==0.45.0
-python-multipart==0.0.26       # required for FastAPI form parsing (OAuth2PasswordRequestForm)
+python-multipart==0.0.31       # required for FastAPI form parsing (OAuth2PasswordRequestForm)
 
 # Database
 sqlalchemy==2.0.49
@@ -22,7 +22,7 @@ psycopg2-binary==2.9.12        # sync driver (used in seed/test scripts)
 
 # Validation & settings
 pydantic==2.13.3
-pydantic-settings==2.14.0
+pydantic-settings==2.14.2
 email-validator==2.3.0         # required for pydantic EmailStr fields
 annotated-types==0.7.0
 
