@@ -177,7 +177,43 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-07-02 (Cloud Scheduler migration + scaled chaos test complete)_
+> _This section is maintained by Claude. Last updated: 2026-07-02 (patient app: token rotation fix + EAS/Sentry setup)_
+
+**PATIENT APP — TOKEN ROTATION + EAS/SENTRY — COMPLETE (2026-07-02)**
+
+- `lib/axios.ts`: refresh interceptor now persists rotated `refresh_token` (was silently dropped → forced logout every 7 days); refresh-failure path sets `isAuthenticated=false` + clears profile so AuthGate navigates to login (no more dead-session 401 loop).
+- `app/doctor/activate.tsx`: stores BOTH tokens via `setTokens()` per M-5 contract (was access-only).
+- Verified live on Expo web + Playwright: (A) corrupted access token → silent refresh → refresh token VALUE rotated in storage, session kept; (B) both tokens corrupted mid-session → `/progress/today` 401 → `/auth/refresh` 401 → tokens wiped → app navigated to `/login`.
+- log-meal casing fact-check: `meal_type: Literal["Breakfast","Lunch","Dinner","Snack"]` at `app/schemas/progress.py:6` — app's capitalized values CORRECT, no change needed.
+- `@sentry/react-native@7.11.0` installed (SDK 55 pin from `expo/bundledNativeModules.json`; sentry-expo deprecated). `Sentry.init` + `Sentry.ErrorBoundary` + `Sentry.wrap` in `app/_layout.tsx`; `captureException` added at 6 previously-swallowed catch sites (notifications.ts ×4, meals.tsx auto-generate, useAuthStore logout FCM).
+- `eas.json` created: development/preview/production profiles. **PLACEHOLDERS: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_GOOGLE_CLIENT_ID`, `EXPO_PUBLIC_SENTRY_DSN`, and Sentry org/project in app.config.ts MUST be set to real values before any `eas build`.** Also set `SENTRY_AUTH_TOKEN` as EAS secret for source-map upload. EAS projectId still placeholder in app.config.ts:53.
+- `pnpm-workspace.yaml`: `allowBuilds: '@sentry/cli': true` (pnpm blocked its postinstall; binary needed only for local source-map upload).
+- tsc --noEmit: zero NEW errors (diffed vs baseline; only pre-existing errors remain, one shifted line).
+- No `eas build`/`eas submit` run — config only.
+
+**CVE FIXES + LOCKFILE — COMPLETE (2026-07-02, commit 2fac4e0)**
+
+- `python-multipart` 0.0.26 → 0.0.31 (4 CVEs in form parsing)
+- `pydantic-settings` 2.14.0 → 2.14.2 (1 CVE in config loading)
+- Auth smoke: 5/5 PASS (valid login, invalid pw, 2× malformed form data, settings 6/6)
+- `requirements.in`: 28 direct deps — edit this to add/remove packages
+- `requirements.lock`: 82 fully-pinned packages via `pip-compile requirements.in --output-file requirements.lock`
+- Fresh venv from requirements.lock: installs clean, boots clean
+- 3 transitive patch-bumps vs running venv (all safe): google-cloud-firestore 2.27→2.28, pillow 12.2→12.3, pypdfium2 5.10→5.11
+- To update lockfile after changing requirements.in: `.\venv\Scripts\pip-compile.exe requirements.in --output-file requirements.lock`
+
+**FCM DOUBLE-FIRE RACE — FIXED (2026-07-02, commit 9d516db)**
+
+`flag_expiring_patients` in `app/routers/internal.py` replaced SELECT+UPDATE with atomic `UPDATE...RETURNING(Patient.id, Patient.token_1_expiry)`. Only the caller that wins the Postgres row lock gets patient rows back; concurrent loser sees 0 rows → sends 0 FCM pushes. Follow-up SELECT fetches full Patient objects for the winning call's FCM loop.
+
+`tests/performance/test_cron_idempotency.py` `test_flag_expiring_concurrent`: WARN promoted to ASSERT — concurrent double-fire with both c1>0 and c2>0 now fails the test rather than printing a warning. All 6 idempotency tests pass.
+
+**CRON_SECRET — WIRED (2026-07-02)**
+
+- `.env`: `CRON_SECRET=<dev secret, 64-char hex>` — NOT committed (gitignored via `.env.*`)
+- `.env.production`: `CRON_SECRET=<prod secret, 64-char hex, separate value>` — NOT committed
+- `_check_secret` at `app/routers/internal.py:20`: already fail-closed — `not settings.CRON_SECRET` raises 401 when env var unset. No code fix needed.
+- Both `.env` files had BOM-corruption from PowerShell Add-Content; fixed by `fix_cron_secret.py` (rewrites with Python utf-8 no-BOM).
 
 **CLOUD SCHEDULER MIGRATION — COMPLETE (2026-07-02)**
 
