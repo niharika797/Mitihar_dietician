@@ -5,6 +5,7 @@ import {
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Sentry from "@sentry/react-native";
 import { useAuthStore } from "../../store/useAuthStore";
 import { generatePlan, confirmMealChoice, getDailyChoices, getWeeklyPlan } from "../../services/meals";
 import { useToast } from "../../components/shared";
@@ -345,7 +346,7 @@ export default function MealsScreen() {
     autoAttempted.current = true;
     generatePlan()
       .then(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN }))
-      .catch(() => {});
+      .catch((e) => Sentry.captureException(e));
   }, [isSubscribed]);
 
   if (!isSubscribed) {

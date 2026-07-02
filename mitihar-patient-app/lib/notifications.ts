@@ -16,6 +16,7 @@
 
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import * as Sentry from "@sentry/react-native";
 import api from "./axios";
 
 // expo-notifications is unavailable in Expo Go from SDK 53 onwards.
@@ -38,7 +39,8 @@ if (!isExpoGo) {
         shouldShowList: true,
       }),
     });
-  } catch {
+  } catch (e) {
+    Sentry.captureException(e);
     N = null;
   }
 }
@@ -58,7 +60,8 @@ export async function requestPermissions(): Promise<boolean> {
 
     const { status } = await N.requestPermissionsAsync();
     return status === "granted";
-  } catch {
+  } catch (e) {
+    Sentry.captureException(e);
     return false;
   }
 }
@@ -87,7 +90,8 @@ export async function getFCMToken(): Promise<string | null> {
 
     const tokenData = await N.getDevicePushTokenAsync();
     return tokenData.data ?? null;
-  } catch {
+  } catch (e) {
+    Sentry.captureException(e);
     return null;
   }
 }
@@ -102,8 +106,9 @@ export async function getFCMToken(): Promise<string | null> {
 export async function sendTokenToBackend(token: string | null): Promise<void> {
   try {
     await api.post("/auth/register-fcm-token", { fcm_token: token });
-  } catch {
+  } catch (e) {
     // Non-fatal — notification registration failure must never break auth flow
+    Sentry.captureException(e);
   }
 }
 

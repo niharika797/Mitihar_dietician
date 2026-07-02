@@ -43,6 +43,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         android: { compileSdkVersion: 35, targetSdkVersion: 35, buildToolsVersion: "35.0.0" },
       },
     ],
+    [
+      "@sentry/react-native/expo",
+      {
+        // PLACEHOLDERS — set real org/project (and SENTRY_AUTH_TOKEN in EAS
+        // secrets) before running an actual eas build, or source maps won't upload.
+        organization: "mitihar-placeholder-org",
+        project: "mitihar-patient-app",
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,
