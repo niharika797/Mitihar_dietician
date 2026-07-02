@@ -159,6 +159,8 @@ REDIS_URL=redis://localhost:6379/0   # Dev: local Docker (mityahar-redis contain
 
 - `mitihar-frontend/apps/` has unverified changes from Sprint 5 (`PlanTab.tsx` rewrite). Run `pnpm dev` and check browser console for TypeScript errors around `patientMealsPerDay` prop before editing.
 - Dish rename script (`scripts/rename_dishes_gemini.py`) is ~22% complete (~440/2137 dishes). Checkpoint at `rename_checkpoint.json`; safe to re-run.
+- **Admin IP whitelist is dynamic (residential ISP)**: `ADMIN_IP_WHITELIST` in `.env.production` is set to `49.36.111.236/32`. This is a Jio residential IP and **will change** on modem restart or ISP reassignment. If admin endpoints return 403, re-check public IP (`curl ifconfig.me`) and update the env var.
+- **axios.ts bundle-splitting warning (pre-launch debt)**: `lib/axios.ts` in `mitihar-frontend/apps/` is dynamically imported by `PlanTab.tsx` but statically imported by 5 other modules. Vite warns that dynamic import will not move it into a separate chunk, contributing to a 675 KB monolithic JS bundle (above 500 KB recommended limit). Fix before Layer 2 4G retest: either make all imports static, or use `build.rollupOptions.output.manualChunks` to force code-splitting.
 
 
 

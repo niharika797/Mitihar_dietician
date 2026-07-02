@@ -110,11 +110,11 @@
 
 - [ ] **[HIGH] No staging environment** — all testing has been local Docker; deploying directly to production with no staging rehearsal. Any configuration error (wrong DB URL, bad CORS, missing env var) surfaces live.
 
-- [ ] CORS_ORIGINS production value — currently `localhost:3000`; must be set to actual deployed frontend domain before deploy or all browser requests will be rejected
+- [x] CORS_ORIGINS production value — set to `https://mitihar-46a17.web.app,https://mitihar-46a17.firebaseapp.com` in `.env.production` (both Firebase hosting domains). `config.py:assemble_cors_origins` splits on comma → `List[str]`. Verified Jul 3.
 
-- [ ] Admin IP whitelist production CIDRs — `AdminIPWhitelistMiddleware` reads allowed IPs from config; production admin IPs not specified or documented
+- [x] Admin IP whitelist production CIDRs — `ADMIN_IP_WHITELIST=49.36.111.236/32` added to `.env.production`. IP is Jio residential (dynamic) — documented in CLAUDE.md Known Issues. Jul 3.
 
-- [ ] SECRET_KEY rotation procedure — no documented plan for rotating the JWT signing key; rotation immediately invalidates all active sessions for all users
+- [x] SECRET_KEY rotation procedure — documented in `docs/secret_rotation.md`: key generation, update locations, blast radius (all sessions invalidated), rollback steps, recommended 90-day cadence. Jul 3.
 
 - [x] **Chaos + combined load test — PASS (Jul 2)**  
   40 concurrent httpx requests × 4 phases: baseline 0%, Redis-kill window 0%, DB-terminate window 0%, combined 0% failure.  
@@ -125,6 +125,8 @@
 
 - [ ] Cron endpoint smoke test in container — run the Docker image locally and hit all three `/internal/cron/*` endpoints with `X-Cron-Secret` (valid + missing/wrong secret), confirming 200/401 responses and job effects inside the containerized environment
 
-- [ ] `ALLOW_HARD_DELETE=False` confirmed in production `.env` — easy to miss; hard deletes would permanently destroy patient records
+- [x] `ALLOW_HARD_DELETE=False` confirmed in production `.env` — line 44: `ALLOW_HARD_DELETE=False`. Verified Jul 3.
 
 - [ ] Dish rename 78% incomplete (≈1697/2137 dishes pending) — `scripts/clean_dish_names.py`, checkpoint `rename_checkpoint.json`; non-blocking for launch but ongoing UX debt
+
+- [ ] **axios.ts bundle-splitting (pre-launch debt)** — `lib/axios.ts` dynamically imported by `PlanTab.tsx` but statically imported by 5 other modules; Vite warns dynamic import won't create a separate chunk. Result: 675 KB monolithic JS bundle (above 500 KB limit). Fix options: make all imports static, or use `manualChunks`. Must address before Layer 2 4G retest.
