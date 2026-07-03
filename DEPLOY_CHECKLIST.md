@@ -114,6 +114,8 @@
 
 - [x] Admin IP whitelist production CIDRs — `ADMIN_IP_WHITELIST=49.36.111.236/32` added to `deploy-env-reference.txt`. IP is Jio residential (dynamic) — documented in CLAUDE.md Known Issues. Jul 3.
 
+- [x] **ENVIRONMENT explicit flag — DONE (Jul 3)** — `ENVIRONMENT=development|staging|production` added to `app/core/config.py` with a strict validator (typos like `"prod"` raise `ValidationError` at startup). `app/main.py` guard now gates on `ENVIRONMENT == "production"` instead of hostname/os.name heuristic. **Cloud Run MUST set `ENVIRONMENT=production` explicitly via `--set-env-vars` at deploy time** — if absent the app defaults to `"development"` and the COOKIE_SECURE fail-closed guard will not trigger. See `deploy-env-reference.txt` for the full value list. Jul 3.
+
 > **Note (Jul 3):** `.env.production` renamed to `deploy-env-reference.txt` — it was never read by the application (`config.py` loads only `.env`). It is a reference sheet of production values that must be manually injected into Cloud Run via `--set-env-vars` or Secret Manager at deploy time (Layer 3). File remains gitignored (contains real secrets).
 
 - [x] SECRET_KEY rotation procedure — documented in `docs/secret_rotation.md`: key generation, update locations, blast radius (all sessions invalidated), rollback steps, recommended 90-day cadence. Jul 3.

@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080   # 7 days — lives in HttpOnly cookie only
     RESET_TOKEN_EXPIRE_MINUTES: int = 30        # Password-reset link valid for 30 minutes only
 
+    # ── Deployment environment ────────────────────────────────────────────
+    # Must be set explicitly in all environments. Cloud Run MUST set "production"
+    # or the COOKIE_SECURE fail-closed guard will not trigger.
+    ENVIRONMENT: str = "development"
+
     # ── Cookie security ───────────────────────────────────────────────────
     # Set COOKIE_SECURE=True in production (.env). False only for local HTTP dev.
     COOKIE_SECURE: bool = False
@@ -78,6 +83,17 @@ class Settings(BaseSettings):
         if len(v) < 32:
             raise ValueError(
                 "SECRET_KEY must be at least 32 characters long for HS256 security."
+            )
+        return v
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
+        allowed = {"development", "staging", "production"}
+        if v not in allowed:
+            raise ValueError(
+                f"ENVIRONMENT={v!r} is not valid. Must be one of: {sorted(allowed)}. "
+                "Check for typos — 'prod', 'dev', 'Production' are not accepted."
             )
         return v
 

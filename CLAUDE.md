@@ -161,7 +161,7 @@ REDIS_URL=redis://localhost:6379/0   # Dev: local Docker (mityahar-redis contain
 - Dish rename script (`scripts/rename_dishes_gemini.py`) is ~22% complete (~440/2137 dishes). Checkpoint at `rename_checkpoint.json`; safe to re-run.
 - **Admin IP whitelist is dynamic (residential ISP)**: `ADMIN_IP_WHITELIST` in `deploy-env-reference.txt` (formerly `.env.production`) is set to `49.36.111.236/32`. This is a Jio residential IP and **will change** on modem restart or ISP reassignment. If admin endpoints return 403, re-check public IP (`curl ifconfig.me`) and update the env var.
 - **axios.ts bundle-splitting warning (pre-launch debt)**: `lib/axios.ts` in `mitihar-frontend/apps/` is dynamically imported by `PlanTab.tsx` but statically imported by 5 other modules. Vite warns that dynamic import will not move it into a separate chunk, contributing to a 675 KB monolithic JS bundle (above 500 KB recommended limit). Fix before Layer 2 4G retest: either make all imports static, or use `build.rollupOptions.output.manualChunks` to force code-splitting.
-- **COOKIE_SECURE local-dev heuristic is fragile (`app/main.py` lifespan)**: guard now hard-aborts startup when `COOKIE_SECURE=False` off a dev machine, but "dev machine" detection is hostname prefixes + `os.name == "nt"`. Cloud Run hostnames are unpredictable (guard fails closed there — correct), but a Linux dev box or any hostname coincidence breaks the heuristic. Replace with an explicit `ENVIRONMENT=development|production` setting during Layer 3. Note: actual dev hostname is `NOD-KRAI`, NOT `DESKTOP-*` — the Windows check is what keeps local dev booting.
+- ~~**COOKIE_SECURE local-dev heuristic is fragile**~~ — **RESOLVED 2026-07-03**: heuristic replaced with explicit `ENVIRONMENT=development|staging|production` setting in `app/core/config.py`. Guard in `app/main.py` now fails closed only when `ENVIRONMENT=production` + `COOKIE_SECURE=False`. `.env` has `ENVIRONMENT=development`; `deploy-env-reference.txt` has `ENVIRONMENT=production` with a CRITICAL note that Cloud Run must inject it explicitly.
 
 
 
@@ -180,7 +180,18 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-07-03 (COOKIE_SECURE fail-closed + .env.production retired)_
+> _This section is maintained by Claude. Last updated: 2026-07-03 (ENVIRONMENT explicit flag replaces hostname heuristic)_
+
+**ENVIRONMENT EXPLICIT FLAG — HOSTNAME HEURISTIC REPLACED (2026-07-03, 1 commit)**
+
+- `app/core/config.py`: added `ENVIRONMENT: str = "development"` with a strict validator — only `"development"`, `"staging"`, `"production"` accepted; any typo (e.g. `"prod"`) raises `ValidationError` at startup.
+- `app/main.py` lifespan: removed `socket.gethostname()` / `os.name == "nt"` heuristic entirely. New guard: `if ENVIRONMENT == "production" and not COOKIE_SECURE → RuntimeError`. Non-production just logs a warning — local dev is never aborted.
+- `.env`: `ENVIRONMENT=development` appended.
+- `deploy-env-reference.txt`: `ENVIRONMENT=production` added with CRITICAL note that Cloud Run must inject it explicitly or the fail-closed guard will not trigger.
+- Test results (4 cases, all PASS): Case A `production`+`COOKIE_SECURE=False` → RuntimeError. Case B `production`+`True` → boots clean. Case C `development`+`False` → warning logged, no abort. Case D `"prod"` → ValidationError at startup.
+- `full_backend_test.py` 98/98 — zero regressions. Also fixed pre-existing flakiness: `timeout=60` added to `/progress/log/weight` call (triggers full plan regeneration, was timing out against httpx's 5s default).
+- Known Pending Issue "COOKIE_SECURE local-dev heuristic is fragile" closed.
+- Next action: Layer 3 / GCP deployment phase (Cloud Run + Cloud SQL + Scheduler jobs). Ensure `ENVIRONMENT=production` is set as a Cloud Run env var.
 
 **COOKIE_SECURE FAIL-CLOSED + .ENV.PRODUCTION RETIRED (2026-07-03, 2 commits)**
 
