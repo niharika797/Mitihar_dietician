@@ -50,6 +50,15 @@ async def lifespan(app: FastAPI):
                 settings.ENVIRONMENT,
             )
 
+    # ── REQUIRE_EMAIL_VERIFICATION production warning ─────────────────────────
+    if settings.ENVIRONMENT == "production" and not settings.REQUIRE_EMAIL_VERIFICATION:
+        _log.critical(
+            "REQUIRE_EMAIL_VERIFICATION=False in production. "
+            "Patients can register without verifying their email. "
+            "Intentional until Phase 7 (email sending). "
+            "Set True before allowing unverified signups at scale."
+        )
+
     # ── Firebase Admin SDK (push notifications) ───────────────────────
     from .services.notification_service import init_firebase
     init_firebase()

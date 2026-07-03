@@ -307,7 +307,7 @@ check("POST /progress/log/water returns 200", r.status_code == 200, r.text)
 r = httpx.post(f"{BASE}/progress/log/steps", headers=hdr(patient_token), json={"steps": 4000})
 check("POST /progress/log/steps returns 200", r.status_code == 200, r.text)
 
-r = httpx.post(f"{BASE}/progress/log/weight", headers=hdr(patient_token), json={"weight": 57.8}, timeout=60)
+r = httpx.post(f"{BASE}/progress/log/weight", headers=hdr(patient_token), json={"weight": 57.8}, timeout=10)
 check("POST /progress/log/weight returns 200", r.status_code == 200, r.text)
 
 r = httpx.get(f"{BASE}/progress/today", headers=hdr(patient_token))

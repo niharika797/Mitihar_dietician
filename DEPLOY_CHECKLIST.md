@@ -29,6 +29,12 @@
 
 ---
 
+## Must flip before public launch
+
+- [ ] **REQUIRE_EMAIL_VERIFICATION=True** — Currently `False` (intentional: email sending not wired up until Phase 7). Must be set `True` before allowing unverified patient signups at scale. App logs `CRITICAL` on every production startup while this is unset. Prerequisite: email delivery (SendGrid/Resend) verified working — see Section B "Email verification flow".
+
+---
+
 ## Section B — Requires external services (free-tier)
 
 - [ ] **Horizontal autoscaling at 1000 users** — Cloud Run free tier / $300 GCP trial credit  
