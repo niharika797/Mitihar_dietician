@@ -1,6 +1,7 @@
 ﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import apiClient from '../../../../lib/axios';
 import { doctorApi, MealEntry, FoodItemSummary, Dish, ComboEntry } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
 import {
@@ -473,7 +474,7 @@ function useRecipeSearch(query: string) {
 async function fetchNutritionFromGemini(
   foodName: string,
 ): Promise<Partial<CustomMealForm>> {
-  const { data } = await (await import('../../../../lib/axios')).default.post(
+  const { data } = await apiClient.post(
     '/doctor/recipes/lookup',
     { food_name: foodName },
   );
