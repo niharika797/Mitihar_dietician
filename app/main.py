@@ -36,17 +36,24 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── T1-8: COOKIE_SECURE startup guard ────────────────────────────────────────
+    import os
     import socket
     if not settings.COOKIE_SECURE:
         hostname = socket.gethostname()
+        # WARNING: heuristic is unreliable for Cloud Run — container hostnames are
+        # unpredictable (not "DESKTOP-*" or "*.local"), so it fails closed there,
+        # but a coincidental match would fail open. Tracked as open item in CLAUDE.md.
+        # os.name == "nt": Windows is never a deploy target here — dev machines only
+        # (actual dev hostname doesn't match "DESKTOP-*", so the name checks alone fail).
         is_local = hostname in ("localhost", "127.0.0.1") or hostname.startswith("DESKTOP-") \
-            or hostname.endswith(".local")
+            or hostname.endswith(".local") or os.name == "nt"
         if not is_local:
-            _log.critical(
-                "SECURITY WARNING: COOKIE_SECURE=False on a non-localhost host (%s). "
-                "Refresh tokens will be sent over plain HTTP and can be intercepted. "
-                "Set COOKIE_SECURE=True in .env before deploying to production.",
-                hostname,
+            # Hard-fail like SECRET_KEY's validator: refresh tokens over plain HTTP
+            # on a non-local host must never silently reach production.
+            raise RuntimeError(
+                f"COOKIE_SECURE=False on a non-localhost host ({hostname}). "
+                "Refresh tokens would be sent over plain HTTP and can be intercepted. "
+                "Set COOKIE_SECURE=True in the environment before starting."
             )
 
     # ── Firebase Admin SDK (push notifications) ───────────────────────
