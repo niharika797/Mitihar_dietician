@@ -179,7 +179,17 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-07-03 (session-script triage + .claude/ untrack)_
+> _This section is maintained by Claude. Last updated: 2026-07-03 (axios.ts bundle-splitting fix)_
+
+**AXIOS.TS DYNAMIC-IMPORT FIX — COMPLETE (2026-07-03, uncommitted)**
+
+- `PlanTab.tsx`: dynamic `import('../../../../lib/axios')` in `fetchNutritionFromGemini` (line 476) replaced with static top-level `import apiClient from '../../../../lib/axios'` — matches Billing.tsx/Recipes.tsx pattern. Import was clean (no try/catch or conditional around it).
+- Vite "dynamically imported but also statically imported" warning GONE. Bundle: 674.94 KB → 673.59 KB (gzip 188.50 KB), still one chunk.
+- **Finding: NO route-level code splitting exists anywhere** — `routes.tsx` imports every page statically, PlanTab statically imported by `PatientDetail.tsx:9`. The pre-launch-debt note's expectation of axios splitting into a separate chunk was impossible; axios correctly merged into the main chunk. The 500 KB chunk-size warning remains — fixing it requires route-level `lazy()` (separate task). Also: `ProgressTab.tsx` uses `lazy()` for recharts but build emits ONE js chunk — recharts lazy-split silently not working, likely same mixed-import cause. Not touched.
+- Compiled-build Indian 4G E2E (`playwright.compiled.config.ts`, single test): Plan tab **314ms → 224ms** ✓ under 300ms bar. Full run: Login 4338ms, Dashboard 932ms, Patients 263ms, Profile 39ms, Weekly Summary 27ms, Meal Config 246ms — all ✓. Login/Dashboard out of scope per task.
+- `tsc --noEmit`: exit 0, zero errors.
+- Note: `playwright.compiled.config.ts` header comment says "targets the UNFIXED 675KB monolithic bundle" — now stale (comment only, left as-is).
+- Next action: commit this fix; then GCP deployment phase (Cloud Run + Cloud SQL + Scheduler jobs).
 
 **SESSION-SCRIPT TRIAGE + .claude/ CLEANUP — COMPLETE (2026-07-03, commit a719ce0)**
 
