@@ -179,7 +179,15 @@ Do NOT summarize the whole project — only what changed. Keep it tight.
 
 ## Current State
 
-> _This section is maintained by Claude. Last updated: 2026-07-03 (axios.ts bundle-splitting fix)_
+> _This section is maintained by Claude. Last updated: 2026-07-03 (patient_requests index + COOKIE_SECURE check)_
+
+**PRE-LAYER-3 HARDENING — INDEX DONE, COOKIE_SECURE BLOCKED (2026-07-03, commit 3c7f724)**
+
+- Migration `2b3c4d5e6f7a_add_idx_patient_requests_doctor_id.py`: `CREATE INDEX idx_patient_requests_doctor_id ON patient_requests(doctor_id)`, mirrors `1a2b3c4d5e6f` pattern, downgrade drops it. Applied locally; `pg_index` shows indisvalid=true; EXPLAIN ANALYZE uses Bitmap Index Scan even with default planner (table currently 0 rows). Downgrade→upgrade roundtrip clean. New alembic head: `2b3c4d5e6f7a`.
+- Gotcha hit: first-choice revision ID `c3d4e5f6a7b8` already taken by `add_doctor_public_fields` — alembic reported "Cycle is detected in revisions". Check existing revision IDs before minting one.
+- `full_backend_test.py`: 98/98 after deleting 1 stale verified "Test Dal Tadka" row (id 3726) — same known Section 12 non-idempotency, NOT a regression. First run was 96/98 with the two known Section 12 failures.
+- **COOKIE_SECURE in `.env.production`: NOT verified/changed — `.env*` files are permission-blocked for Claude in this session (Read/Grep/shell all denied).** Dev `.env` confirmed separate file with `COOKIE_SECURE=False` (uvicorn startup warning proves it) so flipping production won't affect dev. USER ACTION: open `.env.production`, set `COOKIE_SECURE=True` (file is gitignored — no commit needed), or grant Claude `.env` read/edit permission.
+- Next action: COOKIE_SECURE flip (above), then Layer 3 / GCP deployment phase.
 
 **AXIOS.TS DYNAMIC-IMPORT FIX — COMPLETE (2026-07-03, uncommitted)**
 
