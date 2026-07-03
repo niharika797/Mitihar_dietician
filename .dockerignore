@@ -5,6 +5,7 @@
 # Secrets — NEVER bake into image
 .env
 .env.*
+deploy-env-reference.txt
 firebase_service_account.json
 credentials/
 

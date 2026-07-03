@@ -110,9 +110,11 @@
 
 - [ ] **[HIGH] No staging environment** — all testing has been local Docker; deploying directly to production with no staging rehearsal. Any configuration error (wrong DB URL, bad CORS, missing env var) surfaces live.
 
-- [x] CORS_ORIGINS production value — set to `https://mitihar-46a17.web.app,https://mitihar-46a17.firebaseapp.com` in `.env.production` (both Firebase hosting domains). `config.py:assemble_cors_origins` splits on comma → `List[str]`. Verified Jul 3.
+- [x] CORS_ORIGINS production value — set to `https://mitihar-46a17.web.app,https://mitihar-46a17.firebaseapp.com` in `deploy-env-reference.txt` (both Firebase hosting domains). `config.py:assemble_cors_origins` splits on comma → `List[str]`. Verified Jul 3.
 
-- [x] Admin IP whitelist production CIDRs — `ADMIN_IP_WHITELIST=49.36.111.236/32` added to `.env.production`. IP is Jio residential (dynamic) — documented in CLAUDE.md Known Issues. Jul 3.
+- [x] Admin IP whitelist production CIDRs — `ADMIN_IP_WHITELIST=49.36.111.236/32` added to `deploy-env-reference.txt`. IP is Jio residential (dynamic) — documented in CLAUDE.md Known Issues. Jul 3.
+
+> **Note (Jul 3):** `.env.production` renamed to `deploy-env-reference.txt` — it was never read by the application (`config.py` loads only `.env`). It is a reference sheet of production values that must be manually injected into Cloud Run via `--set-env-vars` or Secret Manager at deploy time (Layer 3). File remains gitignored (contains real secrets).
 
 - [x] SECRET_KEY rotation procedure — documented in `docs/secret_rotation.md`: key generation, update locations, blast radius (all sessions invalidated), rollback steps, recommended 90-day cadence. Jul 3.
 

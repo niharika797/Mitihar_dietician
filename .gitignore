@@ -18,6 +18,9 @@ env/
 .env
 .env.*
 !.env.example
+# Production env value reference (was .env.production) — contains real secrets,
+# NOT read by the app; values injected into Cloud Run manually at deploy time.
+deploy-env-reference.txt
 mitihar-patient-app/.env
 mitihar-patient-app/.env.*
 !mitihar-patient-app/.env.example
