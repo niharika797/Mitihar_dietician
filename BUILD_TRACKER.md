@@ -199,7 +199,7 @@ All of the following have been built and verified across Sessions 1–8:
 
 ## CURRENT STATUS
 
-> _Updated 2026-07-13. Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-07-13 (later same day). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Phase:** Staging deployed — first successful Cloud Run deploy 2026-07-05. Prior "Done" block archived to BUILD_TRACKER_ARCHIVE.md.
 
@@ -223,9 +223,9 @@ All of the following have been built and verified across Sessions 1–8:
 - Staging DB is 1 migration behind local dev (651cd3d46fa9 applied locally only; staging still has dead `beverages`/`instructions`) — apply via `mityahar-migrate` Cloud Run job before/with next staging deploy
 - `food_items.original_name` empty on both DBs — dish-rename pipeline resume-safety unclear, needs a product decision (not a code fix)
 - Ruff's 24 deferred findings + mypy's 154 need a dedicated cleanup pass eventually (see pyproject.toml comments)
-- Nothing committed since dd39dde (2026-07-03) — 30 commits ahead of origin/feature branch, all above uncommitted
+- 34 commits ahead of origin/feature/api-remediation-v0.2, none pushed yet
 - Cloud Scheduler jobs for the 3 cron endpoints not yet created; FCM project ownership (`mitihar-prod`) still undecided
 
 **Next action:**
-Commit everything (incl. CI + schema cleanup), then create the 3 Cloud Scheduler jobs.
+Push the 34 local commits to origin, apply the pending migration to staging, then create the 3 Cloud Scheduler jobs.
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).
