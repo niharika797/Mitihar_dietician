@@ -391,12 +391,17 @@ async def admin_login(
         request.client.host if request.client else "unknown",
     )
     tokens = _issue_tokens(_admin_token_data(admin))
+    # SameSite=None required for cross-origin dashboard (Firebase Hosting
+    # + Cloud Run). No CSRF token exists on /refresh or /logout — this is
+    # safe ONLY because all business endpoints authenticate via Bearer
+    # header, not this cookie. If any future endpoint accepts this cookie
+    # alone for a mutating action, CSRF protection must be added first.
     response.set_cookie(
         key="refresh_token",
         value=tokens["refresh_token"],
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         path="/api/v1/auth",
     )
@@ -575,7 +580,7 @@ async def refresh_token(
             value=tokens["refresh_token"],
             httponly=True,
             secure=settings.COOKIE_SECURE,
-            samesite="lax",
+            samesite="none",
             max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
             path="/api/v1/auth",
         )
@@ -593,7 +598,7 @@ async def refresh_token(
             value=tokens["refresh_token"],
             httponly=True,
             secure=settings.COOKIE_SECURE,
-            samesite="lax",
+            samesite="none",
             max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
             path="/api/v1/auth",
         )
@@ -800,7 +805,7 @@ async def doctor_login(
         value=tokens["refresh_token"],
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         path="/api/v1/auth",
     )
@@ -984,7 +989,7 @@ async def logout(
         key="refresh_token",
         path="/api/v1/auth",
         httponly=True,
-        samesite="lax",
+        samesite="none",
     )
 
     # ── 3. Audit log ────────────────────────────────────────────────────
