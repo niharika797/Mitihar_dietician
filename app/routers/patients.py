@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.database import get_db
 from ..core.limiter import limiter
 from ..core.security import get_current_patient
-from ..models.db_models import Patient, SubscriptionCode, Doctor, PatientRequest, PatientVisit, PendingVisitApproval
+from ..models.db_models import Patient, SubscriptionCode, Doctor, PatientRequest, PatientVisit
 from ..schemas.patients import (
     OnboardingRequest, ActivationRequest,
     DoctorRequestBody, PatientProfileResponse, PublicDoctorResponse,

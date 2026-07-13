@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..models.db_models import MealLog, ProgressLog, Patient, PatientMealChoice
 
@@ -333,7 +332,7 @@ async def update_meal_log(
     Edit a meal log entry. Only allowed within 24 hours of creation.
     Returns None if not found. Raises ValueError if edit window has passed.
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import timezone, timedelta
     log = await get_meal_log_by_id(session, patient_id, log_id)
     if log is None:
         return None
@@ -371,7 +370,7 @@ async def delete_meal_log(
     Delete a meal log entry. Only allowed within 24 hours of creation.
     Returns False if not found. Raises ValueError if delete window has passed.
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import timezone, timedelta
     log = await get_meal_log_by_id(session, patient_id, log_id)
     if log is None:
         return False

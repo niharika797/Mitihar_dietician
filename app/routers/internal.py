@@ -130,7 +130,6 @@ async def complete_expired_plans_endpoint(x_cron_secret: str | None = Header(def
     compute_weekly_summary is idempotent: re-running for same patient/week overwrites.
     """
     _check_secret(x_cron_secret)
-    from datetime import date
     today = datetime.now(timezone.utc).date()
     last_monday = today - timedelta(days=today.weekday() + 7)
 

@@ -5,13 +5,12 @@ Diet-plan service — PostgreSQL via AsyncSession + Recommendation ORM.
 from typing import Dict, Optional
 from datetime import datetime, date
 
-from sqlalchemy import select, update as sa_update, insert as sa_insert
+from sqlalchemy import select, insert as sa_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from enum import Enum
 
 from ..schemas.diet_plan import DietPlanResponse as DietPlan
 from ..models.db_models import Recommendation, WeeklyCombo, WeeklyPatientSummary
-from ..core.config import settings
 from .meal_generator.meal_generator import meal_generator
 
 

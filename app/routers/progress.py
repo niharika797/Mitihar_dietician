@@ -10,15 +10,14 @@ from ..services.progress_service import (
     log_meal, log_water, log_steps, log_weight, log_activity,
     get_today_summary, get_weekly_summary,
     calculate_and_store_calorie_adjustment,
-    get_meal_log_by_id, update_meal_log, delete_meal_log,
+    update_meal_log, delete_meal_log,
     get_weight_history, get_weekly_report, calculate_and_store_streak,
     calculate_adherence,
 )
 from ..schemas.progress import (
     MealLogCreate, WaterLogCreate, StepsLogCreate,
     WeightLogCreate, ActivityLogCreate,
-    MealLogUpdate, MealLogResponse, WeeklyReportResponse,
-    MealRateRequest, MealRatingResponse,
+    MealLogUpdate, MealLogResponse, MealRateRequest, MealRatingResponse,
 )
 from ..core.database import get_db
 from ..models.db_models import Patient

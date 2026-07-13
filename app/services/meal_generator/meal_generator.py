@@ -1,8 +1,7 @@
 import logging
 import random
-import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import pandas as pd
 import numpy as np
 from pydantic import BaseModel

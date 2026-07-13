@@ -10,13 +10,27 @@ colorama==0.4.6
     #   pytest
 iniconfig==2.3.0
     # via pytest
+librt==0.13.0
+    # via mypy
+mypy==1.19.0
+    # via -r requirements-dev.in
+mypy-extensions==1.1.0
+    # via mypy
 packaging==26.2
     # via
     #   -c requirements.lock
     #   pytest
+pathspec==1.1.1
+    # via mypy
 pluggy==1.6.0
     # via pytest
 pygments==2.20.0
     # via pytest
 pytest==9.0.3
     # via -r requirements-dev.in
+ruff==0.15.0
+    # via -r requirements-dev.in
+typing-extensions==4.16.0
+    # via
+    #   -c requirements.lock
+    #   mypy

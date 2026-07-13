@@ -11,9 +11,9 @@ from ..core.security import get_current_admin, get_password_hash
 from ..models.db_models import Admin, Doctor, Patient, Recommendation, SubscriptionCode, AuditLog, FoodItem, PatientVisit
 from ..schemas.admin import (
     CreateDoctorRequest, UpdateDoctorRequest, DoctorAdminView, PlatformStats,
-    DoctorDetailView, AuditLogEntry, PaginatedAuditLogs,
+    DoctorDetailView, PaginatedAuditLogs,
     GenerateCodesAdminRequest, CodeAdminView, FoodAdminView,
-    AdminPatientView, PaginatedAdminPatients,
+    PaginatedAdminPatients,
 )
 from ..services.audit_service import log_action
 
@@ -717,7 +717,7 @@ async def get_consultations(
     Platform-wide consultation stats.
     Per-doctor: patient count, visits this month, revenue (×₹1500), royalty (2% per contract Art. IV).
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 

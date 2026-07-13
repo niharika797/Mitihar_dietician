@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import date, timedelta
+from datetime import date
 
-from sqlalchemy import select, func, not_, delete as sa_delete
+from sqlalchemy import select, func, delete as sa_delete
 
 from ..services.user_service import get_current_user
 from ..models.db_models import (
@@ -12,7 +12,6 @@ from ..models.db_models import (
 )
 from ..services.diet_plan_service import DietPlanService
 from ..core.database import get_db
-from typing import List, Dict
 
 router = APIRouter()
 

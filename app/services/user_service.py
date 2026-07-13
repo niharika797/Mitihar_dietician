@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.security import verify_password, get_password_hash, get_current_patient
-from ..core.database import get_db
 from ..models.db_models import Patient
 
 
