@@ -1034,3 +1034,38 @@ gcloud scheduler jobs create http complete-expired-plans \
 - X-Forwarded-For is NOT read by the rate limiter
 - All local Locust workers share one `127.0.0.1` rate bucket — per-IP isolation untestable locally
 - Must re-validate rate limit isolation post-GCP-deployment
+
+---
+
+**Session 2026-07-05 (early) — doc restructure + dedup determinism (archived from BUILD_TRACKER CURRENT STATUS):**
+- `app/routers/doctor.py`: duplicate-recipe check now `ORDER BY id DESC` — dedup pick deterministic
+- `tests/full_backend_test.py`: Section 12 recipe test made idempotent (pre/post cleanup of "Test Dal Tadka")
+- `BUILD_TRACKER.md` condensed (1361 lines removed); full history moved to new `BUILD_TRACKER_ARCHIVE.md`
+- `CLAUDE.md` restructured/trimmed; domain notes split out to `.claude/rules/` (backend/frontend/generator notes)
+- `.gitignore` updated
+
+---
+
+**Session 2026-07-05 (evening) — Firebase/FCM credential provisioned on staging Cloud Run:**
+
+*Key verification (pre-use check):*
+- `firebase_service_account.json` (repo root, untracked): project `mitihar-prod`, SA `firebase-adminsdk-fbsvc@mitihar-prod.iam.gserviceaccount.com`, key id `73c4341e...`, file dated 2026-04-04
+- Memory/history searched for "key leaked in chat" flags — none found; only note is Lane 3 backlog item "rotation policy — rotated once, no ongoing policy" (process gap, not compromise)
+- Live validity test: JWT signed with key, exchanged at Google OAuth token endpoint — token minted OK (never printed). Key active, not revoked.
+
+*Provisioning:*
+- Secret Manager: `FIREBASE_SERVICE_ACCOUNT_JSON` v1 created in `mityahar-staging` from full file contents
+- IAM: `mityahar-api-sa@mityahar-staging.iam.gserviceaccount.com` granted `roles/secretmanager.secretAccessor`
+- `mityahar-api` redeployed with secret mounted as file `/app/secrets/firebase_service_account.json` + env `FIREBASE_SERVICE_ACCOUNT_PATH=/app/secrets/firebase_service_account.json` — final good revision `mityahar-api-00006-nqb` (100% traffic)
+
+*Two deploy failures en route (lessons):*
+1. `--set-secrets` REPLACES all secret refs — revision 00004 lost SECRET_KEY/DATABASE_URL/REDIS_URL/GEMINI_API_KEY_1/CRON_SECRET, failed pydantic startup validation ("SECRET_KEY must be overridden"). Traffic never shifted. Recovery: one `--set-secrets` re-listing all 5 env refs + new mount (rev 00005). Rule: use `--update-secrets` for additive changes.
+2. Git Bash MSYS path mangling turned env value `/app/secrets/...` into `C:/Program Files/Git/app/secrets/...` (rev 00005 logged "Firebase service account file not found… Push notifications are DISABLED"). Fix applied from PowerShell (rev 00006). Rule: run gcloud with leading-slash args from PowerShell, or prefix `MSYS_NO_PATHCONV=1`.
+
+*Verification:*
+- `POST /internal/cron/flag-expiring-patients` → 200 `{"flagged":0}` (staging DB has no expiring patients — expected)
+- Rev 00006 startup logs: zero "file not found" warnings, zero "Failed to initialise Firebase Admin SDK" errors → credential loads. (Success INFO line invisible: Python default log level WARNING.)
+
+*Residue:*
+- One orphaned unmounted volume in service spec (`FIREBASE_SERVICE_ACCOUNT_JSON-rer-jiw`, from failed rev 00004) — harmless
+- Open decision (S157): staging FCM now wired to out-of-policy `mitihar-prod` (owned outside `mitihar.nutrition@gmail.com`). Correct today — patient app registers against `mitihar-prod` — ownership migration still undecided.
