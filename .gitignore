@@ -157,7 +157,12 @@ scripts/debug/
 tests/performance/test_manifest.json
 tests/performance/reports/
 
+# ── Local tooling (downloaded binaries, not part of repo) ─────────────────────
+cloud-sql-proxy.exe
 
+# ── Playwright generated output ────────────────────────────────────────────────
+test-results/
+tests/performance/e2e/playwright.compiled.config.ts
 
 # ── Local Claude Code config (machine-specific paths, personal hooks) ────────
 .claude/*
