@@ -20,7 +20,7 @@ from ..models.db_models import (
     MealLog, ProgressLog, ClinicalNote, FoodItem, PatientVisit,
     DoctorMealOverride, PendingVisitApproval,
     PatientMealConfig, PatientDishPreferences,
-    WeeklyCombo, PatientMealChoice, WeeklyPatientSummary,
+    WeeklyCombo,
 )
 from ..services.weekly_summary_service import compute_weekly_summary
 from ..services.notification_service import notify_weekly_plan_approved, notify_visit_flagged
@@ -28,16 +28,14 @@ from ..schemas.doctor import (
     PatientSummary, PaginatedPatients, RecommendationDetail,
     PlanOverrideRequest, PatientRequestDetail, RejectRequest,
     GenerateCodesRequest, SubscriptionCodeDetail,
-    MealLogEntry, PatientProgressEntry, PatientLogsResponse, PatientProgressResponse,
+    PatientLogsResponse, PatientProgressResponse,
     ClinicalNoteCreate, ClinicalNoteResponse, MealPlanNoteRequest,
     FoodItemSummary, RecipeCreateRequest, RecipeAssignRequest, AddCustomDishRequest,
-    DishAction, CustomDishBody, PatchDishRequest,
+    DishAction, PatchDishRequest,
     DoctorDashboardStats,
     PatientVisitResponse, RecordVisitResponse, RenewalApproveResponse,
     BulkRenewalResponse, PendingRenewalItem,
-    RecordVisitRequest, FlagVisitRequest, PendingVisitApprovalResponse,
-    PatientSummaryWithVisit,
-    MealConfigRequest, DishPrefRequest,
+    RecordVisitRequest, FlagVisitRequest, MealConfigRequest, DishPrefRequest,
     RecipeTagsResponse, RecipeTagsPatchRequest,
     WeeklyPlanApproveRequest, ComboSwapRequest, WeeklyDishPatchRequest,
 )
@@ -1717,7 +1715,7 @@ async def add_recipe(
     existing_result = await session.execute(
         select(FoodItem).where(
             func.lower(func.trim(FoodItem.recipe_name)) == body.recipe_name.strip().lower()
-        ).limit(1)
+        ).order_by(FoodItem.id.desc()).limit(1)
     )
     existing = existing_result.scalars().first()
     if existing:

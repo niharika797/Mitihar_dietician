@@ -46,6 +46,7 @@ htmlcov/
 Thumbs.db
 
 # ── Credential & key files ───────────────────────────────────────────────────
+docs/CREDENTIALS.local.md
 client_secret_*.json
 *service_account*.json
 *firebase_service_account*.json
@@ -159,4 +160,6 @@ tests/performance/reports/
 
 
 # ── Local Claude Code config (machine-specific paths, personal hooks) ────────
-.claude/
+.claude/*
+!.claude/rules/
+!.claude/rules/**
