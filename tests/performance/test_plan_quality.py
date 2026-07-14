@@ -120,16 +120,16 @@ async def _check_variety_db(patient_id: int) -> tuple[bool, list]:
     async with AsyncSessionLocal() as session:
         rows = await session.execute(
             text("""
-                SELECT dish->>'name' AS name, wc.meal_type, COUNT(*) AS cnt
+                SELECT dish->>'recipe_name' AS name, wc.meal_type, COUNT(*) AS cnt
                 FROM weekly_combos wc
                 JOIN recommendations r ON r.id = wc.recommendation_id
                 CROSS JOIN jsonb_array_elements(wc.dishes) AS dish
                 WHERE r.patient_id = :pid
                   AND r.is_active = true
                   AND wc.combo_index = 0
-                  AND dish->>'name' IS NOT NULL
-                  AND dish->>'name' != ''
-                GROUP BY dish->>'name', wc.meal_type
+                  AND dish->>'recipe_name' IS NOT NULL
+                  AND dish->>'recipe_name' != ''
+                GROUP BY dish->>'recipe_name', wc.meal_type
                 HAVING COUNT(*) > 3
                 ORDER BY cnt DESC
                 LIMIT 5
@@ -159,7 +159,7 @@ async def _check_avoid_tags(patient_id: int, condition: str) -> tuple[bool, list
                 FROM weekly_combos wc
                 JOIN recommendations r ON r.id = wc.recommendation_id
                 CROSS JOIN jsonb_array_elements(wc.dishes) AS dish
-                JOIN food_items fi ON fi.id = (dish->>'food_item_id')::integer
+                JOIN food_items fi ON fi.id = (dish->>'food_id')::integer
                 WHERE r.patient_id = :pid
                   AND r.is_active = true
                   AND fi.avoid_tags IS NOT NULL
