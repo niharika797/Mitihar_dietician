@@ -18,6 +18,14 @@ Run:
       --users 1000 --spawn-rate 20 --run-time 5m --headless \\
       --csv tests/performance/reports/load_1000users
 
+Staging target (point --host at the Cloud Run service URL; note X-Forwarded-For
+spoofing only works where TRUSTED_PROXY_CIDR trusts the caller — behind GCLB the
+real client IP wins, so per-user IP injection is a local-only mechanism):
+    locust -f tests/performance/locustfile_1000users.py \\
+      --host https://<staging-service-url> \\
+      --users 1000 --spawn-rate 20 --run-time 5m --headless \\
+      --csv tests/performance/reports/load_1000users_staging
+
 Items tested:
     1 — Multi-IP auth latency at scale (p50/p95/p99 for auth endpoints)
     4 — Asymmetric doctor reads + patient writes concurrently for 5 minutes

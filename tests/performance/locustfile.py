@@ -17,6 +17,11 @@ Spike test:
       --users 50 --spawn-rate 50 --run-time 2m --headless \
       --html tests/performance/reports/spike_test.html
 
+Staging target (point --host at the Cloud Run service URL):
+    locust -f tests/performance/locustfile.py --host https://<staging-service-url> \
+      --users 50 --spawn-rate 5 --run-time 5m --headless \
+      --html tests/performance/reports/ramp_test_staging.html
+
 Scenario notes:
     Scenario A — Ramp: use --spawn-rate 5 --users 50
     Scenario B — Spike: use --spawn-rate 50 --users 50

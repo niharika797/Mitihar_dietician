@@ -17,7 +17,7 @@ export default defineConfig({
   testDir: './tests',
   timeout: 60_000,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: process.env.DOCTOR_BASE_URL || 'http://localhost:5173',
     browserName: 'chromium',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -27,12 +27,12 @@ export default defineConfig({
   projects: [
     {
       name: 'Doctor Dashboard',
-      use: { baseURL: 'http://localhost:5173' },
+      use: { baseURL: process.env.DOCTOR_BASE_URL || 'http://localhost:5173' },
       testMatch: 'doctor_flow.spec.ts',
     },
     {
       name: 'Patient App (Expo Web)',
-      use: { baseURL: 'http://localhost:8081' },
+      use: { baseURL: process.env.PATIENT_BASE_URL || 'http://localhost:8081' },
       testMatch: 'patient_flow.spec.ts',
     },
   ],
