@@ -1,16 +1,17 @@
 # Current State
 
-_Last updated: 2026-07-13. Overwritten each session — no history here. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+_Last updated: 2026-07-15. Overwritten each session — no history here. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 ## Done this session
-- No code changes. Working tree clean vs HEAD (da16e3f); only untracked build artifacts present (cloud-sql-proxy.exe, test-results/, playwright.compiled.config.ts).
+- `cf1b6ab`: fixed double-applied 15% TDEE buffer in meal generator (meals were landing at 72.25% of TDEE, not 85%); added unit tests. 52 existing patient plans were generated under the old math — regeneration deliberately not done.
+- `02d8d4a`: JSONB vs `recipe_ingredients` diff report (1555/2137 dishes agree; remaining gram conflicts are stale 10x values, `recipe_ingredients` is authoritative) + gated, dry-run-by-default `backfill_recipe_ingredients.py` (22-row scope). Flagged `meal_generator._is_allergenic` as still reading the legacy JSONB.
+- Uncommitted: `scripts/export_recipes_to_csv.py` + its output `recipe_ingredients_audit.csv` (18,213 rows); `scripts/deploy_staging.py`; doc refreshes to BUILD_TRACKER.md/CLAUDE.md.
 
 ## Blockers / pending
-- Staging DB is 1 migration behind local dev (651cd3d46fa9 applied locally only; staging still has dead `beverages`/`instructions`) — apply via `mityahar-migrate` Cloud Run job before/with next staging deploy
-- `food_items.original_name` empty on both DBs — dish-rename pipeline resume-safety unclear, needs a product decision (not a code fix)
-- Ruff's 24 deferred findings + mypy's 154 need a dedicated cleanup pass eventually (see pyproject.toml comments)
-- 34 commits ahead of origin/feature/api-remediation-v0.2, none pushed yet
-- Cloud Scheduler jobs for the 3 cron endpoints not yet created; FCM project ownership (`mitihar-prod`) still undecided
+- 4 commits ahead of `origin/feature/api-remediation-v0.2` (dda93d6, fa5e05b, cf1b6ab, 02d8d4a), none pushed; new scripts/CSV + doc edits also uncommitted
+- 52 active plans generated under the pre-fix TDEE math — no regeneration decision made yet
+- `meal_generator._is_allergenic` still reads the legacy JSONB — migration must repoint it before cutover
+- Staging DB 1 migration behind local dev; `food_items.original_name` empty (needs product decision); Ruff/mypy cleanup pending; Cloud Scheduler jobs + FCM project ownership undecided
 
 ## Next action
-Push the 34 local commits to origin, apply the pending migration to staging, then create the 3 Cloud Scheduler jobs.
+Review `recipe_ingredients_audit.csv`, commit pending doc/script changes, push all local commits to origin, then decide on plan regeneration and the JSONB backfill.

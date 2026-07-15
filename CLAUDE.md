@@ -178,6 +178,7 @@ REDIS_URL=redis://localhost:6379/0   # Dev: local Docker (mityahar-redis contain
 - Secrets via Secret Manager (secret refs, key `latest`): SECRET_KEY, CRON_SECRET, GEMINI_API_KEY_1, DATABASE_URL, REDIS_URL. Plain env on the service: `ENVIRONMENT=staging`, `COOKIE_SECURE=True`, `CORS_ORIGINS` (Firebase hosting origins), `ADMIN_IP_WHITELIST`, `TRUSTED_PROXY_CIDR` (GCLB ranges), `GOOGLE_CLIENT_ID`, `REQUIRE_EMAIL_VERIFICATION=False`, `ALLOW_HARD_DELETE=False`
 - Networking: **Direct VPC Egress** onto `mityahar-vpc`/`mityahar-subnet` — no serverless VPC connector. Cloud SQL `mityahar-pg` (db-custom-2-7680) is **private IP only**; Memorystore `mityahar-redis` (AUTH enabled) on the same VPC
 - **Migrations/seeds MUST run as Cloud Run jobs** (pattern: job `mityahar-migrate` — DATABASE_URL secret + VPC egress + command override). Local `cloud-sql-proxy` CANNOT reach the instance (no public IP) — do not retry the proxy path. The job is pinned to an image digest; update `--image` before reuse.
+- **Deploy via `python -m scripts.deploy_staging`, not a bare `gcloud run deploy`.** `mityahar-migrate` and `mityahar-seed-runner` are pinned to an image digest — any deploy that doesn't explicitly repoint them leaves the jobs on the stale pre-deploy image (confirmed 2026-07-13: jobs were still on a 2026-07-05 image, missing `scripts/`, after multiple later service redeploys). The script deploys the service, reads back the new image digest, and repoints both jobs in the same run.
 
 ---
 

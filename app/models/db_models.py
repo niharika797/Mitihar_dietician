@@ -30,6 +30,10 @@ class FoodItem(Base):
     region_tags         = Column(ARRAY(Text), nullable=False, default=[])
     meal_time_tags      = Column(ARRAY(Text), nullable=False, default=[])
     ingredients         = Column(JSONB, nullable=False, default=[])  # [{"name": str, "amount_g": float}]
+    # ^ DEPRECATED (Stage 2, 2026-07-15): recipe_ingredients is the authoritative
+    #   ingredient source — all app readers repointed (meal_generator, meal_plan combo
+    #   detail); doctor add-recipe dual-writes. Do not add new readers. Column drop is
+    #   Stage 3 scope (after the 61 flagged artifact rows are resolved).
     source              = Column(String(20), nullable=False, default="manual")
     nutrition_source    = Column(Text, nullable=False, server_default="manual")
     is_verified         = Column(Boolean, nullable=False, default=False)

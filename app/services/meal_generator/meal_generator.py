@@ -8,8 +8,9 @@ from pydantic import BaseModel
 
 from sqlalchemy import select, case as sa_case, func as sa_func, or_, not_, false
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models.db_models import MealTemplate, FoodItem, PatientMealConfig, PatientDishPreferences
+from app.models.db_models import MealTemplate, FoodItem, PatientMealConfig, PatientDishPreferences, RecipeIngredient
 from .tag_utils import get_avoid_tags, get_prefer_tags
 from .calculations import calculate_bmi, calculate_bmr, calculate_tdee, calculate_macronutrients
 
@@ -30,6 +31,25 @@ BLOCKLIST_PATTERNS = [
 PROTECTED_SLOTS = ["grain", "dal_protein", "main_dish", "sabzi", "one_pot"]
 
 DEFAULT_SPLIT = {"Breakfast": 0.25, "Lunch": 0.35, "Dinner": 0.25}
+
+# Stage 2 JSONB retirement: recipe_ingredients rows carry no pantry-staple flag
+# (that lived only in the legacy JSONB, stamped by scripts/tag_pantry_staples.py).
+# Same name set, matched at read time instead. Keep in sync with that script.
+PANTRY_STAPLES = {
+    "salt", "oil", "ghee", "butter", "sugar", "water",
+    "turmeric", "cumin", "coriander", "mustard seeds",
+    "hing", "asafoetida", "curry leaves", "bay leaf",
+    "cloves", "cardamom", "cinnamon", "pepper",
+    "chilli powder", "red chilli", "green chilli",
+    "ginger", "garlic", "ginger garlic paste", "oil spray",
+}
+
+# Eager-load option for any FoodItem query whose rows reach _build_dish_ingredients
+# or _is_allergenic — both read .recipe_ingredients, which cannot lazy-load under
+# the async session (MissingGreenlet).
+LOAD_RECIPE_INGREDIENTS = selectinload(FoodItem.recipe_ingredients).selectinload(
+    RecipeIngredient.ingredient
+)
 
 
 def compute_meal_targets(tdee: float, split: Dict[str, float]) -> Dict[str, float]:
@@ -404,22 +424,19 @@ class MealGenerator:
 
     @staticmethod
     def _build_dish_ingredients(food_item: FoodItem, factor: float) -> list:
-        """Per-dish ingredient list with portion-scaled gram amounts (pantry staples skipped)."""
+        """Per-dish ingredient list with portion-scaled gram amounts (pantry staples skipped).
+
+        Stage 2: reads recipe_ingredients (authoritative), not the deprecated
+        food_items.ingredients JSONB. Requires the FoodItem to have been queried
+        with LOAD_RECIPE_INGREDIENTS.
+        """
         dish_ingredients: list = []
         try:
-            for _ing in (food_item.ingredients or []):
-                if not isinstance(_ing, dict):
+            for _ri in food_item.recipe_ingredients:
+                _name = _ri.ingredient.name
+                if _name.strip().lower() in PANTRY_STAPLES:
                     continue
-                if _ing.get("is_pantry_staple"):
-                    continue
-                _name = _ing.get("name") or ""
-                if not _name:
-                    continue
-                _raw = _ing.get("amount_g") or _ing.get("quantity") or 0
-                try:
-                    _amt = round(float(_raw) * factor, 1)
-                except (ValueError, TypeError):
-                    _amt = 0.0
+                _amt = round(float(_ri.quantity_g) * factor, 1)
                 if _amt > 0:
                     dish_ingredients.append({"name": _name, "amount_g": _amt})
         except Exception as _exc:
@@ -518,7 +535,7 @@ class MealGenerator:
         ).desc()
 
         def base_stmt(try_diet: str, include_weekly: bool):
-            s = select(FoodItem).where(
+            s = select(FoodItem).options(LOAD_RECIPE_INGREDIENTS).where(
                 FoodItem.slot_type == slot_type,
                 FoodItem.diet_type == try_diet,
                 FoodItem.meal_time_tags.any(meal_time),
@@ -540,10 +557,12 @@ class MealGenerator:
             return s.order_by(prefer_sort, region_sort, cal_sort).limit(10)
 
         def _is_allergenic(item: FoodItem) -> bool:
+            # Stage 2: clinical-safety path — reads recipe_ingredients (authoritative,
+            # backfilled before this repoint), not the deprecated JSONB.
             if not allergies:
                 return False
-            for ing in (item.ingredients or []):
-                ing_name = str(ing.get("name") or "").lower()
+            for ri in item.recipe_ingredients:
+                ing_name = ri.ingredient.name.lower()
                 if any(allergen in ing_name for allergen in allergies):
                     return True
             return False

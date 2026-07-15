@@ -199,7 +199,7 @@ All of the following have been built and verified across Sessions 1–8:
 
 ## CURRENT STATUS
 
-> _Updated 2026-07-13 (later same day). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-07-15 (later same day). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Phase:** Staging deployed — first successful Cloud Run deploy 2026-07-05. Prior "Done" block archived to BUILD_TRACKER_ARCHIVE.md.
 
@@ -215,17 +215,19 @@ All of the following have been built and verified across Sessions 1–8:
 - First deploy live: https://mityahar-api-759811872653.asia-south1.run.app
   Revision env verified: `ENVIRONMENT=staging`, `COOKIE_SECURE=True`, CORS = Firebase hosting origins, TRUSTED_PROXY_CIDR set.
 - Alembic: **34/34 migrations applied** to staging via Cloud Run job `mityahar-migrate` (execution `mityahar-migrate-8bcs2`).
-  Job pinned to 2026-07-05 image digest — update `--image` before reuse. Local cloud-sql-proxy CANNOT reach the instance (private IP only) — do not retry proxy path.
+  Local cloud-sql-proxy CANNOT reach the instance (private IP only) — do not retry proxy path.
 - Discovery: `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` are dead config — never read by app code.
 - Confirmed APScheduler fully removed (zero refs in `app/`); cron = 3 `/internal/cron/*` endpoints guarded by CRON_SECRET.
+- **2026-07-13:** Found + fixed job-digest drift — `mityahar-migrate`/`mityahar-seed-runner` were pinned to a 2026-07-05 image predating a `scripts/` COPY fix; every later service redeploy silently left the jobs stale. Redeployed service (`mityahar-api-00008-jjn`), repointed both jobs, verified `scripts/` present. Added `scripts/deploy_staging.py` so deploy always repoints pinned jobs — don't reuse bare `gcloud run deploy` for this service.
+- **2026-07-14:** 2 test fixes committed — correct JSONB key names in plan-quality avoid-tag/variety checks (`dda93d6`), add env-var overrides for staging-targeted perf tests (`fa5e05b`).
+- **2026-07-15:** Fixed double-applied 15% TDEE buffer in meal generator (`cf1b6ab`) — meals were landing at 72.25% of TDEE, not 85%; unit tests added. Ran the read-only stage-2 nutrition-source migration diff (`02d8d4a`): JSONB vs `recipe_ingredients` conflicts confirmed as stale 10x values, gated dry-run `backfill_recipe_ingredients.py` added (22-row scope); flagged `meal_generator._is_allergenic` as still reading legacy JSONB. Added `scripts/export_recipes_to_csv.py`, ran it to produce `recipe_ingredients_audit.csv` (18,213 rows, uncommitted).
 
 **Blockers / pending:**
-- Staging DB is 1 migration behind local dev (651cd3d46fa9 applied locally only; staging still has dead `beverages`/`instructions`) — apply via `mityahar-migrate` Cloud Run job before/with next staging deploy
-- `food_items.original_name` empty on both DBs — dish-rename pipeline resume-safety unclear, needs a product decision (not a code fix)
-- Ruff's 24 deferred findings + mypy's 154 need a dedicated cleanup pass eventually (see pyproject.toml comments)
-- 34 commits ahead of origin/feature/api-remediation-v0.2, none pushed yet
-- Cloud Scheduler jobs for the 3 cron endpoints not yet created; FCM project ownership (`mitihar-prod`) still undecided
+- 4 commits ahead of `origin/feature/api-remediation-v0.2` (dda93d6, fa5e05b, cf1b6ab, 02d8d4a), none pushed; new scripts/CSV + doc edits also uncommitted
+- 52 active plans generated under the pre-fix TDEE math — no regeneration decision made yet
+- `meal_generator._is_allergenic` still reads the legacy JSONB — migration must repoint it before cutover
+- Staging DB 1 migration behind local dev; `food_items.original_name` empty (needs product decision); Ruff/mypy cleanup pending; Cloud Scheduler jobs + FCM project ownership undecided
 
 **Next action:**
-Push the 34 local commits to origin, apply the pending migration to staging, then create the 3 Cloud Scheduler jobs.
+Review `recipe_ingredients_audit.csv`, commit pending doc/script changes, push all local commits to origin, then decide on plan regeneration and the JSONB backfill.
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).

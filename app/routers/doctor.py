@@ -20,7 +20,7 @@ from ..models.db_models import (
     MealLog, ProgressLog, ClinicalNote, FoodItem, PatientVisit,
     DoctorMealOverride, PendingVisitApproval,
     PatientMealConfig, PatientDishPreferences,
-    WeeklyCombo,
+    WeeklyCombo, Ingredient, RecipeIngredient,
 )
 from ..services.weekly_summary_service import compute_weekly_summary
 from ..services.notification_service import notify_weekly_plan_approved, notify_visit_flagged
@@ -1733,6 +1733,8 @@ async def add_recipe(
         sodium_per_serving=body.sodium_per_serving,
         diet_type=body.diet_type,
         meal_time_tags=body.meal_time_tags,
+        # DEPRECATED (Stage 2): legacy JSONB kept during migration; recipe_ingredients
+        # (dual-written below) is the authoritative ingredient source.
         ingredients=[i.model_dump() for i in body.ingredients],  # IngredientItem → plain dict for JSONB
         region_tags=body.region_tags,
         doctor_id=doctor.id,
@@ -1741,6 +1743,38 @@ async def add_recipe(
         is_verified=False,  # admin must approve before entering global pool
     )
     session.add(food)
+    await session.flush()
+
+    # Stage 2 dual-write: mirror ingredients into recipe_ingredients (authoritative).
+    # quantity is a free-text string; only numeric values become quantity_g (same
+    # grams assumption the JSONB backfill used) — non-numeric entries stay JSONB-only.
+    # Original "quantity unit" preserved in notes.
+    seen_names: set[str] = set()
+    for item in body.ingredients:
+        norm_name = " ".join(item.name.split()).lower()
+        if not norm_name or norm_name in seen_names:
+            continue
+        try:
+            grams = float(item.quantity)
+        except ValueError:
+            continue
+        if grams <= 0:
+            continue
+        seen_names.add(norm_name)
+        ing_id = (await session.execute(
+            select(Ingredient.id).where(Ingredient.name_normalized == norm_name).limit(1)
+        )).scalar()
+        if ing_id is None:
+            ing = Ingredient(name=item.name.strip(), name_normalized=norm_name, source="doctor")
+            session.add(ing)
+            await session.flush()
+            ing_id = ing.id
+        session.add(RecipeIngredient(
+            food_item_id=food.id,
+            ingredient_id=ing_id,
+            quantity_g=grams,
+            notes=f"{item.quantity} {item.unit}",
+        ))
     await session.flush()
     return food
 

@@ -4,11 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 
 from sqlalchemy import select, func, delete as sa_delete
+from sqlalchemy.orm import selectinload
 
 from ..services.user_service import get_current_user
 from ..models.db_models import (
     Patient, ProgressLog, Recommendation, WeeklyCombo,
     PatientDishPreferences, PatientMealChoice, PatientMealChoiceDish, FoodItem,
+    RecipeIngredient,
 )
 from ..services.diet_plan_service import DietPlanService
 from ..core.database import get_db
@@ -608,7 +610,9 @@ async def get_combo_dishes(
     food_item_ids = [d["food_item_id"] for d in dishes_jsonb if d.get("food_item_id")]
 
     fi_result = await session.execute(
-        select(FoodItem).where(FoodItem.id.in_(food_item_ids))
+        select(FoodItem)
+        .options(selectinload(FoodItem.recipe_ingredients).selectinload(RecipeIngredient.ingredient))
+        .where(FoodItem.id.in_(food_item_ids))
     )
     fi_map = {fi.id: fi for fi in fi_result.scalars().all()}
 
@@ -624,7 +628,11 @@ async def get_combo_dishes(
             "protein": float(fi.protein_per_serving) if fi else 0.0,
             "carbs": float(fi.carbs_per_serving) if fi else 0.0,
             "fat": float(fi.fat_per_serving) if fi else 0.0,
-            "ingredients": fi.ingredients if fi else [],
+            # Stage 2: recipe_ingredients is authoritative; food_items.ingredients JSONB deprecated
+            "ingredients": [
+                {"name": ri.ingredient.name, "amount_g": float(ri.quantity_g)}
+                for ri in fi.recipe_ingredients
+            ] if fi else [],
         })
 
     return {"combo_id": combo_id, "dishes": enriched}
