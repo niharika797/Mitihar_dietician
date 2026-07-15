@@ -1069,3 +1069,19 @@ gcloud scheduler jobs create http complete-expired-plans \
 *Residue:*
 - One orphaned unmounted volume in service spec (`FIREBASE_SERVICE_ACCOUNT_JSON-rer-jiw`, from failed rev 00004) — harmless
 - Open decision (S157): staging FCM now wired to out-of-policy `mitihar-prod` (owned outside `mitihar.nutrition@gmail.com`). Correct today — patient app registers against `mitihar-prod` — ownership migration still undecided.
+
+---
+
+## 2026-07-15 — Stage 2 execution: JSONB retirement + plan-impact report + app up for UI review
+
+**Decisions executed (from product owner):** backfill Y; 61 flagged rows held for Stage 3; 52 underfed plans NOT regenerated (diff report only); docs/ un-ignored.
+
+1. **Backfill** (`scripts/backfill_recipe_ingredients.py --write`): 22 inserts applied, 1 new master row. Post-apply verification caught that the Bajra Roti insert was a whitespace duplicate — JSONB name `Bajra  flour` (double space) vs existing RI `Bajra flour`; the script's norm() lowercases/strips but does not collapse internal whitespace. Duplicate RI row + master row (id 951) deleted; net effect 21 real inserts, Bajra Roti unchanged at 1 correct row. 0 JSONB-only dishes remain. Known ceiling for Stage 3: collapse internal whitespace in any future name-matching.
+2. **Readers repointed AFTER backfill** (order enforced for the clinical-safety path): `_build_dish_ingredients` (shopping list/checklist), `_is_allergenic` (allergy filter), `meal_plan.py` combo detail. Pool + detail queries eager-load `recipe_ingredients` then `ingredient` (async lazy-load raises MissingGreenlet). Pantry-staple skip preserved via PANTRY_STAPLES name set copied from `tag_pantry_staples.py` (the flag only existed in JSONB entries).
+3. **Dual-write** in doctor add-recipe: numeric `quantity` strings become `quantity_g` (same grams assumption as the backfill), original qty+unit kept in `notes`, non-numeric entries stay JSONB-only, per-request name dedup, get-or-create master rows with source='doctor'.
+4. **Nutrition re-stamp** (`recalculate_recipe_nutrition.py`): 2122 calculated / 15 manual (2 no-ingredients, 13 low coverage). 10-dish spot-check: 7 real dishes macro-identical (label flip only — stored macros were already RI-derived), 3 E2E test fixtures recomputed from their single backfilled ingredient. No new outliers (max 1499 kcal).
+5. **STAGE1_PLAN_IMPACT.md**: 52 active pre-cf1b6ab plans / 52 patients. Old (TDEE x 0.85 x split) vs corrected (TDEE x split) B/L/D/buffer per patient + dish diff from one seeded in-memory regeneration each (sessions rolled back; nothing persisted). Dish churn roughly 25-75% kept; deltas exact, dish lists indicative (generator is stochastic). Decision on notification/re-approval timing left with product owner.
+6. **docs/ tracked**: blanket `docs/` ignore removed; root-level doc patterns root-anchored so docs/ copies track; CREDENTIALS.local.md remains ignored; secret scan of docs/ found only known dev/test creds (testing guides). ~140 files committed.
+7. **App up for Recipe-tab UI review**: stale system-python uvicorn (pid 15240, pre-Stage-2 code) killed off :8001; fresh venv uvicorn boots clean. Vite :5173 compiles clean. Recipe tab loads (20 recipes, filters OK), 0 console errors. `tsc --noEmit`: 0 errors — the Sprint-5 `patientMealsPerDay` PlanTab flag is stale/resolved. Two recipe names render as `?????` (non-ASCII/Devanagari?) — flagged for UI review.
+
+Commits: `56eee5b` (docs tracking), `4f93d82` (Stage 2 code), plus session-end state commit. Unpushed with dda93d6/fa5e05b/cf1b6ab/02d8d4a.
