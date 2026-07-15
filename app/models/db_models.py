@@ -46,6 +46,10 @@ class FoodItem(Base):
     # Tracks which doctor submitted this item. NULL for system/ETL food items.
     created_at          = Column(DateTime(timezone=True), server_default=func.now())
     updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    deleted_at          = Column(DateTime(timezone=True), nullable=True)
+    # Soft-delete (Stage 6). NULL = active. Set by Tier 1 auto-merge instead of
+    # a hard DELETE. Distinct from is_verified=False, which means "unreviewed",
+    # not "deleted" — the Data Review tab must filter on this, not is_verified.
 
     # relationships
     doctor              = relationship("Doctor")
@@ -61,6 +65,7 @@ Index("idx_fi_regions",    FoodItem.region_tags,   postgresql_using="gin")
 Index("idx_fi_meal_times", FoodItem.meal_time_tags, postgresql_using="gin")
 Index("idx_fi_avoid_tags",  FoodItem.avoid_tags,     postgresql_using="gin")
 Index("idx_fi_prefer_tags", FoodItem.prefer_tags,    postgresql_using="gin")
+Index("idx_fi_deleted_at", FoodItem.deleted_at, postgresql_where=text("deleted_at IS NULL"))
 
 # ---------------------------------------------------------------------------
 # MealTemplate  (DO NOT MODIFY)
