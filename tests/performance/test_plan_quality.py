@@ -58,7 +58,7 @@ CONDITION_TAG_MAP = {
     "Diabetic_Hypertension": ["avoid_diabetes", "avoid_hypertension"],
 }
 
-CALORIE_TARGET_RATIO = 0.85 * 0.85  # generator: effective_tdee=TDEE×0.85, meal split sums to 0.85 → total=TDEE×0.7225
+CALORIE_TARGET_RATIO = 0.85  # generator: meal split sums to 0.85 of full TDEE; 15% passive buffer applied once
 CALORIE_TOLERANCE   = 0.05          # ±5% around actual delivered calories
 
 

@@ -31,6 +31,13 @@ PROTECTED_SLOTS = ["grain", "dal_protein", "main_dish", "sabzi", "one_pot"]
 
 DEFAULT_SPLIT = {"Breakfast": 0.25, "Lunch": 0.35, "Dinner": 0.25}
 
+
+def compute_meal_targets(tdee: float, split: Dict[str, float]) -> Dict[str, float]:
+    """Per-meal kcal targets from FULL TDEE. The split fractions sum to 0.85;
+    the remaining 15% of TDEE is the passive buffer, applied exactly once here.
+    Do NOT pre-discount tdee before calling (that double-applies the buffer)."""
+    return {meal: tdee * pct for meal, pct in split.items()}
+
 # ── Session 22B: one-pot meal variant (Lunch/Dinner only) ─────────────────────
 ONE_POT_PROBABILITY = 0.40
 ONE_POT_SLOTS = [
@@ -150,8 +157,6 @@ class MealGenerator:
             
         targets = self._calculate_targets(user_data)
 
-        effective_tdee = targets["tdee"] * 0.85
-
         split = DEFAULT_SPLIT
         patient_id = user_data.get("id")
         if patient_id:
@@ -183,11 +188,7 @@ class MealGenerator:
         patient_avoid_tags = frozenset(get_avoid_tags(_conditions))
         patient_prefer_tags = frozenset(get_prefer_tags(_conditions))
 
-        meal_targets_calc = {
-            "Breakfast": effective_tdee * split["Breakfast"],
-            "Lunch":     effective_tdee * split["Lunch"],
-            "Dinner":    effective_tdee * split["Dinner"],
-        }
+        meal_targets_calc = compute_meal_targets(targets["tdee"], split)
 
         ctx = MealPlanTargets(
             targets=targets,
