@@ -512,6 +512,36 @@ class AuditLog(Base):
 
 
 # ---------------------------------------------------------------------------
+# DataChangeRequest  (Stage 6 — dish-duplicate merge/conflict pipeline)
+# ---------------------------------------------------------------------------
+
+class DataChangeRequest(Base):
+    __tablename__ = "data_change_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_table: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    field_changed: Mapped[str] = mapped_column(String(100), nullable=False)
+    old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # doctor user_id (as string), or "system:ai_observer" / "system:tier1_auto" — polymorphic like AuditLog.actor_id, can't FK
+    proposed_by: Mapped[str] = mapped_column(String(50), nullable=False)
+    proposal_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    tier: Mapped[str] = mapped_column(String(20), nullable=False)  # "tier1_auto" | "tier2_review"
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # "pending" | "approved" | "rejected" | "auto_applied"
+    reviewed_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("admins.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_dcr_status_tier", "status", "tier"),
+        Index("idx_dcr_proposed_by", "proposed_by"),
+        Index("idx_dcr_target", "target_table", "target_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # PatientVisit  (Token 2 — visit billing tracker)
 # ---------------------------------------------------------------------------
 
