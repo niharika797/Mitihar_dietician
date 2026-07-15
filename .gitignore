@@ -89,18 +89,21 @@ credentials/
 scripts/rename_checkpoint.json
 
 # Internal docs and dev artifacts
-docs/
+# docs/ is tracked as of Stage 2 (2026-07-15): stage reports and data-migration
+# audit docs belong in version control. docs/CREDENTIALS.local.md stays ignored
+# (Credential & key files section above).
 logs/
 credentials/
-SPRINT_*.md
-MITIHAR_GUIDEBOOK.md
-RL_Roadmap.md
-Task_List.md
-implementation_plan.md
-walkthrough.md
-journal.txt
-test_results_latest.txt
-MITYAHAR_PREPRODUCTION_AUDIT.md
+# Root-anchored (leading /) so the tracked copies under docs/ are NOT ignored
+/SPRINT_*.md
+/MITIHAR_GUIDEBOOK.md
+/RL_Roadmap.md
+/Task_List.md
+/implementation_plan.md
+/walkthrough.md
+/journal.txt
+/test_results_latest.txt
+/MITYAHAR_PREPRODUCTION_AUDIT.md
 rename_checkpoint.json
 scripts/*.md
 
