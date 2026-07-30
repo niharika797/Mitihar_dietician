@@ -1922,7 +1922,8 @@ async def patch_recipe_tags(
     await session.execute(
         update(FoodItem)
         .where(FoodItem.id == food_item_id)
-        .values(avoid_tags=body.avoid_tags, prefer_tags=body.prefer_tags, is_verified=True)
+        .values(avoid_tags=body.avoid_tags, prefer_tags=body.prefer_tags,
+                is_verified=True, tags_locked=True)  # lock: derive_medical_tags.py skips locked rows
     )
     await session.commit()
     return RecipeTagsResponse(

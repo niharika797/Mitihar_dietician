@@ -25,6 +25,19 @@ class FoodItem(Base):
     fat_per_serving     = Column(Numeric(6, 2), nullable=False, default=0)
     fiber_per_serving   = Column(Numeric(6, 2), nullable=False, default=0)
     sodium_per_serving  = Column(Numeric(6, 2), default=0)
+    # IFCT2017-derived per-serving nutrients (added 2026-07-29). Nullable — computed
+    # from the ingredient chain only where coverage is sufficient (NULL = unknown, not 0).
+    # Minerals + fatty acids in mg; free sugars in g. Numeric(8,2) headroom for oils/fats.
+    iron_per_serving          = Column(Numeric(8, 2), nullable=True)
+    calcium_per_serving       = Column(Numeric(8, 2), nullable=True)
+    potassium_per_serving     = Column(Numeric(8, 2), nullable=True)
+    phosphorus_per_serving    = Column(Numeric(8, 2), nullable=True)
+    zinc_per_serving          = Column(Numeric(8, 2), nullable=True)
+    free_sugars_per_serving   = Column(Numeric(8, 2), nullable=True)
+    saturated_fat_per_serving = Column(Numeric(8, 2), nullable=True)
+    # Doctor-override guard: set true when a doctor edits this dish's tags, so the
+    # nutrition-derived tag script (derive_medical_tags.py) skips it.
+    tags_locked         = Column(Boolean, nullable=False, server_default='false')
     serving_weight_g    = Column(Numeric(6, 1))
     diet_type           = Column(String(30), nullable=False)   # see diet values below
     region_tags         = Column(ARRAY(Text), nullable=False, default=[])
@@ -875,6 +888,16 @@ class Ingredient(Base):
     sodium_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
     iron_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
     calcium_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # IFCT2017-sourced nutrients (added 2026-07-29). Minerals + fatty acids in mg/100g;
+    # sugars/fat in g/100g. All nullable — populated only for name-matched ingredients.
+    potassium_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    phosphorus_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zinc_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_sugars_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    free_sugars_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    saturated_fat_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mufa_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pufa_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
     unit_weight_g: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     source: Mapped[str] = mapped_column(Text, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
