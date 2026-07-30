@@ -147,7 +147,11 @@ All three are idempotent and race-safe. **Cloud Scheduler jobs are NOT yet creat
 ## Environment Variables (`.env`)
 
 ```env
-DATABASE_URL=postgresql+asyncpg://mityahar_user:mityahar_password@localhost:5432/mityahar_db
+DATABASE_URL=postgresql+asyncpg://admin:<POSTGRES_PASSWORD>@localhost:5432/mityahar_db
+# DB user is `admin`, db `mityahar_db` (docker-compose defaults: POSTGRES_USER=admin,
+# POSTGRES_DB=mityahar_db, POSTGRES_PASSWORD must be set). To populate food/recipe data on a
+# fresh clone, restore db-backups/mityahar_content_*.sql — see db-backups/RESTORE.md (do NOT
+# run seed_food_items.py / seed_6k_recipes.py — broken / API-bound).
 SECRET_KEY=<min 32 chars — generate with: python -c "import secrets; print(secrets.token_hex(32))">
 ACCESS_TOKEN_EXPIRE_MINUTES=15
 REFRESH_TOKEN_EXPIRE_MINUTES=10080
