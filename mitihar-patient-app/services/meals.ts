@@ -1,5 +1,5 @@
 import api from "../lib/axios";
-import type { WeeklyPlan, WeekResponseV2, PlanHistoryItem, ShoppingListResponse, ConfirmChoiceResponse } from "../types";
+import type { WeeklyPlan, WeekResponseV2, PlanHistoryItem, ShoppingListResponse, ConfirmChoiceResponse, PantryResponse, PantrySuggestion } from "../types";
 
 // ── GET /meal-plan/week ────────────────────────────────────────────────────
 export async function getWeeklyPlan(): Promise<WeeklyPlan | WeekResponseV2> {
@@ -73,6 +73,22 @@ export async function toggleShoppingItem(ingredient_name: string, at_home: boole
     params: { ingredient_name, at_home },
   });
   return data;
+}
+
+// ── Pantry (pantry-first meal planning) ──────────────────────────────────
+export async function getPantry(search?: string): Promise<PantryResponse> {
+  const { data } = await api.get("/meal-plan/pantry", { params: search ? { search } : {} });
+  return data as PantryResponse;
+}
+
+export async function togglePantryItem(ingredient_id: number, have: boolean) {
+  const { data } = await api.post("/meal-plan/pantry/toggle", null, { params: { ingredient_id, have } });
+  return data;
+}
+
+export async function getPantrySuggestions(): Promise<PantrySuggestion[]> {
+  const { data } = await api.get("/meal-plan/pantry/suggestions");
+  return (data?.items ?? []) as PantrySuggestion[];
 }
 
 // ── GET /meal-plan/combo/{comboId}/dishes ────────────────────────────────

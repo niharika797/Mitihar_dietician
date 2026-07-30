@@ -10,14 +10,20 @@ from ..services.user_service import get_current_user
 from ..models.db_models import (
     Patient, ProgressLog, Recommendation, WeeklyCombo,
     PatientDishPreferences, PatientMealChoice, PatientMealChoiceDish, FoodItem,
-    RecipeIngredient,
+    RecipeIngredient, Ingredient, PatientPantry,
 )
 from ..services.diet_plan_service import DietPlanService
+from ..services.meal_generator.meal_generator import is_staple
 from ..core.database import get_db
 
 router = APIRouter()
 
 from ..core.limiter import limiter
+
+
+def _norm_name(s: str) -> str:
+    """Normalize an ingredient name for pantry↔recipe matching (collapse case + whitespace)."""
+    return " ".join(str(s).strip().lower().split())
 
 class CalorieReductionInput(BaseModel):
     reduction_amount: int
@@ -173,6 +179,32 @@ async def get_week_plan(
     )
     pinned_ids: set = {row[0] for row in prefs_result}
 
+    # ── Pantry coverage (pantry-first): rank combos by how much the patient can already cook.
+    # Match by NORMALIZED NAME (not ingredient_id) to survive same-name/different-id dup rows.
+    # Staples excluded via substring is_staple (exact-match undercounts badly: 6.8 vs 4.3/dish).
+    pantry_rows = await session.execute(
+        select(Ingredient.name)
+        .join(PatientPantry, PatientPantry.ingredient_id == Ingredient.id)
+        .where(PatientPantry.patient_id == current_user.id)
+    )
+    pantry_names = {_norm_name(r[0]) for r in pantry_rows}
+
+    all_food_ids = {
+        fid
+        for combo in combos for d in (combo.dishes or [])
+        if (fid := (d.get("food_id") or d.get("food_item_id")))
+    }
+    dish_reqs: dict = defaultdict(set)   # food_id -> {non-staple normalized ingredient names}
+    if all_food_ids:
+        ri_rows = await session.execute(
+            select(RecipeIngredient.food_item_id, Ingredient.name)
+            .join(Ingredient, Ingredient.id == RecipeIngredient.ingredient_id)
+            .where(RecipeIngredient.food_item_id.in_(all_food_ids))
+        )
+        for fid, nm in ri_rows:
+            if not is_staple(nm):
+                dish_reqs[fid].add(_norm_name(nm))
+
     days_map: dict = defaultdict(lambda: defaultdict(list))
     min_date = None
 
@@ -192,6 +224,13 @@ async def get_week_plan(
                 "slot_type": dish.get("slot_type", ""),
                 "calories": float(dish.get("calories", 0)),
             })
+        required = set()
+        for dish in (combo.dishes or []):
+            fid = dish.get("food_id") or dish.get("food_item_id")
+            if fid:
+                required |= dish_reqs.get(fid, set())
+        have = required & pantry_names
+        missing = sorted(required - have)
         days_map[date_str][combo.meal_type].append({
             "combo_id": combo.id,
             "combo_index": combo.combo_index,
@@ -199,13 +238,23 @@ async def get_week_plan(
             "total_calories": float(combo.total_calories or 0),
             "contains_doctor_pick": bool(pinned_dish_ids),
             "pinned_dish_ids": pinned_dish_ids,
+            "coverage": round(len(have) / len(required), 3) if required else 0.0,
+            "have_count": len(have),
+            "required_count": len(required),
+            "missing_ingredients": missing[:5],
+            "cookable": bool(required) and not missing,
         })
 
     days = []
     for date_str in sorted(days_map.keys()):
         day_meals: dict = {}
         for mt in ("Breakfast", "Lunch", "Dinner"):
-            day_meals[mt] = {"combos": days_map[date_str].get(mt, [])}
+            # Pantry-first: highest coverage first, stable on combo_index.
+            slot_combos = sorted(
+                days_map[date_str].get(mt, []),
+                key=lambda c: (-c["coverage"], c["combo_index"]),
+            )
+            day_meals[mt] = {"combos": slot_combos}
         days.append({"date": date_str, "meals": day_meals})
 
     return {
@@ -377,6 +426,147 @@ async def toggle_ingredient_at_home(
 
 
 _VALID_MEAL_TYPES = {"Breakfast", "Lunch", "Dinner"}
+
+
+# ─── GET /api/v1/meal-plan/pantry ────────────────────────────────────────
+# Pantry-first meal planning: the ingredient catalogue the patient can mark as "have".
+# Returns the top ~80 non-staple ingredients by recipe frequency (the ones that actually
+# unlock dishes) — NOT all 705, which are noisy with synonym dupes and brand/malformed names.
+# ?search= does a name lookup over the rest.
+
+_PANTRY_CATALOGUE_LIMIT = 80
+_PANTRY_SEARCH_LIMIT = 50
+
+
+async def _pantry_have_ids(session: AsyncSession, patient_id: int) -> set[int]:
+    rows = await session.execute(
+        select(PatientPantry.ingredient_id).where(PatientPantry.patient_id == patient_id)
+    )
+    return {r[0] for r in rows}
+
+
+@router.get("/pantry")
+async def get_pantry(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    search: str | None = Query(None),
+):
+    have_ids = await _pantry_have_ids(session, current_user.id)
+
+    freq = func.count(RecipeIngredient.id)
+    stmt = (
+        select(Ingredient.id, Ingredient.name, Ingredient.name_hindi, freq.label("c"))
+        .join(RecipeIngredient, RecipeIngredient.ingredient_id == Ingredient.id)
+        .group_by(Ingredient.id, Ingredient.name, Ingredient.name_hindi)
+        .order_by(freq.desc())
+    )
+    if search and search.strip():
+        stmt = stmt.where(Ingredient.name.ilike(f"%{search.strip()}%")).limit(_PANTRY_SEARCH_LIMIT * 3)
+    else:
+        stmt = stmt.limit(_PANTRY_CATALOGUE_LIMIT * 3)   # over-fetch; staples are dropped below
+
+    cap = _PANTRY_SEARCH_LIMIT if (search and search.strip()) else _PANTRY_CATALOGUE_LIMIT
+    items = []
+    for iid, name, name_hindi, _c in (await session.execute(stmt)).all():
+        if is_staple(name):
+            continue
+        items.append({
+            "ingredient_id": iid,
+            "name": name,
+            "name_hindi": name_hindi,
+            "have": iid in have_ids,
+        })
+        if len(items) >= cap:
+            break
+    return {"items": items, "have_count": len(have_ids)}
+
+
+# ─── POST /api/v1/meal-plan/pantry/toggle ────────────────────────────────
+
+@router.post("/pantry/toggle")
+async def toggle_pantry_item(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    ingredient_id: int = Query(...),
+    have: bool = Query(...),
+):
+    """Presence toggle: insert a pantry row if `have`, delete it if not. Idempotent."""
+    if have:
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        await session.execute(
+            pg_insert(PatientPantry)
+            .values(patient_id=current_user.id, ingredient_id=ingredient_id)
+            .on_conflict_do_nothing(constraint="uq_patient_pantry")
+        )
+    else:
+        await session.execute(
+            sa_delete(PatientPantry).where(
+                PatientPantry.patient_id == current_user.id,
+                PatientPantry.ingredient_id == ingredient_id,
+            )
+        )
+    await session.flush()
+    return {"ingredient_id": ingredient_id, "have": have}
+
+
+# ─── GET /api/v1/meal-plan/pantry/suggestions ────────────────────────────
+# Condition-aware "worth buying" ingredients, ranked by the beneficial nutrient.
+# Nutrient columns are the IFCT-backed per-100g values; thresholds/rationale in
+# docs/MEDICAL_THRESHOLDS.md. Sodium/hypertension intentionally absent (unmodeled salt).
+
+def _suggestion_plan(condition: str):
+    if condition == "Anemia":
+        return (Ingredient.iron_per_100g, "iron-rich")
+    if condition == "Osteoporosis":
+        return (Ingredient.calcium_per_100g, "calcium-rich")
+    if condition in ("Type 2 Diabetes", "Pre-diabetes"):
+        return (Ingredient.fiber_per_100g, "high-fibre — blunts glucose")
+    if condition == "PCOS/PCOD":
+        return (Ingredient.fiber_per_100g, "high-fibre — helps insulin resistance")
+    if condition == "High Cholesterol":
+        return (Ingredient.fiber_per_100g, "high-fibre — helps lower cholesterol")
+    if condition == "Heart Disease":
+        return (Ingredient.fiber_per_100g, "high-fibre — heart-healthy")
+    return None
+
+
+@router.get("/pantry/suggestions")
+async def pantry_suggestions(
+    current_user: Patient = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    have_ids = await _pantry_have_ids(session, current_user.id)
+    plans, seen_cols = [], set()
+    for cond in (current_user.medical_conditions or []):
+        plan = _suggestion_plan(cond)
+        if plan and plan[0].key not in seen_cols:   # dedupe: several conditions share fibre
+            seen_cols.add(plan[0].key)
+            plans.append(plan)
+    if not plans:
+        return {"items": []}
+
+    out: dict = {}
+    for col, reason in plans:
+        # Require the ingredient to appear in >=3 recipes so we surface real foods, not
+        # obscure spice artifacts (which win a naive per-100g ranking but aren't eaten in bulk).
+        rows = await session.execute(
+            select(Ingredient.id, Ingredient.name, Ingredient.name_hindi)
+            .join(RecipeIngredient, RecipeIngredient.ingredient_id == Ingredient.id)
+            .where(col.isnot(None))
+            .group_by(Ingredient.id, Ingredient.name, Ingredient.name_hindi, col)
+            .having(func.count(RecipeIngredient.id) >= 3)
+            .order_by(col.desc())
+            .limit(40)
+        )
+        added = 0
+        for iid, name, name_hindi in rows:
+            if iid in have_ids or iid in out or is_staple(name):
+                continue
+            out[iid] = {"ingredient_id": iid, "name": name, "name_hindi": name_hindi, "reason": reason}
+            added += 1
+            if added >= 5:
+                break
+    return {"items": list(out.values())[:8]}
 
 
 # ─── POST /api/v1/meal-plan/confirm-choice ───────────────────────────────

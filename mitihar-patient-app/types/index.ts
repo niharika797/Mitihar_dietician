@@ -336,6 +336,27 @@ export interface WeeklyComboV2 {
   total_calories: number;
   contains_doctor_pick: boolean;
   pinned_dish_ids: number[];
+  // Pantry-first coverage (added by GET /meal-plan/week). Optional: absent on legacy/other callers.
+  coverage?: number;             // 0..1 fraction of non-staple ingredients the patient has
+  have_count?: number;
+  required_count?: number;
+  missing_ingredients?: string[];
+  cookable?: boolean;            // true only when nothing is missing (rare)
+}
+
+// ── Pantry (pantry-first meal planning) ──────────────────────────────────
+export interface PantryItem {
+  ingredient_id: number;
+  name: string;
+  name_hindi: string | null;
+  have: boolean;
+}
+export interface PantryResponse { items: PantryItem[]; have_count: number; }
+export interface PantrySuggestion {
+  ingredient_id: number;
+  name: string;
+  name_hindi: string | null;
+  reason: string;
 }
 
 export interface DayMealsV2 {

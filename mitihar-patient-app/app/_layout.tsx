@@ -202,6 +202,7 @@ function RootLayout() {
               <Stack.Screen name="meals/meal-detail"    options={SLIDE} />
               <Stack.Screen name="meals/week-view"      options={SLIDE} />
               <Stack.Screen name="meals/shopping-list"  options={SLIDE} />
+              <Stack.Screen name="meals/pantry"         options={SLIDE} />
               <Stack.Screen name="meals/plan-history"   options={SLIDE} />
               <Stack.Screen name="meals/plan-empty"     options={SLIDE} />
               <Stack.Screen name="log/log-meal"      options={MODAL} />

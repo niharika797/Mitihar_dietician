@@ -153,6 +153,18 @@ function V2ComboCard({ combo, onSelect, onCardPress, isPending, isConfirmedThisC
       )}
       <Text style={s.suggName} numberOfLines={3}>{dishNames}</Text>
       <Text style={s.suggCal}>~{Math.round(combo.total_calories)} kcal</Text>
+      {(combo.required_count ?? 0) > 0 && (
+        combo.cookable ? (
+          <View style={s.cookNowBadge}><Text style={s.cookNowText}>✓ Cook now</Text></View>
+        ) : (combo.have_count ?? 0) > 0 ? (
+          <Text style={s.coverageText}>
+            Have {combo.have_count}/{combo.required_count}
+            {combo.missing_ingredients && combo.missing_ingredients.length > 0
+              ? ` · need ${combo.missing_ingredients.slice(0, 2).join(", ")}${combo.missing_ingredients.length > 2 ? ` +${combo.missing_ingredients.length - 2}` : ""}`
+              : ""}
+          </Text>
+        ) : null
+      )}
       <View style={{ gap: 3, marginTop: 4 }}>
         {combo.dishes.map(d => (
           <View key={d.food_item_id} style={[s.slotTag, combo.pinned_dish_ids.includes(d.food_item_id) && s.slotTagPinned]}>
@@ -436,6 +448,9 @@ export default function MealsScreen() {
         )}
 
         <View style={s.actionRow}>
+          <Pressable onPress={() => router.push("/meals/pantry")} style={s.actionBtn}>
+            <Text style={s.actionBtnText}>🧊 My Pantry</Text>
+          </Pressable>
           <Pressable onPress={() => router.push("/meals/shopping-list")} style={s.actionBtn}>
             <Text style={s.actionBtnText}>🛒 Shopping List</Text>
           </Pressable>
@@ -478,6 +493,9 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   selectedBadgeText: { fontSize: 9, fontWeight: "600", color: "#fff" },
   suggName:          { fontSize: 13, fontWeight: "600", color: "#111827", lineHeight: 17, marginBottom: 2 },
   suggCal:           { fontSize: 12, fontWeight: "700", color: "#1E7C45", marginBottom: 4 },
+  cookNowBadge:      { alignSelf: "flex-start", backgroundColor: "#DCFCE7", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2, marginBottom: 4 },
+  cookNowText:       { fontSize: 10, fontWeight: "700", color: "#166534" },
+  coverageText:      { fontSize: 11, color: "#6B7280", marginBottom: 4 },
   selectBtn:         { marginTop: 10, height: 32, borderRadius: 8, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
   selectBtnDisabled: { opacity: 0.6 },
   selectBtnText:     { fontSize: 12, fontWeight: "600", color: "#fff" },

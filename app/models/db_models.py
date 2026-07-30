@@ -810,6 +810,30 @@ class PatientDishPreferences(Base):
 
 
 # ---------------------------------------------------------------------------
+# PatientPantry  (presence set — one row = "this patient has this ingredient")
+# ---------------------------------------------------------------------------
+
+class PatientPantry(Base):
+    """Pantry-first meal planning: which ingredients a patient has on hand.
+    Presence-based (row exists = have it); no quantities. Read by GET /meal-plan/week
+    to rank combos by ingredient coverage. Coverage matches by normalized name, not id."""
+    __tablename__ = "patient_pantry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    patient: Mapped["Patient"] = relationship("Patient")
+    ingredient: Mapped["Ingredient"] = relationship("Ingredient")
+
+    __table_args__ = (
+        UniqueConstraint("patient_id", "ingredient_id", name="uq_patient_pantry"),
+        Index("idx_pantry_patient", "patient_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # PatientMealChoice  (plan-time dish selection per slot per day)
 # ---------------------------------------------------------------------------
 

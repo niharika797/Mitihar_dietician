@@ -44,6 +44,14 @@ PANTRY_STAPLES = {
     "ginger", "garlic", "ginger garlic paste", "oil spray",
 }
 
+
+def is_staple(name: str) -> bool:
+    """Substring/normalized staple check. Exact `name in PANTRY_STAPLES` misses inflected
+    names ('cumin seeds', 'red chilli powder') — measured to undercount staples badly
+    (6.8 vs 4.3 non-staple/dish). Used by the pantry-coverage scoring in meal_plan.py."""
+    n = " ".join(str(name).strip().lower().split())
+    return any(s in n for s in PANTRY_STAPLES)
+
 # Eager-load option for any FoodItem query whose rows reach _build_dish_ingredients
 # or _is_allergenic — both read .recipe_ingredients, which cannot lazy-load under
 # the async session (MissingGreenlet).
