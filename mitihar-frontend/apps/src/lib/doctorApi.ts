@@ -641,4 +641,36 @@ export const doctorApi = {
 
   getPendingApprovals: () =>
     apiClient.get<PendingApprovalsResponse>('/doctor/pending-approvals').then(r => r.data),
+
+  // ── Data Review (shared-data governance: read-only list + flag-only writes) ──
+  dataReviewDishes: (search?: string, page = 1) =>
+    apiClient.get<DataReviewDish[]>('/doctor/data-review/dishes', {
+      params: { page, page_size: 50, ...(search ? { search } : {}) },
+    }).then(r => r.data),
+
+  flagDish: (body: { food_item_id: number; field?: string; reason: string; suggested_value?: string }) =>
+    apiClient.post('/doctor/data-review/flag', body).then(r => r.data),
+
+  myFlags: () =>
+    apiClient.get<MyFlag[]>('/doctor/data-review/my-flags').then(r => r.data),
 };
+
+export interface DataReviewDish {
+  id: number;
+  recipe_name: string;
+  slot_type: string;
+  diet_type: string;
+  cal_per_serving: number;
+  is_verified: boolean;
+  source: string;
+}
+
+export interface MyFlag {
+  id: number;
+  target_id: number;
+  field_changed: string;
+  reason: string;
+  status: string;
+  created_at: string | null;
+  reviewed_at: string | null;
+}

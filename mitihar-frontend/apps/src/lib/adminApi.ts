@@ -219,4 +219,28 @@ export const adminApi = {
         params: { page_size: 50, page: 1, ...params },
       })
       .then(r => r.data),
+
+  // ── Data review (dish change-request queue) ──────────────────────────────────
+  listDataRequests: (params: { status?: string; tier?: string; page?: number; page_size?: number }) =>
+    apiClient
+      .get<DataChangeRequestView[]>('/admin/data-requests', { params: { status: 'pending', page: 1, page_size: 100, ...params } })
+      .then(r => r.data),
+
+  reviewDataRequest: (id: number, body: { action: 'approve' | 'reject'; admin_reason?: string; override_value?: Record<string, number> }) =>
+    apiClient.patch(`/admin/data-requests/${id}`, body).then(r => r.data),
 };
+
+export interface DataChangeRequestView {
+  id: number;
+  target_table: string;
+  target_id: number;
+  target: { recipe_name: string; cal_per_serving: number; is_verified: boolean } | null;
+  field_changed: string;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  proposed_by: string;
+  proposal_reason: string;
+  tier: string;
+  status: string;
+  created_at: string | null;
+}

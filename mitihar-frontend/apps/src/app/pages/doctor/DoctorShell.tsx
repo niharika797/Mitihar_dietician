@@ -14,6 +14,7 @@ function getBreadcrumbs(pathname: string) {
     '/doctor/patients':  [{ label: 'Doctor' }, { label: 'Patients' }],
     '/doctor/requests':  [{ label: 'Doctor' }, { label: 'Requests' }],
     '/doctor/recipes':   [{ label: 'Doctor' }, { label: 'Recipes' }],
+    '/doctor/data-review': [{ label: 'Doctor' }, { label: 'Data Review' }],
     '/doctor/settings':  [{ label: 'Doctor' }, { label: 'Settings' }],
   };
   if (pathname.startsWith('/doctor/patients/')) {

@@ -63,6 +63,12 @@ class FoodItem(Base):
     # Soft-delete (Stage 6). NULL = active. Set by Tier 1 auto-merge instead of
     # a hard DELETE. Distinct from is_verified=False, which means "unreviewed",
     # not "deleted" — the Data Review tab must filter on this, not is_verified.
+    name_normalized     = Column(String(255), nullable=True)
+    # Canonical form of recipe_name (lower/strip/collapse-whitespace) for dedup +
+    # the uq_fi_canonical partial-unique index. Maintained on every insert/rename.
+    original_name       = Column(Text, nullable=True)
+    # Rollback-safety snapshot of recipe_name before clean_dish_names.py runs (migration
+    # b5c6d7e8f9a0). Modelled here so `alembic check` matches the live column.
 
     # relationships
     doctor              = relationship("Doctor")
@@ -79,6 +85,15 @@ Index("idx_fi_meal_times", FoodItem.meal_time_tags, postgresql_using="gin")
 Index("idx_fi_avoid_tags",  FoodItem.avoid_tags,     postgresql_using="gin")
 Index("idx_fi_prefer_tags", FoodItem.prefer_tags,    postgresql_using="gin")
 Index("idx_fi_deleted_at", FoodItem.deleted_at, postgresql_where=text("deleted_at IS NULL"))
+Index("idx_fi_name_norm", FoodItem.name_normalized)
+# At most one CANONICAL dish per (normalized name, slot, diet) in the served pool.
+# Private/unverified doctor dishes and soft-deleted history are exempt (predicate),
+# and diet-variants differ on diet_type so both diet pools keep their copy.
+Index(
+    "uq_fi_canonical", FoodItem.name_normalized, FoodItem.slot_type, FoodItem.diet_type,
+    unique=True,
+    postgresql_where=text("deleted_at IS NULL AND is_verified = true AND name_normalized IS NOT NULL"),
+)
 
 # ---------------------------------------------------------------------------
 # MealTemplate  (DO NOT MODIFY)
@@ -551,6 +566,39 @@ class DataChangeRequest(Base):
         Index("idx_dcr_status_tier", "status", "tier"),
         Index("idx_dcr_proposed_by", "proposed_by"),
         Index("idx_dcr_target", "target_table", "target_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# DataChangeAuditLog  (Stage 6 — append-only trail of every data-change action)
+# ---------------------------------------------------------------------------
+# One row per state transition (merge / proposed / approved / rejected / applied).
+# App code only ever INSERTs here — never UPDATE/DELETE — so the trail is immutable.
+# (DB-grant enforcement of that is deferred; see docs/STAGE6_SPEC.md §1.2.)
+
+class DataChangeAuditLog(Base):
+    __tablename__ = "data_change_audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    request_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("data_change_requests.id"), nullable=True
+    )  # null for direct actions (e.g. tier1_auto merge) that skip the request queue
+    target_table: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    # "merge" | "proposed" | "approved" | "rejected" | "applied" | "soft_delete"
+    field_changed: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    before_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # actor: doctor user_id (as string), admin id, or "system:tier1_auto" / "system:ai_observer"
+    actor: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_dcal_target", "target_table", "target_id"),
+        Index("idx_dcal_request", "request_id"),
+        Index("idx_dcal_action", "action"),
     )
 
 

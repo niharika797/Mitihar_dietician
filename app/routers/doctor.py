@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,9 @@ from ..models.db_models import (
     DoctorMealOverride, PendingVisitApproval,
     PatientMealConfig, PatientDishPreferences,
     WeeklyCombo, Ingredient, RecipeIngredient,
+    DataChangeRequest, DataChangeAuditLog,
 )
+from ..services.dish_service import normalize_dish_name, find_reusable_dish
 from ..services.weekly_summary_service import compute_weekly_summary
 from ..services.notification_service import notify_weekly_plan_approved, notify_visit_flagged
 from ..schemas.doctor import (
@@ -871,6 +874,7 @@ async def add_custom_dish_to_plan(
                 )
             new_food_v2 = FoodItem(
                 recipe_name=body.recipe_name,
+                name_normalized=normalize_dish_name(body.recipe_name),
                 slot_type=body.slot_type,
                 cal_per_serving=body.calories,
                 protein_per_serving=body.protein,
@@ -940,6 +944,7 @@ async def add_custom_dish_to_plan(
             )
         new_food = FoodItem(
             recipe_name=body.recipe_name,
+            name_normalized=normalize_dish_name(body.recipe_name),
             slot_type=body.slot_type,
             cal_per_serving=body.calories,
             protein_per_serving=body.protein,
@@ -1098,6 +1103,7 @@ async def patch_dish(
             if body.flag_for_database:
                 new_food = FoodItem(
                     recipe_name=cd.recipe_name,
+                    name_normalized=normalize_dish_name(cd.recipe_name),
                     slot_type=effective_slot_type,
                     cal_per_serving=cd.calories,
                     protein_per_serving=cd.protein,
@@ -1711,18 +1717,19 @@ async def add_recipe(
     approves (PATCH /admin/food/{id}/approve), is_verified becomes True and the recipe
     joins the global dataset available to all doctors and the AI meal generator.
     """
-    # Dedup: return existing record if name already matches (case-insensitive, trimmed)
-    existing_result = await session.execute(
-        select(FoodItem).where(
-            func.lower(func.trim(FoodItem.recipe_name)) == body.recipe_name.strip().lower()
-        ).order_by(FoodItem.id.desc()).limit(1)
+    # Dedup on the canonical key (name+slot+diet): reuse the shared verified canonical, or
+    # this doctor's own live row, instead of creating a duplicate. deleted_at-aware, so a
+    # merged-away row never short-circuits a fresh insert.
+    existing = await find_reusable_dish(
+        session, name=body.recipe_name, slot_type=body.slot_type,
+        diet_type=body.diet_type, doctor_id=doctor.id,
     )
-    existing = existing_result.scalars().first()
     if existing:
         return existing
 
     food = FoodItem(
         recipe_name=body.recipe_name,
+        name_normalized=normalize_dish_name(body.recipe_name),
         slot_type=body.slot_type,
         cal_per_serving=body.cal_per_serving,
         protein_per_serving=body.protein_per_serving,
@@ -1919,11 +1926,23 @@ async def patch_recipe_tags(
     food = result.scalars().first()
     if food is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
+
+    # Multi-doctor guard: a doctor may edit tags only on their OWN unverified/private dish.
+    # Shared master data (verified/global, or another doctor's row) is flag-only — route
+    # through the Data Review flag endpoint so an admin reviews the change. This also removes
+    # the old hole where editing tags force-verified any row into the global pool.
+    if food.is_verified or (food.doctor_id != doctor.id):
+        raise HTTPException(
+            status_code=403,
+            detail="This is shared/verified master data — you can't edit its tags directly. "
+                   "Use Data Review to flag a change for admin review.",
+        )
+
     await session.execute(
         update(FoodItem)
         .where(FoodItem.id == food_item_id)
         .values(avoid_tags=body.avoid_tags, prefer_tags=body.prefer_tags,
-                is_verified=True, tags_locked=True)  # lock: derive_medical_tags.py skips locked rows
+                tags_locked=True)  # lock: derive_medical_tags.py skips locked rows. is_verified unchanged.
     )
     await session.commit()
     return RecipeTagsResponse(
@@ -1931,7 +1950,7 @@ async def patch_recipe_tags(
         recipe_name=food.recipe_name,
         avoid_tags=body.avoid_tags,
         prefer_tags=body.prefer_tags,
-        is_verified=True,
+        is_verified=food.is_verified,
     )
 
 
@@ -2975,3 +2994,89 @@ async def unblock_dish(
 
     _, blocked = await _get_prefs_for_patient(patient_id, session)
     return {"blocked_dishes": blocked}
+
+
+# ─── Data Review (multi-doctor shared-data governance) ───────────────────────
+# Read-only dish catalogue + flag-only writes. Doctors never edit or delete shared
+# master data here — flagging creates a DataChangeRequest for admin review.
+
+class DishFlagRequest(BaseModel):
+    food_item_id: int
+    field: str = "general"                       # which field looks wrong (e.g. cal_per_serving)
+    reason: str = Field(min_length=5, max_length=1000)
+    suggested_value: str | None = None           # optional correction the doctor proposes
+
+
+@router.get("/data-review/dishes")
+async def data_review_dishes(
+    request: Request,
+    search: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Read-only dish list for review. Excludes soft-deleted (merged-away) rows."""
+    stmt = select(FoodItem).where(FoodItem.deleted_at.is_(None))
+    if search:
+        stmt = stmt.where(FoodItem.name_normalized.ilike(f"%{normalize_dish_name(search)}%"))
+    stmt = stmt.order_by(FoodItem.recipe_name).offset((page - 1) * page_size).limit(page_size)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [{
+        "id": f.id, "recipe_name": f.recipe_name, "slot_type": f.slot_type,
+        "diet_type": f.diet_type, "cal_per_serving": float(f.cal_per_serving),
+        "is_verified": f.is_verified, "source": f.source,
+    } for f in rows]
+
+
+@router.post("/data-review/flag", status_code=201)
+async def data_review_flag(
+    body: DishFlagRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Flag a dish value as wrong (required reason) — creates a pending DataChangeRequest.
+    This is the ONLY write a doctor can make against shared master data."""
+    food = (await session.execute(
+        select(FoodItem).where(FoodItem.id == body.food_item_id, FoodItem.deleted_at.is_(None))
+    )).scalars().first()
+    if food is None:
+        raise HTTPException(status_code=404, detail="Dish not found")
+
+    old_val = {"cal_per_serving": str(food.cal_per_serving), "recipe_name": food.recipe_name}
+    dcr = DataChangeRequest(
+        target_table="food_items", target_id=food.id, field_changed=body.field,
+        old_value=old_val, new_value={"suggested": body.suggested_value},
+        proposed_by=str(doctor.id), proposal_reason=body.reason,
+        tier="tier2_review", status="pending",
+    )
+    session.add(dcr)
+    await session.flush()
+    session.add(DataChangeAuditLog(
+        request_id=dcr.id, target_table="food_items", target_id=food.id, action="proposed",
+        field_changed=body.field, before_value=old_val,
+        after_value={"suggested": body.suggested_value}, actor=str(doctor.id), reason=body.reason,
+    ))
+    await session.commit()
+    return {"message": "Flag submitted for admin review", "request_id": dcr.id}
+
+
+@router.get("/data-review/my-flags")
+async def data_review_my_flags(
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """The doctor's own flags + their current status (not the cross-doctor audit log)."""
+    rows = (await session.execute(
+        select(DataChangeRequest)
+        .where(DataChangeRequest.proposed_by == str(doctor.id))
+        .order_by(DataChangeRequest.created_at.desc())
+    )).scalars().all()
+    return [{
+        "id": r.id, "target_id": r.target_id, "field_changed": r.field_changed,
+        "reason": r.proposal_reason, "status": r.status,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+    } for r in rows]

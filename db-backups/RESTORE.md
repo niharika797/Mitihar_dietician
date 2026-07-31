@@ -5,10 +5,12 @@ anymore. `seed_food_items.py` is broken (references the dropped `instructions` c
 `seed_6k_recipes.py` needs a USDA API key + ~6000 live calls. Restore the committed content
 dump instead — no API keys, no Firebase required.
 
-**`db-backups/mityahar_content_2026-07-30.sql`** — data-only: ~2116 dishes, 950 ingredients
-(with IFCT2017 nutrition), ~18k `recipe_ingredients`, 180 meal templates, plus the medical
-`avoid_tags`/`prefer_tags`. **No patient/doctor data** — create your own accounts (step 4).
-FK-clean (doctor links nulled) and sequences reset, so it restores into a fresh DB as-is.
+**`db-backups/mityahar_content_2026-07-31.sql`** — data-only: ~2116 dishes (1780 verified+live
+after the Stage-6 dedup; 153 soft-deleted merge-losers + 183 parked conflicts carried along),
+950 ingredients (with IFCT2017 nutrition), ~18k `recipe_ingredients`, 180 meal templates, plus
+the medical `avoid_tags`/`prefer_tags` and `name_normalized`. **No patient/doctor data** — create
+your own accounts (step 4). FK-clean (doctor links nulled) and dedup-clean, so it restores into a
+fresh schema (which now includes the `uq_fi_canonical` unique index) without collision.
 
 ## Setup (fresh clone)
 
@@ -25,11 +27,11 @@ FK-clean (doctor links nulled) and sequences reset, so it restores into a fresh 
    ```bash
    # bash
    docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" -i mityahar_postgres \
-     psql -U admin -d mityahar_db < db-backups/mityahar_content_2026-07-30.sql
+     psql -U admin -d mityahar_db < db-backups/mityahar_content_2026-07-31.sql
    ```
    ```powershell
    # PowerShell
-   Get-Content db-backups\mityahar_content_2026-07-30.sql | `
+   Get-Content db-backups\mityahar_content_2026-07-31.sql | `
      docker exec -e PGPASSWORD=$env:POSTGRES_PASSWORD -i mityahar_postgres psql -U admin -d mityahar_db
    ```
 4. Seed your own accounts (plain inserts, no API):

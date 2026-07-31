@@ -548,6 +548,7 @@ class MealGenerator:
                 FoodItem.diet_type == try_diet,
                 FoodItem.meal_time_tags.any(meal_time),
                 FoodItem.is_verified == True,  # noqa: E712 — Change 1: never serve unverified/test dishes
+                FoodItem.deleted_at.is_(None),  # never serve soft-deleted/merged-away dishes (Stage 6)
             )
             if target_cal > 0:
                 s = s.where(FoodItem.cal_per_serving.between(target_cal / 3.0, target_cal / 0.5))
