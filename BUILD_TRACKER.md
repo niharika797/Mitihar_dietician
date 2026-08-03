@@ -199,7 +199,7 @@ All of the following have been built and verified across Sessions 1–8:
 
 ## CURRENT STATUS
 
-> _Updated 2026-07-15 (later same day). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-08-03 (docs/scripts repo reorg + dish-assignment gating fix, no new commits). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Phase:** Staging deployed — first successful Cloud Run deploy 2026-07-05. Prior "Done" block archived to BUILD_TRACKER_ARCHIVE.md.
 
@@ -221,13 +221,16 @@ All of the following have been built and verified across Sessions 1–8:
 - **2026-07-13:** Found + fixed job-digest drift — `mityahar-migrate`/`mityahar-seed-runner` were pinned to a 2026-07-05 image predating a `scripts/` COPY fix; every later service redeploy silently left the jobs stale. Redeployed service (`mityahar-api-00008-jjn`), repointed both jobs, verified `scripts/` present. Added `scripts/deploy_staging.py` so deploy always repoints pinned jobs — don't reuse bare `gcloud run deploy` for this service.
 - **2026-07-14:** 2 test fixes committed — correct JSONB key names in plan-quality avoid-tag/variety checks (`dda93d6`), add env-var overrides for staging-targeted perf tests (`fa5e05b`).
 - **2026-07-15:** Fixed double-applied 15% TDEE buffer in meal generator (`cf1b6ab`) — meals were landing at 72.25% of TDEE, not 85%; unit tests added. Ran the read-only stage-2 nutrition-source migration diff (`02d8d4a`): JSONB vs `recipe_ingredients` conflicts confirmed as stale 10x values, gated dry-run `backfill_recipe_ingredients.py` added (22-row scope); flagged `meal_generator._is_allergenic` as still reading legacy JSONB. Added `scripts/export_recipes_to_csv.py`, ran it to produce `recipe_ingredients_audit.csv` (18,213 rows, uncommitted).
+- **2026-07-28:** Committed the Stage 6 spec doc (`254d110`, sections 1-4) that was missing from the repo. Added `DataChangeRequest` model (`56fd3ea`, Section 1 task 1) — pending/approved/rejected/auto_applied lifecycle for Tier 1 auto-merge, Tier 2 AI research, doctor flags. Re-ran the full backend integration suite after the model change: 94/94 steps + 10/10 error cases PASS (`tests/results/test_results_latest.txt`, untracked).
+- **2026-07-29:** Live read-only audit of the running app (`docs/AUDIT_SESSION_2026-07-29.md`) — found the patient Expo web app broken (Router/Navigation mismatch), a weight-loss calorie-deficit gap, beverage-dominated accompaniment slots, 292 duplicate dish names, and ingredient nutrition only 9% real IFCT2017 (79% LLM-estimated, mineral tables never imported). Corrected stale avoid-tag claims in `.claude/rules/generator-notes.md`. `scripts/extract_ifct_tables.py`: extracted + verified Tables 1-7 (proximates/vitamins/carotenoids/minerals/starches/fatty-acids), all 0-mismatch; per product-owner call, stopped there — Tables 8-12 and ingredient images aren't needed by the platform.
+- **2026-07-30:** Wired the `tags_locked` doctor-override guard into `PATCH /doctor/recipes/{id}/tags` (`app/routers/doctor.py`) — doctor tag edits now set `tags_locked=True` so `derive_medical_tags.py` will skip locked rows.
+- **2026-07-30 (later same day):** Bumped `mitihar-patient-app` deps (`package.json`/`pnpm-lock.yaml`): `expo` 55.0.27→55.0.28 (+ expo-* patch bumps), `@react-navigation/native` 7.1.28→7.3.14, `react-native` 0.83.6→0.83.10. Uncommitted.
+- **2026-07-30 (later still):** Built pantry-first meal planning end-to-end, uncommitted: `PatientPantry` model + migration `c1d2e3f4a5b6` (not yet run); `meal_generator.is_staple()` substring staple-check; `meal_plan.py` router gets `GET/POST /pantry` and `GET /pantry/suggestions` (condition-aware, IFCT iron/calcium/fiber cols), `GET /week` now scores + sorts combos by pantry coverage (have/required/missing/cookable). Mobile: new `meals/pantry.tsx` screen + nav entry, types/service/queryKeys wired, `meals.tsx` tab shows "Cook now"/coverage badge and "My Pantry" button.
 
 **Blockers / pending:**
-- 4 commits ahead of `origin/feature/api-remediation-v0.2` (dda93d6, fa5e05b, cf1b6ab, 02d8d4a), none pushed; new scripts/CSV + doc edits also uncommitted
-- 52 active plans generated under the pre-fix TDEE math — no regeneration decision made yet
-- `meal_generator._is_allergenic` still reads the legacy JSONB — migration must repoint it before cutover
-- Staging DB 1 migration behind local dev; `food_items.original_name` empty (needs product decision); Ruff/mypy cleanup pending; Cloud Scheduler jobs + FCM project ownership undecided
+- Nothing committed yet: docs/scripts reorg + `.gitignore`/`CLAUDE.md` edits + the new `get_assignable_dish` gating fix (`app/services/dish_service.py`, `app/routers/doctor.py`) all sitting uncommitted in the working tree.
+- 2 local commits (80d0a17, 74b7726) still unpushed to origin.
 
 **Next action:**
-Review `recipe_ingredients_audit.csv`, commit pending doc/script changes, push all local commits to origin, then decide on plan regeneration and the JSONB backfill.
+Review and commit the uncommitted changes (repo reorg, then the dish-assignment gating fix, as separate commits), then push.
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).

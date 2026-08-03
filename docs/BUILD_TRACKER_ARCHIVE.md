@@ -1085,3 +1085,121 @@ gcloud scheduler jobs create http complete-expired-plans \
 7. **App up for Recipe-tab UI review**: stale system-python uvicorn (pid 15240, pre-Stage-2 code) killed off :8001; fresh venv uvicorn boots clean. Vite :5173 compiles clean. Recipe tab loads (20 recipes, filters OK), 0 console errors. `tsc --noEmit`: 0 errors — the Sprint-5 `patientMealsPerDay` PlanTab flag is stale/resolved. Two recipe names render as `?????` (non-ASCII/Devanagari?) — flagged for UI review.
 
 Commits: `56eee5b` (docs tracking), `4f93d82` (Stage 2 code), plus session-end state commit. Unpushed with dda93d6/fa5e05b/cf1b6ab/02d8d4a.
+
+---
+
+## 2026-08-03 — Recipe-ingredient quantity remediation, ingredient dedup, IFCT wiring, assignment gate
+
+Started as "the repo is messy, structure it" and became a data-correctness pass on
+`recipe_ingredients` (18,190 rows / 2,114 dishes).
+
+### 1. Repo reorg
+`docs/` bucketed into `architecture/ audits/ guides/ planning/ reference/ walkthroughs/ archive/`
+(`_archive/` merged into `archive/`). Dead one-offs (`_explore_*`, `repro.py`, `test_18.py`, ...)
+to `scripts/archive/`; `scripts/debug/` folded in. Active scripts stay FLAT — everything is invoked
+`python -m scripts.X` and several cross-import (`export_recipe_ingredients_review` imports
+`sanity_check_ingredients`), so subpackaging would have broken ~66 live entry points for cosmetics.
+Working CSVs + checkpoints to `data/review/`; log dumps to `logs/`. Root 78 → ~30 entries.
+
+### 2. Root cause of the bad quantities (established, not guessed)
+Matched 797 dishes back to `data/6000+ Indian Food Recipes Dataset/IndianFoodDatasetCSV.csv` and
+divided DB grams by the count parsed from the source text: **implied grams-per-count is exactly
+80.0**. The ingest converted every COUNTED ingredient at a flat 80 g/piece. Right for
+onion/tomato/potato (~80 g each), catastrophically wrong for chilli (~4 g), garlic clove (~5 g),
+bay leaf (~0.5 g), curry leaf (~0.15 g). A partial earlier fix left a second cluster at 1/10 scale,
+so counts 1-4 appear as both 80/160/240/320 and 8/16/24/32. Unit-based rows (tablespoon/teaspoon)
+converted correctly — left alone.
+
+**Dividing by the source Servings column was tested and REJECTED**: it drops 78.8% of dishes below
+150 g total, implausible for one serving. Stored `serving_weight_g` (median 200 g) agrees with
+piece-fix-only. Recorded here because it looks obviously right and is not.
+
+### 3. Damage from the deprecated fix_ingredient_quantities.py (3,556 rows / 19.5%)
+- `clove` keyword collision: loop set `cloves garlic` to 15 g, then `clove` (LIKE %clove%) overwrote
+  it to **1.0 g** on 127/154 rows. Backup originals were 24-240 g.
+- Flat-value collapse: every curry leaf 2.0 g, every green chilli 8.0 g — all per-dish variation gone.
+- Pass-4 flat 180 g cap (393 rows); Pass-3 flat 400/450 g dish rescale ignoring `slot_type` (96 dishes).
+
+Rebuilt from `db-backups/mityahar_content_2026-07-31.sql` (clean pre-damage baseline, exact ri_id
+coverage) via `scripts/rebuild_ingredient_quantities.py`: piece-weight correction, then category cap,
+then proportional dish scaling honouring `DISH_TOTAL_MAX`. 5,888 corrections staged through the
+existing `import_recipe_ingredients_review.py` (dedupes by ri_id, re-validates, pg_dump, APPLY gate).
+**ERROR rows 1,158 to 0.** `Cloves garlic` median 13.8 g across 40 distinct values; `Curry leaves`
+43 distinct values.
+
+Two distribution guards written into the plan were missed and are recorded as MY miscalibration,
+not over-correction: median dish total landed 215 g vs a guessed 250-400 g band, and <150 g dishes
+rose 30.0% to 37.9%. The research doc's own figure (single component 120-200 g cooked) and hand
+spot-checks (Palak Paneer 155 g, Semiya Upma 182 g, Egg Pulao 216 g — all unchanged by the rebuild)
+say 215 g is correct.
+
+### 4. Checker vocabulary + collision fix (sanity_check_ingredients.py)
+Uncategorized rows **1,582 to 29**. Added spelling variants (`chili`/`chilli`, `Bay leaves`), Hindi
+names (`Long`=clove, `Rye`=mustard seed, `Kalonji`, `Karela`, `Kaddu`), missing vegetables/cereals,
+and two new categories: `condiment_sauce` (30 g) and `beverage_liquid` (300 g). Split `curry_leaf`
+(5 g tempering) out of the flat 30 g `fresh_herb` cap.
+
+Fixed 4 miscategorizations — `Mustard oil` to powder_spice (a regression I introduced with a bare
+`mustard` keyword, capping oil 45 g to 10 g), plus pre-existing `Coconut oil`/`Sesame oil` to
+nut_seed and `Buttermilk` to oil_fat. Bare `oil` (3 chars) loses the longest-keyword match, so each
+seed-oil needs an explicit entry.
+
+**The same clove collision also lived in the checker**: `check_count_vs_grams` iterated in dict
+order, so `clove` (trips >6 g) matched `Cloves garlic` before `cloves garlic` (trips >75 g),
+flagging 154 correct garlic rows. Now longest-keyword-wins, matching `categorize_ingredient`.
+
+New `check_not_food` flags rows for DELETION rather than capping: 4 non-food (`Coal`, `Charcoal`
+for dhungar smoking, `Toothpicks` at 348.5 g twice) and 21 parser fragments (`Green`, `Save` from
+Sev Tamatar, `Good` from Gourd, `Arabic` from Arbi, `1/2`). 25 rows / **1,980 g of phantom weight**
+deleted. Capping them would turn an obviously-wrong number into a plausible one.
+
+### 5. Duplicates audit — mostly good news
+- `recipe_ingredients`: **zero** true duplicates (`uq_recipe_ingredient` holds). The earlier
+  "Toothpicks x2" was the same ingredient in *different dishes sharing a name*.
+- `uq_fi_canonical`: **zero** violations. Stage 6 works as written.
+- Meal generator is airtight (`meal_generator.py:548-550` filters `is_verified` AND `deleted_at`).
+- 182 live unverified dishes are the doctor review queue (`6k_dataset`/`excel` seed backlog), NOT
+  defects. **Deliberately not purged** — product owner decision.
+- 140 same-name `food_items` groups are mostly genuinely different recipes (only 11 share identical
+  calories). Not merged.
+
+### 6. Ingredient dedup + the orphaned IFCT data
+40 duplicated ingredient names split 2,944 recipe rows. The real finding: **the IFCT 2017 import
+inserted NEW ingredients rows instead of updating the LLM-estimated ones, so every recipe row sat
+on estimated_llm while the authoritative IFCT rows had ZERO usage.**
+
+Merge rule: IFCT2017 wins (15 groups), else field-identical lowest id (23 groups), else patch from
+IFCT (`peanuts` H012 520 kcal, `tur dal` B021 331 kcal). "Richest nutrition data" was the originally
+chosen rule and turned out **undecidable** — all 40 pairs tie at 16/17 populated fields. Zero
+collision groups, so repointing was a clean UPDATE. 43 merged, 2,816 rows repointed, 45 audit rows.
+Rows on IFCT-sourced ingredients: 0 to 4,720.
+
+**The merge activated latent bad variety matches in ingredient_ifct_map.csv** — dormant while the
+IFCT rows were orphaned. 5 of the 15 audited were wrong. Corrected the two material ones:
+`coconut` to H007 kernel-fresh (624 to 408.9; the DB already has a separate `coconut dry`) and
+`milk` to L002 whole-Cow (107.3 to 72.9, was buffalo). Accepted as-is: `mango` to green-raw,
+`cabbage` to Chinese, `tomato` to green (<=7 kcal each). **~73 of 88 mappings never audited.**
+
+### 7. Assignment gate
+`meal_generator` filters correctly, but `doctor.py` `patch_dish` (dish swap) and `pin_dish` did a
+bare `select(FoodItem).where(id == ...)` — a doctor could swap a patient onto a soft-deleted dish or
+the zero-ingredient test artifact. Added `get_assignable_dish()` to `dish_service.py` reusing the
+`find_reusable_dish` allowance: blocks soft-deleted always, unverified unless owned by that doctor.
+`block_dish` left unguarded on purpose — blocking only removes an option.
+
+Deleted `Palak Paneer Test S16` (id 3725): `is_verified=TRUE`, 0 ingredients, 220 kcal, fully
+servable. Kept id 3724 (unverified, so it belongs to the review queue).
+
+### Final numbers
+ERROR rows 1,158 to 0 · uncategorized 1,582 to 29 · `recipe_ingredients` 18,190 to 18,165 ·
+`ingredients` 950 to 907 · dishes within slot max 59.7% to 94.9% · median 272 kcal/serving ·
+1,982/2,115 dishes in the 50-800 kcal band · **0 above 1,500** · 71 tests pass.
+
+New: `scripts/rebuild_ingredient_quantities.py`, `scripts/merge_duplicate_ingredients.py`,
+`tests/test_ingredient_categorization.py` (38 tests pinning keyword collisions),
+`tests/test_dish_service.py` (9 tests, no DB). Archived: `reconstruct_pass4_damage.py` (superseded).
+
+### Known-open
+`ingredient_ifct_map.csv` variety audit (~73 unchecked) · 49 dishes <50 kcal + 1 with zero
+ingredients (ingest dropped unmatched ingredients — not a quantity problem) · 1,388 `weekly_combos`
+refs to soft-deleted dishes + 1 dangling id 3718 (JSONB snapshots, display safe).
