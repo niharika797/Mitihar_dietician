@@ -14,6 +14,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Web Dashboard (Doctor + Admin) | `mitihar-frontend/apps/` | React + Vite + Tailwind + Radix UI |
 | Patient Mobile App | `mitihar-patient-app/` | Expo (React Native) + NativeWind |
 
+### Repo layout (cleaned up 2026-08-03)
+
+- `scripts/` — flat, all live scripts run via `python -m scripts.<name>` (some cross-import
+  each other, e.g. `export_recipe_ingredients_review.py` imports `sanity_check_ingredients.py`
+  — do not nest into subpackages). Dead one-offs and debug scripts live in `scripts/archive/`
+  (untracked, gitignored) and are not run.
+- `data/review/` — working CSVs and checkpoint JSONs produced/consumed by the ingredient
+  review pipeline (`export_recipe_ingredients_review.py` → edit → `import_recipe_ingredients_review.py`).
+  Gitignored (covered by the top-level `data/` rule).
+- `docs/` — bucketed into `architecture/`, `audits/`, `guides/`, `planning/`, `reference/`,
+  `walkthroughs/`, `design/`, `archive/` (old/superseded material). `docs/CREDENTIALS.local.md`
+  stays at `docs/` root (gitignored by exact path).
+- `logs/` — all local dev log/process-output dumps (gitignored).
+
 ---
 
 ## Backend Commands

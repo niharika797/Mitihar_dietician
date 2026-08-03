@@ -1,6 +1,6 @@
 """Export all dishes + raw ingredient quantities to CSV for manual auditing.
 
-Read-only. Output: recipe_ingredients_audit.csv in project root.
+Read-only. Output: data/review/recipe_ingredients_audit.csv.
 
 Usage:
     python -m scripts.export_recipes_to_csv
@@ -19,7 +19,7 @@ from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.models.db_models import FoodItem, Ingredient, RecipeIngredient
 
-OUTPUT = Path(__file__).resolve().parent.parent / "recipe_ingredients_audit.csv"
+OUTPUT = Path(__file__).resolve().parent.parent / "data" / "review" / "recipe_ingredients_audit.csv"
 
 
 async def main() -> None:

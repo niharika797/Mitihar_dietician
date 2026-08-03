@@ -1,0 +1,50 @@
+# Recipe Ingredients Remediation — Before vs. After Results
+
+We have executed the automated remediation pipeline [`scripts/fix_ingredient_quantities.py`](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/scripts/fix_ingredient_quantities.py), re-exported the clean database snapshot to `recipe_ingredients_audit.csv`, recalculated nutrition macros for 2,101 recipes in PostgreSQL DB, and re-run the sanity check script.
+
+---
+
+## 📊 Before vs. After Comparison
+
+| Metric | Before Remediation | After Remediation | Change |
+|--------|-------------------|-------------------|--------|
+| **Total Rows** | 18,213 | 18,192 | -21 empty rows cleaned |
+| **✅ Clean (OK)** | **13,097 (71.9%)** | **15,237 (83.8%)** | **+2,140 rows (+11.9%)** |
+| **⚠️ Warnings** | 2,134 (11.7%) | 1,797 (9.9%) | -337 warnings |
+| **🚨 Errors** | **2,982 (16.4%)** | **1,158 (6.4%)** | **-1,824 errors (-61.2%)** |
+| **🐛 `count_as_grams` Parsing Bugs** | **1,431 rows** | **0 rows** | **100% FIXED 🎉** |
+| **🍲 Extreme Dish Weight (>1000g)** | **233 dishes** | **0 dishes** | **100% FIXED 🎉** |
+| **🥚 Egg Count -> Grams** | 9 rows | 0 rows | **100% FIXED 🎉** |
+| **🥗 Recalculated Recipes (`food_items`)** | 0 | **2,101 recipes** | **Complete DB update** |
+
+---
+
+## 🛠️ Actions Executed in Pipeline
+
+1. **Pass 1 — Fix Count-as-Grams Parsing Bugs (1,676 ingredient rows fixed)**:
+   - `Curry leaves` / `curry leaf`: 177 rows (e.g. 1,600g -> 2.0g)
+   - `Green chillies` / `green chilli`: 637 rows (e.g. 1,600g -> 8.0g)
+   - `Dry red chillies`: 388 rows (e.g. 160g -> 6.0g)
+   - `Cloves garlic`: 117 rows (e.g. 240g -> 15.0g)
+   - `Bay leaf`: 95 rows (e.g. 160g -> 1.0g)
+   - `Cardamom` / `clove` / spices: 262 rows scaled to realistic 1-serving weights.
+
+2. **Pass 2 — Fix Egg Counts (9 rows)**:
+   - Converted count values (`1`, `2`, `3`) to grams (`50g`, `100g`, `150g`).
+
+3. **Pass 3 — Scale Down Bulk / Multi-Serving Dishes (181 dishes / 1,902 rows)**:
+   - Scaled down recipes with total raw weight > 800g (e.g. `Carrot & Beans Thoran` 2,969g -> 450g total) proportionally preserving ingredient ratios.
+
+4. **Pass 4 — Cap Extreme Single Ingredients (350 rows)**:
+   - Capped individual ingredients > 250g down to 180g single-serving upper bound.
+
+5. **Pass 5 — Macro Recalculation & Re-export**:
+   - `python -m scripts.export_recipes_to_csv` -> updated `recipe_ingredients_audit.csv`
+   - `python -m scripts.recalculate_recipe_nutrition` -> updated 2,101 recipes in `food_items` with accurate single-serving `cal_per_serving`, `protein`, `carbs`, `fat`, `fiber`.
+
+---
+
+## 📄 Updated Output Files
+
+- **Clean Flagged CSV**: [`recipe_ingredients_flagged.csv`](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/recipe_ingredients_flagged.csv) (Now 83.8% clean, zero count-parsing errors).
+- **Remediation Script**: [`scripts/fix_ingredient_quantities.py`](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/scripts/fix_ingredient_quantities.py).

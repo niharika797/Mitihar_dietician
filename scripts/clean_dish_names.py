@@ -18,6 +18,7 @@ import os
 import subprocess
 import time
 from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import text
@@ -38,7 +39,7 @@ TEST_ARTIFACT_NAMES = [
 ]
 
 # Checkpoint file for Pass C (LLM pass) — resume-safe
-LLM_CHECKPOINT_FILE = "clean_dishes_llm_checkpoint.json"
+LLM_CHECKPOINT_FILE = str(Path(__file__).resolve().parent.parent / "data" / "review" / "clean_dishes_llm_checkpoint.json")
 
 # Batch size for LLM pass — small to stay within rate limits
 LLM_BATCH_SIZE = 20

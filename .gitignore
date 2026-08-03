@@ -128,22 +128,25 @@ scripts/backup_food_items.py
 
 # ── Database backups (shared with team — dev/test data only, no production data) ──
 db-backups/*.sql.gz
+# Pre-change safety dumps taken by remediation scripts — local rollback only,
+# multi-MB, and superseded the moment the next one is taken. The curated
+# mityahar_content_*.sql restore dump stays tracked (see db-backups/RESTORE.md).
+db-backups/pre_*.sql
 
-# ── Uvicorn process logs (local dev only) ─────────────────────────────────────
-uvicorn_*.txt
+# ── Test run output (regenerated every run) ──
+tests/results/
 
-# ── Checkpoint files (large/noisy, idempotent — safe to re-run scripts) ───────
-clean_dishes_llm_checkpoint.json
-tag_medical_checkpoint.json
+# ── Uvicorn process logs (local dev only, live in logs/ — already covered above) ──
 
-# ── Windows null device artifact ──────────────────────────────────────────────
-NUL
+# ── Checkpoint files (large/noisy, idempotent — live in data/review/, already covered above) ──
+
+# ── Windows null device artifact ────────────────────────────────────────────── (deleted, was NUL)
 
 # ── Docker smoke test env file ────────────────────────────────────────────────
 smoke.env
 
 # ── Local throwaway test files ────────────────────────────────────────────────
-test_claude_cli.py
+scripts/archive/test_claude_cli.py
 tests/test_output.txt
 
 # ── Pre-migration DB dumps (local only) ───────────────────────────────────────
@@ -153,8 +156,9 @@ backups/
 frontend_dev.txt
 frontend_err.txt
 
-# ── One-off debug scripts kept as untracked reference ─────────────────────────
-scripts/debug/
+# ── One-off debug/dead scripts kept as untracked reference ────────────────────
+scripts/archive/debug/
+scripts/archive/deprecated/
 
 # ── Performance test generated artifacts (contains plaintext test passwords) ──
 tests/performance/test_manifest.json
