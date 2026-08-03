@@ -51,6 +51,36 @@ async def find_reusable_dish(
     return None
 
 
+async def get_assignable_dish(
+    session: AsyncSession, *, food_id: int, doctor_id: int | None
+) -> FoodItem | None:
+    """The dish this doctor is allowed to put in front of a patient, or None.
+
+    Mirrors the pool the generator serves from (meal_generator.py: is_verified AND
+    deleted_at IS NULL), with one deliberate widening: a doctor may also assign their
+    OWN not-yet-approved dish, the same allowance find_reusable_dish() makes.
+
+    Rejects:
+      - soft-deleted / merged-away dishes (Stage 6 losers), which otherwise leave
+        dangling food_id references in the weekly_combos JSONB snapshot
+      - unverified dishes owned by nobody or by another doctor -- the 6k_dataset seed
+        backlog awaiting review, and test artifacts, must not reach a patient
+    """
+    dish = (await session.execute(
+        select(FoodItem).where(
+            FoodItem.id == food_id,
+            FoodItem.deleted_at.is_(None),
+        ).limit(1)
+    )).scalars().first()
+    if dish is None:
+        return None
+    if dish.is_verified:
+        return dish
+    if doctor_id is not None and dish.doctor_id == doctor_id:
+        return dish
+    return None
+
+
 async def canonical_collision(
     session: AsyncSession, *, name_normalized: str, slot_type: str, diet_type: str, exclude_id: int
 ) -> FoodItem | None:

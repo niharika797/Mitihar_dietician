@@ -24,7 +24,7 @@ from ..models.db_models import (
     WeeklyCombo, Ingredient, RecipeIngredient,
     DataChangeRequest, DataChangeAuditLog,
 )
-from ..services.dish_service import normalize_dish_name, find_reusable_dish
+from ..services.dish_service import normalize_dish_name, find_reusable_dish, get_assignable_dish
 from ..services.weekly_summary_service import compute_weekly_summary
 from ..services.notification_service import notify_weekly_plan_approved, notify_visit_flagged
 from ..schemas.doctor import (
@@ -1074,11 +1074,12 @@ async def patch_dish(
         effective_slot_type = body.slot_type or "main_dish"
 
         if body.replacement_food_id is not None:
-            # Use existing food_items record
-            fi_result = await session.execute(
-                select(FoodItem).where(FoodItem.id == body.replacement_food_id)
+            # Use existing food_items record. Must match the pool the generator
+            # serves from -- a bare id lookup would let a soft-deleted (merged-away)
+            # or unreviewed dish be swapped straight into the patient's plan.
+            fi = await get_assignable_dish(
+                session, food_id=body.replacement_food_id, doctor_id=did
             )
-            fi = fi_result.scalars().first()
             if fi is None:
                 raise HTTPException(status_code=404, detail="replacement_food_id not found")
             # Session 22E (decision b): doctor-swapped dishes are not rescaled.
@@ -2887,9 +2888,10 @@ async def pin_dish(
     did = _doctor_id(request)
     await _get_patient_for_doctor(patient_id, did, session)
 
-    food = (await session.execute(
-        select(FoodItem).where(FoodItem.id == body.food_id)
-    )).scalar_one_or_none()
+    # Pinning forces a dish INTO the plan, so it must pass the same gate as a swap.
+    # (block_dish below stays a bare lookup on purpose: blocking only ever removes an
+    # option, so blocking an already-unservable dish is inert rather than unsafe.)
+    food = await get_assignable_dish(session, food_id=body.food_id, doctor_id=did)
     if not food:
         raise HTTPException(status_code=404, detail="Food item not found")
 
