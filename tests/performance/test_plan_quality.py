@@ -113,6 +113,15 @@ async def _check_calorie_range_db(patient_id: int, tdee: float) -> tuple[bool, f
     return lower <= avg_kcal <= upper, round(avg_kcal, 1), round(target, 1)
 
 
+# Slot types exempt from the repetition rule. Accompaniments (raita, dahi,
+# chaas, pickle, salad) are what you eat ALONGSIDE the main dish — eating curd
+# with dinner five nights a week is normal Indian eating, not a planning defect.
+# Counting them made every real patient fail: 11 distinct accompaniments cover
+# 10,108 placements, so a repeat is guaranteed by construction and the check
+# said nothing about whether the actual meals varied.
+VARIETY_EXEMPT_SLOT_TYPES = ("accompaniment",)
+
+
 async def _check_variety_db(patient_id: int) -> tuple[bool, list]:
     # Check per-meal-type: a dish appearing > 3 times in the same meal slot
     # (e.g. same dish 4+ out of 7 breakfasts) signals poor variety.
@@ -129,12 +138,13 @@ async def _check_variety_db(patient_id: int) -> tuple[bool, list]:
                   AND wc.combo_index = 0
                   AND dish->>'recipe_name' IS NOT NULL
                   AND dish->>'recipe_name' != ''
+                  AND COALESCE(dish->>'slot_type', '') != ALL(:exempt)
                 GROUP BY dish->>'recipe_name', wc.meal_type
                 HAVING COUNT(*) > 3
                 ORDER BY cnt DESC
                 LIMIT 5
             """),
-            {"pid": patient_id},
+            {"pid": patient_id, "exempt": list(VARIETY_EXEMPT_SLOT_TYPES)},
         )
         repeated = [(row[0], row[1], int(row[2])) for row in rows.fetchall()]
 

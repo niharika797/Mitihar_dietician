@@ -249,23 +249,19 @@ class MealGenerator:
         preferred_food_ids: frozenset = frozenset(user_data.get("preferred_food_ids") or frozenset())
         avoided_food_ids: frozenset = frozenset(user_data.get("avoided_food_ids") or frozenset())
 
-        # ── Upgrade 1: Non-veg weekly budget pre-allocation ────────────────
-        nonveg_assigned: set = set()   # (day_idx, db_meal_time) tuples
-        if diet_type == "Non-Vegetarian":
-            nonveg_budget = min(int(user_data.get("nonveg_meals_per_week", 3)), 4)
-            candidate_slots = [
-                (d, mt) for d in range(7) for mt in ["Lunch", "Dinner"]
-            ]
-            random.shuffle(candidate_slots)
-            days_taken: set = set()
-            for d, mt in candidate_slots:
-                if len(nonveg_assigned) >= nonveg_budget:
-                    break
-                if d in days_taken:      # no two non-veg meals on same day
-                    continue
-                nonveg_assigned.add((d, mt))
-                days_taken.add(d)
-            logger.info(f"Non-veg budget: {nonveg_budget}, assigned slots: {nonveg_assigned}")
+        # ── Non-veg mix: 2 of every slot's 4 combos, every meal ────────────
+        # Replaces the old weekly-budget pre-allocation, which designated 3-4
+        # whole lunch/dinner slots as non-veg and left the rest 0/4. That gave
+        # a Non-Veg patient all-vegetarian days with no meat option at all.
+        # Now every slot offers both, and the patient's actual choices (which
+        # the app records) drive next week's plan -- the plan is a menu, not a
+        # ration. Repeats across days are fine and expected once the non-veg
+        # pool thins; the cascade in _pick_for_slot handles that degradation.
+        # Non-Vegetarian only: a Vegetarian patient's chain is Vegetarian-only
+        # anyway, and an Eggetarian's own pool already runs egg-then-veg.
+        nonveg_combo_count = 2 if diet_type == "Non-Vegetarian" else 0
+        if nonveg_combo_count:
+            logger.info(f"Non-veg mix: {nonveg_combo_count}/4 combos per slot")
 
         # ── Allergy filtering: build lowercase set from patient's food_allergies ──
         raw_allergies: list = user_data.get("food_allergies") or []
@@ -291,17 +287,14 @@ class MealGenerator:
                 if not db_meal_time:
                     continue
                 
-                # ── Upgrade 1: per-slot diet type ────────────────────────
-                if (day_offset, db_meal_time) in nonveg_assigned:
-                    query_diet = "Non-Vegetarian"
-                else:
-                    query_diet = "Vegetarian"   # all non-assigned slots are veg
-
-                # Fetch Template (use query_diet for template lookup)
+                # Template defines the slot STRUCTURE (grain/dal_protein/sabzi/
+                # accompaniment), so it's looked up once per slot on the
+                # patient's own diet. Which pool each of the 4 combos draws
+                # from is decided per combo, below.
                 stmt = select(MealTemplate).where(
                     MealTemplate.meal_time == db_meal_time,
                     MealTemplate.region == region,
-                    MealTemplate.diet_type == query_diet,
+                    MealTemplate.diet_type == diet_type,
                     MealTemplate.plan_type == plan_type
                 )
                 result = await session.execute(stmt)
@@ -310,14 +303,14 @@ class MealGenerator:
                 if not template:
                     stmt_fallback = select(MealTemplate).where(
                         MealTemplate.meal_time == db_meal_time,
-                        MealTemplate.diet_type == query_diet,
+                        MealTemplate.diet_type == diet_type,
                         MealTemplate.plan_type == plan_type
                     )
                     result = await session.execute(stmt_fallback)
                     template = result.scalars().first()
 
-                # If still no template for query_diet, try Vegetarian template
-                if not template and query_diet != "Vegetarian":
+                # If still no template for the patient's diet, try Vegetarian
+                if not template and diet_type != "Vegetarian":
                     stmt_veg = select(MealTemplate).where(
                         MealTemplate.meal_time == db_meal_time,
                         MealTemplate.region == region,
@@ -328,7 +321,7 @@ class MealGenerator:
                     template = result.scalars().first()
 
                 if not template:
-                    logger.warning(f"No template found for {db_meal_time}, {query_diet}, {plan_type}")
+                    logger.warning(f"No template found for {db_meal_time}, {diet_type}, {plan_type}")
                     continue
 
                 # One-pot roll: Lunch/Dinner only, per slot per day. Standard
@@ -353,11 +346,21 @@ class MealGenerator:
                     slot_failed = False
 
                     for combo_idx in range(4):
+                        # Non-Veg patients: the first 2 combos draw from their
+                        # own (meat + egg) pool, the other 2 are vegetarian, so
+                        # every slot offers both. Vegetarian and Eggetarian
+                        # patients keep their own pool for all 4 -- their chains
+                        # already end in Vegetarian, so splitting would only
+                        # narrow their options.
+                        combo_diet = (
+                            "Vegetarian"
+                            if (nonveg_combo_count and combo_idx >= nonveg_combo_count)
+                            else diet_type
+                        )
                         dishes, ok = await self._fill_slot_dishes(
-                            session, slots, query_diet, region, db_meal_time, plan_type,
+                            session, slots, combo_diet, region, db_meal_time, plan_type,
                             meal_target,
                             daily_used_ids, weekly_used_ids, combo_slot_used_ids,
-                            user_diet=diet_type,   # original user diet for breakfast-egg exception
                             allergies=allergies,
                             blocked_food_ids=frozenset(blocked_food_ids),
                             patient_avoid_tags=patient_avoid_tags,
@@ -528,11 +531,15 @@ class MealGenerator:
         only (rebuild_spec §3.4) — pinned_food_ids boosts prefer_sort, never
         force-injects.
 
-        Levels 1-2 — diet_type's own pool (DIET_TYPE_HIERARCHY), weekly memory
-        excluded then dropped. Level 3 (NEW) — DIET_TYPE_FALLBACK diet types,
-        weekly memory dropped. combo_slot_used_ids/daily_used_ids are HARD
-        blocks at every level — never dropped (no duplicate dish within this
-        slot's 4 combos, none twice in the same day).
+        Four levels, ordered so that variety outranks diet-pool preference once
+        the patient's own pool is exhausted:
+          1. own pool (DIET_TYPE_HIERARCHY), weekly memory excluded
+          2. fallback pool (DIET_TYPE_FALLBACK), weekly memory excluded
+          3. own pool, weekly memory dropped
+          4. fallback pool, weekly memory dropped
+        combo_slot_used_ids/daily_used_ids are HARD blocks at every level —
+        never dropped (no duplicate dish within this slot's 4 combos, none
+        twice in the same day).
         """
         region_sort = sa_case((FoodItem.region_tags.any(region), 0), else_=1)
         cal_sort = sa_func.abs(FoodItem.cal_per_serving - target_cal) if target_cal > 0 else FoodItem.id
@@ -597,12 +604,23 @@ class MealGenerator:
             if (picked := _pick(await fetch(base_stmt(try_diet, include_weekly=True)))) is not None:
                 return picked
 
-        # Level 2 — primary pool, weekly memory dropped (weekly exclusion exhausted)
+        # Level 2 — fallback diet types, weekly memory still excluded.
+        # This runs BEFORE dropping weekly memory on the primary pool, and the
+        # order matters: with only one servable Non-Veg main_dish, dropping
+        # weekly memory first re-serves that same dish all 7 days rather than
+        # ever reaching Vegetarian. A Non-Veg patient eats veg dishes happily;
+        # they don't want the same chicken curry every night. An unseen
+        # fallback-diet dish beats a repeat from their own pool.
+        for try_diet in DIET_TYPE_FALLBACK.get(diet_type, []):
+            if (picked := _pick(await fetch(base_stmt(try_diet, include_weekly=True)))) is not None:
+                return picked
+
+        # Level 3 — primary pool, weekly memory dropped (repeats allowed)
         for try_diet in primary_chain:
             if (picked := _pick(await fetch(base_stmt(try_diet, include_weekly=False)))) is not None:
                 return picked
 
-        # Level 3 (NEW) — fallback diet types (e.g. Vegetarian for Non-Veg/Eggetarian)
+        # Level 4 — fallback diet types, weekly memory dropped (last resort)
         for try_diet in DIET_TYPE_FALLBACK.get(diet_type, []):
             if (picked := _pick(await fetch(base_stmt(try_diet, include_weekly=False)))) is not None:
                 return picked
@@ -613,7 +631,7 @@ class MealGenerator:
         self,
         session: AsyncSession,
         slots: list,
-        query_diet: str,
+        combo_diet: str,
         region: str,
         meal_time: str,
         plan_type: str,
@@ -621,7 +639,6 @@ class MealGenerator:
         daily_used_ids: set,
         weekly_used_ids: set,
         combo_slot_used_ids: set,
-        user_diet: str = None,
         allergies: frozenset = frozenset(),
         blocked_food_ids: frozenset = frozenset(),
         patient_avoid_tags: frozenset = frozenset(),
@@ -645,11 +662,11 @@ class MealGenerator:
         verbatim (logged as a warning) rather than failing the whole slot.
         Never raises.
         """
+        # combo_diet is decided per combo by the caller, breakfast included --
+        # there is no longer a breakfast special case forcing the patient's own
+        # diet, which would have pushed all 4 breakfast combos non-veg and
+        # defeated the 2-and-2 split.
         dishes: list = []
-        # Breakfast uses user_diet so the breakfast-egg exception still fires
-        # even though query_diet is forced to Vegetarian for unassigned slots.
-        # Lunch/Dinner honor query_diet so the non-veg weekly budget holds.
-        chain_diet = user_diet if (meal_time == "Breakfast" and user_diet is not None) else query_diet
 
         for slot in slots:
             slot_type = slot["slot_type"]
@@ -657,7 +674,7 @@ class MealGenerator:
             target_cal = meal_target * slot["calorie_pct"]
 
             food_item = await self._pick_for_slot(
-                session, slot_type, chain_diet, region, meal_time, plan_type, target_cal,
+                session, slot_type, combo_diet, region, meal_time, plan_type, target_cal,
                 daily_used_ids, weekly_used_ids, combo_slot_used_ids,
                 allergies=allergies,
                 blocked_food_ids=blocked_food_ids,
@@ -676,7 +693,7 @@ class MealGenerator:
             # pick for this slot_type rather than dropping the slot.
             if combo0_lookup and slot_type in combo0_lookup:
                 logger.warning(
-                    f"Pool exhausted for slot_type={slot_type} diet={chain_diet} "
+                    f"Pool exhausted for slot_type={slot_type} diet={combo_diet} "
                     f"combo_idx={combo_idx} — reusing combo-0 dish "
                     f"food_id={combo0_lookup[slot_type]['food_id']}"
                 )
@@ -685,7 +702,7 @@ class MealGenerator:
 
             if required:
                 logger.warning(
-                    f"Required slot_type={slot_type} not found (diet={chain_diet}, "
+                    f"Required slot_type={slot_type} not found (diet={combo_diet}, "
                     f"combo_idx={combo_idx}) — no Level-4 fallback available (combo-0 itself)"
                 )
                 return dishes, False
