@@ -447,13 +447,9 @@ export default function MealsScreen() {
           })()
         )}
 
+        {/* Pantry + Shopping List moved to the home dashboard (components/
+            PantrySection, ShoppingListSection) — history stays here. */}
         <View style={s.actionRow}>
-          <Pressable onPress={() => router.push("/meals/pantry")} style={s.actionBtn}>
-            <Text style={s.actionBtnText}>🧊 My Pantry</Text>
-          </Pressable>
-          <Pressable onPress={() => router.push("/meals/shopping-list")} style={s.actionBtn}>
-            <Text style={s.actionBtnText}>🛒 Shopping List</Text>
-          </Pressable>
           <Pressable onPress={() => router.push("/meals/plan-history")} style={s.actionBtn}>
             <Text style={s.actionBtnText}>📋 Plan History</Text>
           </Pressable>
