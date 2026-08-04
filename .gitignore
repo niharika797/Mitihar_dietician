@@ -132,6 +132,8 @@ db-backups/*.sql.gz
 # multi-MB, and superseded the moment the next one is taken. The curated
 # mityahar_content_*.sql restore dump stays tracked (see db-backups/RESTORE.md).
 db-backups/pre_*.sql
+# scripts/promote_data_fixes_to_staging.py output — regenerated per promotion attempt.
+db-backups/data_fixes_*.sql
 
 # ── Test run output (regenerated every run) ──
 tests/results/

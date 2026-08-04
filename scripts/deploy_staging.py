@@ -6,6 +6,7 @@ silently keep running whatever image was pinned at the last repoint. This
 script makes the repoint part of the deploy instead of a step someone has to
 remember.
 """
+import shutil
 import subprocess
 import sys
 
@@ -13,8 +14,17 @@ REGION = "asia-south1"
 SERVICE = "mityahar-api"
 PINNED_JOBS = ["mityahar-migrate", "mityahar-seed-runner"]
 
+# On Windows `gcloud` is a .cmd shim, and subprocess without shell=True won't
+# resolve it from a bare name -- it raises FileNotFoundError. Resolve the real
+# path once via PATH lookup instead (works on every platform, and avoids
+# shell=True quoting problems).
+GCLOUD = shutil.which("gcloud")
+if GCLOUD is None:
+    raise SystemExit("gcloud not found on PATH -- install the Google Cloud SDK first")
+
 
 def run(args: list[str]) -> str:
+    args = [GCLOUD if a == "gcloud" else a for a in args]
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
         print(result.stdout)

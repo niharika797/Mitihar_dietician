@@ -225,6 +225,20 @@ def verify(tnum: int, df: pd.DataFrame) -> None:
     print(f"verify: {checked - miss}/{checked} values present in source"
           + (f"  MISSES: {misses[:5]}" if misses else "  (exact)"))
 
+    # A wrapped multi-line name that got word-scrambled shows its ')' before
+    # its matching '(' (e.g. "seed, black (Amaranthus" ... "cruentus)"). Known
+    # limitation: some multi-region rows wrap the species suffix onto a
+    # separate text block whose reading order isn't recoverable from x/y
+    # alone (see BUILD_TRACKER.md) — flagged, not fixed, so callers doing
+    # name-matching against these rows should treat the parenthetical as
+    # untrusted for the affected codes.
+    scrambled = [r["Food Code"] for _, r in df.iterrows()
+                 if ")" in r["Food Name"] and "(" in r["Food Name"]
+                 and r["Food Name"].index(")") < r["Food Name"].index("(")]
+    if scrambled:
+        print(f"  [!] {len(scrambled)} Food Name values have scrambled word "
+              f"order (paren mismatch): {scrambled[:5]}{'...' if len(scrambled) > 5 else ''}")
+
 
 def probe(p0: int, p1: int) -> None:
     """Survey a page range: value-count distribution, column anchors, header codes,
