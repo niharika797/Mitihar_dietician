@@ -199,7 +199,7 @@ All of the following have been built and verified across Sessions 1–8:
 
 ## CURRENT STATUS
 
-> _Updated 2026-08-03 (docs/scripts repo reorg + dish-assignment gating fix, no new commits). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-08-04. Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Phase:** Staging deployed — first successful Cloud Run deploy 2026-07-05. Prior "Done" block archived to BUILD_TRACKER_ARCHIVE.md.
 
@@ -228,9 +228,11 @@ All of the following have been built and verified across Sessions 1–8:
 - **2026-07-30 (later still):** Built pantry-first meal planning end-to-end, uncommitted: `PatientPantry` model + migration `c1d2e3f4a5b6` (not yet run); `meal_generator.is_staple()` substring staple-check; `meal_plan.py` router gets `GET/POST /pantry` and `GET /pantry/suggestions` (condition-aware, IFCT iron/calcium/fiber cols), `GET /week` now scores + sorts combos by pantry coverage (have/required/missing/cookable). Mobile: new `meals/pantry.tsx` screen + nav entry, types/service/queryKeys wired, `meals.tsx` tab shows "Cook now"/coverage badge and "My Pantry" button.
 
 **Blockers / pending:**
-- Nothing committed yet: docs/scripts reorg + `.gitignore`/`CLAUDE.md` edits + the new `get_assignable_dish` gating fix (`app/services/dish_service.py`, `app/routers/doctor.py`) all sitting uncommitted in the working tree.
-- 2 local commits (80d0a17, 74b7726) still unpushed to origin.
+- Fixed two variety-failure root causes (`meal_generator.py` fallback-pool ordering, `test_plan_quality.py` accompaniment-repeat false positive) but unverified — `bulk_generate_plans_real_patients.py` has not been re-run since.
+- 61 flagged `ingredient_ifct_map.csv` rows + 1,388 dangling `weekly_combos` refs need manual review/decision.
+- `reclassify_low_kcal_dishes.py` needs an actual `--write` pass; staging restore needs GCS upload + `mityahar-migrate` run.
+- New Home-dashboard Kitchen sections are uncommitted and not yet manually verified in-app.
 
 **Next action:**
-Review and commit the uncommitted changes (repo reorg, then the dish-assignment gating fix, as separate commits), then push.
+Re-run `bulk_generate_plans_real_patients.py` to confirm the variety fix clears real patients before relying on it; staging restore and Kitchen-section in-app verification stay queued behind it.
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).
