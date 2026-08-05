@@ -51,6 +51,19 @@ export interface PatientVisit {
   created_at: string;
 }
 
+/** A visit the doctor flagged because Token 2 could not be shown, plus the
+ *  patient's answer. status: pending until they respond, then approved/rejected. */
+export interface FlaggedVisit {
+  id: number;
+  patient_id: number;
+  patient_name: string;
+  status: 'pending' | 'approved' | 'rejected';
+  visit_date: string;
+  doctor_note: string | null;
+  responded_at: string | null;
+  created_at: string | null;
+}
+
 export interface RecordVisitResponse {
   charged: boolean;
   visit_counter: number;
@@ -564,9 +577,37 @@ export const doctorApi = {
       .post(`/doctor/patients/${patientId}/plan/notes`, { meal_date, meal_type, note })
       .then(r => r.data),
 
-  // Visit recording
-  recordVisit: (patientId: number) =>
-    apiClient.post<RecordVisitResponse>(`/doctor/patients/${patientId}/record-visit`).then(r => r.data),
+  // Visit recording. token_2 is REQUIRED by the endpoint (RecordVisitRequest,
+  // min_length=5) — it is the fraud check: the patient reads it off their app
+  // and the doctor types it here. Omitting it 422s.
+  recordVisit: (patientId: number, token_2: string) =>
+    apiClient
+      .post<RecordVisitResponse>(`/doctor/patients/${patientId}/record-visit`, { token_2 })
+      .then(r => r.data),
+
+  // Fallback when the patient can't show Token 2 (phone forgotten/lost). Creates a
+  // PendingVisitApproval instead of charging immediately — the patient confirms in
+  // their app before the visit is recorded.
+  flagVisit: (patientId: number, doctor_note?: string) =>
+    apiClient
+      .post<{ message: string; pending_visit_id: number }>(
+        `/doctor/patients/${patientId}/flag-visit`,
+        { doctor_note: doctor_note ?? null },
+      )
+      .then(r => r.data),
+
+  // Flagged visits + whatever the patient answered. Without this the doctor
+  // could raise a flag but never see the confirm/deny that decides billing.
+  getFlaggedVisits: (params?: { patientId?: number; answeredOnly?: boolean; limit?: number }) =>
+    apiClient
+      .get<FlaggedVisit[]>('/doctor/flagged-visits', {
+        params: {
+          patient_id: params?.patientId,
+          answered_only: params?.answeredOnly,
+          limit: params?.limit,
+        },
+      })
+      .then(r => r.data),
 
   getPatientVisits: (patientId: number) =>
     apiClient.get<PatientVisit[]>(`/doctor/patients/${patientId}/visits`).then(r => r.data),
@@ -584,8 +625,15 @@ export const doctorApi = {
   getPendingRenewals: () =>
     apiClient.get<PendingRenewalItem[]>('/doctor/pending-renewals').then(r => r.data),
 
-  // Audit C-8: was calling /recipes/lookup (path does not exist → 404) with field
-  // food_name (wrong field name). Correct route is /recipes/estimate with dish_name.
+  // Two Gemini nutrition routes exist and BOTH are live — do not treat either as dead:
+  //   /doctor/recipes/estimate — field `dish_name`, rate-limited 10/hour. Used here
+  //     and by pages/doctor/Recipes.tsx.
+  //   /doctor/recipes/lookup   — field `food_name`, no rate limit. Used by its own
+  //     local helper in patient-tabs/PlanTab.tsx.
+  // An earlier note here claimed /recipes/lookup did not exist and that `food_name`
+  // was a wrong field name. Both claims were incorrect: the route is defined at
+  // app/routers/doctor.py:2650 and its RecipeLookupRequest declares `food_name`.
+  // This function deliberately uses /recipes/estimate; PlanTab's caller is not a bug.
   fetchNutritionFromGemini: (dishName: string) =>
     apiClient
       .post<{

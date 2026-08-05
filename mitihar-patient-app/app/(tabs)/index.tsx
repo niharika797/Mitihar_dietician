@@ -15,6 +15,7 @@ import { useProgressStore } from "../../store/useProgressStore";
 import { ProgressRing, MacroRow, BottomSheet, useToast } from "../../components/shared";
 import PantrySection from "../../components/PantrySection";
 import ShoppingListSection from "../../components/ShoppingListSection";
+import PendingVisitSection from "../../components/PendingVisitSection";
 import type { Meal, WeeklyPlan } from "../../types";
 
 function greeting() {
@@ -450,6 +451,11 @@ export default function HomeScreen() {
           <Text style={s.sectionLabel}>KITCHEN</Text>
           <PantrySection />
           <ShoppingListSection />
+
+          {/* Renders nothing unless the doctor flagged a visit awaiting
+              confirmation. Placed above the doctor banner because it is the
+              only card here that blocks a charge on the patient's answer. */}
+          <PendingVisitSection />
 
           <DoctorStatusBanner
             subscriptionStatus={profile?.subscription_status}

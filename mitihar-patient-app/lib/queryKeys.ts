@@ -28,4 +28,7 @@ export const QUERY_KEYS = {
 
   // Doctor visit / Token 2
   MY_VISIT:       ["my-visit"] as const,
+
+  // Doctor-flagged visits awaiting this patient's approval
+  PENDING_VISITS: ["pending-visits"] as const,
 } as const;

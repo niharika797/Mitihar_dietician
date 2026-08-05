@@ -6,17 +6,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.database import get_db
 from ..core.limiter import limiter
 from ..core.security import get_current_patient
-from ..models.db_models import Patient, SubscriptionCode, Doctor, PatientRequest, PatientVisit
+from ..models.db_models import (
+    Patient, SubscriptionCode, Doctor, PatientRequest, PatientVisit,
+    PendingVisitApproval,
+)
 from ..schemas.patients import (
     OnboardingRequest, ActivationRequest,
     DoctorRequestBody, PatientProfileResponse, PublicDoctorResponse,
-    ActivationResponse
+    ActivationResponse, RespondVisitRequest
 )
 from ..services.meal_generator.calculations import (
     calculate_bmr, calculate_tdee, calculate_bmi,
 )
 from ..services.token_service import (
-    generate_token_1, generate_token_2, token_1_expiry_from_now,
+    generate_token_1, generate_token_2, token_1_expiry_from_now, CYCLE_DAYS,
+    is_chargeable_visit, VISIT_CHARGE_INR,
 )
 
 router = APIRouter()
@@ -148,7 +152,7 @@ async def onboard_patient(
                 doctor_id=updated.doctor_id,
                 token_2=generate_token_2(),
                 cycle_start=now,
-                cycle_expiry=now + timedelta(days=30),
+                cycle_expiry=now + timedelta(days=CYCLE_DAYS),
                 visit_counter=0,
             )
             session.add(pv)
@@ -275,7 +279,7 @@ async def activate_subscription(
             doctor_id=code_row.doctor_id,
             token_2=generate_token_2(),
             cycle_start=now,
-            cycle_expiry=now + timedelta(days=30),
+            cycle_expiry=now + timedelta(days=CYCLE_DAYS),
             visit_counter=0,
         )
         session.add(pv)
@@ -508,3 +512,167 @@ async def patient_request_renewal(
     )
     await session.flush()
     return {"message": "Renewal request submitted successfully"}
+
+
+# ─── GET /api/v1/patients/pending-visits ──────────────────────────────────
+
+@router.get("/pending-visits")
+async def list_pending_visits(
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Visits the doctor flagged that this patient has not yet responded to.
+
+    Flagging happens when the patient cannot show Token 2 (phone forgotten or
+    lost). Nothing is charged until the patient approves here — that is the
+    fraud control, so this list is the patient's only view of a pending charge.
+
+    Joined to Doctor for the name; PendingVisitApprovalResponse carries no
+    doctor field and a bare id is meaningless in the app.
+    """
+    result = await session.execute(
+        select(PendingVisitApproval, Doctor.name)
+        .join(Doctor, Doctor.id == PendingVisitApproval.doctor_id)
+        .where(
+            PendingVisitApproval.patient_id == patient.id,
+            PendingVisitApproval.status == "pending",
+        )
+        .order_by(PendingVisitApproval.visit_date.desc())
+    )
+    return [
+        {
+            "id": pv.id,
+            "doctor_id": pv.doctor_id,
+            "doctor_name": doctor_name,
+            "visit_date": pv.visit_date.isoformat(),
+            "doctor_note": pv.doctor_note,
+            "status": pv.status,
+            "created_at": pv.created_at.isoformat() if pv.created_at else None,
+        }
+        for pv, doctor_name in result.all()
+    ]
+
+
+# ─── POST /api/v1/patients/pending-visits/{approval_id}/respond ───────────
+
+@router.post("/pending-visits/{approval_id}/respond", status_code=200)
+async def respond_to_pending_visit(
+    approval_id: int,
+    body: RespondVisitRequest,
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Approve or reject a doctor-flagged visit.
+
+    Approving may increment PatientVisit.visit_counter, and since revenue is
+    derived by summing that column (there is no invoice table), this endpoint
+    is a billing write. Two consequences shape the implementation:
+
+    1. The status transition is an atomic UPDATE ... WHERE status='pending'
+       RETURNING, not a read-then-write. A double-tap on a slow connection
+       would otherwise pass the read check twice and bill twice; there is no
+       DB constraint that would catch it.
+    2. Chargeability is judged as of the VISIT date, not now. The doctor flags
+       on the day of the visit but the patient may approve days later, and the
+       approval delay must not be what turns a free visit into a charged one.
+    """
+    from ..services.audit_service import log_action
+
+    now = datetime.now(timezone.utc)
+    new_status = "approved" if body.action == "approve" else "rejected"
+
+    # Atomic claim — only one caller can move a row out of 'pending'.
+    claim = await session.execute(
+        update(PendingVisitApproval)
+        .where(
+            PendingVisitApproval.id == approval_id,
+            PendingVisitApproval.patient_id == patient.id,
+            PendingVisitApproval.status == "pending",
+        )
+        .values(status=new_status, responded_at=now)
+        .returning(
+            PendingVisitApproval.id,
+            PendingVisitApproval.doctor_id,
+            PendingVisitApproval.visit_date,
+        )
+    )
+    row = claim.first()
+    if row is None:
+        # Either it does not exist, is not this patient's, or was already
+        # answered. Deliberately one message: distinguishing them would leak
+        # whether another patient's approval id exists.
+        raise HTTPException(
+            status_code=404,
+            detail="No pending visit approval found for this id",
+        )
+
+    _, doctor_id, visit_date = row
+
+    if body.action == "reject":
+        await session.flush()
+        return {
+            "status": "rejected",
+            "charged": False,
+            "message": "Visit rejected. Your doctor has been notified that this visit did not happen.",
+        }
+
+    # ── Approve: find the live cycle to charge against ────────────────────
+    pv_result = await session.execute(
+        select(PatientVisit).where(
+            PatientVisit.patient_id == patient.id,
+            PatientVisit.doctor_id == doctor_id,
+            PatientVisit.cycle_expiry > now,
+        ).order_by(PatientVisit.cycle_start.desc())
+    )
+    pv = pv_result.scalars().first()
+    if pv is None:
+        # Mirrors record_patient_visit (doctor.py). Raising rolls back the
+        # claim above, so the row stays 'pending' and can be approved once the
+        # subscription is renewed rather than being silently consumed.
+        raise HTTPException(
+            status_code=400,
+            detail="No active visit cycle — ask your doctor to renew your subscription "
+                   "before confirming this visit.",
+        )
+
+    charged = is_chargeable_visit(
+        last_charged_at=pv.last_charged_at,
+        visit_counter=pv.visit_counter,
+        cycle_start=pv.cycle_start,
+        now=visit_date,          # price as of the visit, not the approval
+    )
+    if charged:
+        pv.visit_counter += 1
+        pv.last_charged_at = now
+
+    await session.flush()
+    await log_action(
+        session,
+        actor_id=patient.id,
+        actor_role="patient",
+        action="approve_flagged_visit",
+        entity_type="patient",
+        entity_id=patient.id,
+        detail={
+            "approval_id": approval_id,
+            "doctor_id": doctor_id,
+            "charged": charged,
+            "visit_counter": pv.visit_counter,
+            "visit_date": visit_date.isoformat(),
+        },
+    )
+
+    msg = (
+        f"Visit confirmed and charged (₹{VISIT_CHARGE_INR:,}). "
+        f"Total visits this cycle: {pv.visit_counter}"
+        if charged
+        else "Visit confirmed — no charge (within your free-visit window)."
+    )
+    return {
+        "status": "approved",
+        "charged": charged,
+        "visit_counter": pv.visit_counter,
+        "message": msg,
+    }

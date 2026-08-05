@@ -114,13 +114,22 @@ export async function sendTokenToBackend(token: string | null): Promise<void> {
 
 // ─── Navigation map ─────────────────────────────────────────────────────────
 
-type NotifType = "plan_ready" | "doctor_accepted" | "sub_expiring" | "renewal_approved";
+type NotifType =
+  | "plan_ready"
+  | "doctor_accepted"
+  | "sub_expiring"
+  | "renewal_approved"
+  | "visit_flagged";
 
 const ROUTE_MAP: Record<NotifType, string> = {
   plan_ready:        "/(tabs)/meals",
   doctor_accepted:   "/doctor/connection-status",
   sub_expiring:      "/(tabs)/profile",
   renewal_approved:  "/(tabs)/profile",
+  // Backend has always sent data={"type":"visit_flagged"} (notification_service.py);
+  // without this entry the push arrived and tapping it did nothing. Home is the
+  // target because that is where PendingVisitSection renders the approve/reject.
+  visit_flagged:     "/(tabs)",
 };
 
 // ─── Listeners ──────────────────────────────────────────────────────────────

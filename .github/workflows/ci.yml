@@ -41,4 +41,4 @@ jobs:
         continue-on-error: true
 
       - name: Pytest (DB-free unit tests only)
-        run: pytest tests/test_calculations.py tests/test_meal_generator.py -v
+        run: pytest tests/test_calculations.py tests/test_meal_generator.py tests/test_flag_visit.py -v

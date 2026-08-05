@@ -37,6 +37,29 @@ export function DoctorShell() {
   });
   const pendingCount = requests.filter(r => r.status === 'pending').length;
 
+  // Doctors have no push channel — the Doctor model carries no fcm_token and
+  // every notify_* helper targets patients. So the header bell, which shipped
+  // hardcoded to [], is the only place a patient's answer can reach the doctor.
+  const { data: answered = [] } = useQuery({
+    queryKey: qk.answeredFlaggedVisits,
+    queryFn: () => doctorApi.getFlaggedVisits({ answeredOnly: true, limit: 10 }),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
+  const notifications = answered.map(f => ({
+    id: String(f.id),
+    text:
+      f.status === 'approved'
+        ? `${f.patient_name} confirmed the visit you flagged on ${new Date(f.visit_date).toLocaleDateString('en-IN')}`
+        : `${f.patient_name} denied the visit you flagged on ${new Date(f.visit_date).toLocaleDateString('en-IN')}`,
+    time: f.responded_at ? new Date(f.responded_at).toLocaleDateString('en-IN') : '',
+    // No read/unread store exists, so nothing is marked read — showing them as
+    // unread would leave a badge that can never be cleared.
+    read: true,
+    type: (f.status === 'approved' ? 'request' : 'warning') as 'request' | 'warning',
+  }));
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -59,7 +82,7 @@ export function DoctorShell() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar
           breadcrumbs={getBreadcrumbs(location.pathname)}
-          notifications={[]}
+          notifications={notifications}
           userName={userName}
           userRole="Dietician"
           onSearchOpen={() => setCmdOpen(true)}

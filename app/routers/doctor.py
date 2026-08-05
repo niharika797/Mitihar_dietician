@@ -13,7 +13,10 @@ from sqlalchemy.orm import selectinload
 from ..core.database import get_db
 from ..core.limiter import limiter
 from ..core.security import get_current_doctor
-from ..services.token_service import generate_token_2, token_1_expiry_from_now, is_chargeable_visit
+from ..services.token_service import (
+    generate_token_2, token_1_expiry_from_now, is_chargeable_visit,
+    VISIT_CHARGE_INR, CYCLE_DAYS,
+)
 from ..services.meal_generator.tag_utils import VALID_TAGS, get_avoid_tags, get_prefer_tags
 from ..services.meal_generator.meal_generator import meal_generator
 from ..models.db_models import (
@@ -415,7 +418,7 @@ async def accept_request(
             doctor_id=did,
             token_2=generate_token_2(),
             cycle_start=now,
-            cycle_expiry=now + timedelta(days=30),
+            cycle_expiry=now + timedelta(days=CYCLE_DAYS),
             visit_counter=0,
         )
         session.add(pv)
@@ -2262,8 +2265,8 @@ async def record_patient_visit(
 
     Charging rules (see token_service.is_chargeable_visit):
       - First visit within 15 days of Token 1 activation → FREE (included in ₹800/mo)
-      - First visit after 15-day grace period → ₹1,500
-      - Subsequent visits > 15 days since last charge → ₹1,500
+      - First visit after the grace period → charged (VISIT_CHARGE_INR)
+      - Subsequent visits beyond the grace window → charged (VISIT_CHARGE_INR)
       - Subsequent visits ≤ 15 days since last charge → FREE (follow-up grace)
     """
     from ..services.audit_service import log_action
@@ -2329,7 +2332,7 @@ async def record_patient_visit(
     )
 
     if charged:
-        msg = f"Visit verified and charged (₹1,500). Total visits this cycle: {pv.visit_counter}"
+        msg = f"Visit verified and charged (₹{VISIT_CHARGE_INR:,}). Total visits this cycle: {pv.visit_counter}"
     elif pv.visit_counter == 0:
         msg = "Visit verified — free initial consultation (within 15-day grace period after subscription)."
     else:
@@ -2392,12 +2395,78 @@ async def flag_visit(
     session.add(pending)
     await session.flush()
 
-    notify_visit_flagged(patient, doctor.name)
+    # Best-effort push, matching every other notify call site (patients.py:56,
+    # internal.py:83). If this raised, get_db would roll back the transaction and
+    # discard the approval row above — the doctor would see a 500 and the flag
+    # would be silently lost, which is the one outcome this feature cannot have.
+    try:
+        notify_visit_flagged(patient, doctor.name)
+    except Exception as notif_exc:
+        import logging as _log
+        _log.getLogger(__name__).debug(f"notify_visit_flagged failed silently: {notif_exc}")
 
     return {
         "message": "Visit flagged. The patient will receive a notification to confirm.",
         "pending_visit_id": pending.id,
     }
+
+
+# ─── GET /api/v1/doctor/flagged-visits ────────────────────────────────────
+
+@router.get("/flagged-visits")
+async def list_flagged_visits(
+    request: Request,
+    patient_id: int | None = None,
+    answered_only: bool = False,
+    limit: int = 50,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Visits this doctor flagged, with whatever the patient answered.
+
+    Without this the flag was write-only from the doctor's side: they could
+    raise one but never learn whether the patient confirmed or denied it, even
+    though that answer decides whether the visit is billed.
+
+    Serves two callers, hence the filters rather than two endpoints:
+      * patient_id=N   → the Visits tab list for one patient
+      * answered_only  → recently-answered items for the header bell, which is
+                         the closest thing to a doctor notification (the Doctor
+                         model has no fcm_token; FCM is patient-only).
+    """
+    did = _doctor_id(request)
+
+    stmt = (
+        select(PendingVisitApproval, Patient.name)
+        .join(Patient, Patient.id == PendingVisitApproval.patient_id)
+        .where(PendingVisitApproval.doctor_id == did)
+    )
+    if patient_id is not None:
+        stmt = stmt.where(PendingVisitApproval.patient_id == patient_id)
+    if answered_only:
+        stmt = stmt.where(PendingVisitApproval.status != "pending")
+
+    # Answered items sort by when the patient replied; pending ones have a NULL
+    # responded_at, so fall back to visit_date to keep them in a sane order.
+    stmt = stmt.order_by(
+        func.coalesce(PendingVisitApproval.responded_at, PendingVisitApproval.visit_date).desc()
+    ).limit(min(limit, 200))
+
+    result = await session.execute(stmt)
+    return [
+        {
+            "id": pva.id,
+            "patient_id": pva.patient_id,
+            "patient_name": patient_name,
+            "status": pva.status,
+            "visit_date": pva.visit_date.isoformat(),
+            "doctor_note": pva.doctor_note,
+            "responded_at": pva.responded_at.isoformat() if pva.responded_at else None,
+            "created_at": pva.created_at.isoformat() if pva.created_at else None,
+        }
+        for pva, patient_name in result.all()
+    ]
 
 
 # ─── GET /api/v1/doctor/patients/{patient_id}/visits ─────────────────────
@@ -2497,7 +2566,7 @@ async def approve_renewal(
         doctor_id=did,
         token_2=new_token_2,
         cycle_start=now,
-        cycle_expiry=now + timedelta(days=30),
+        cycle_expiry=now + timedelta(days=CYCLE_DAYS),
         visit_counter=0,
     )
     session.add(pv)
@@ -2565,7 +2634,7 @@ async def approve_all_renewals(
             doctor_id=did,
             token_2=generate_token_2(),
             cycle_start=now,
-            cycle_expiry=now + timedelta(days=30),
+            cycle_expiry=now + timedelta(days=CYCLE_DAYS),
             visit_counter=0,
         )
         session.add(pv)

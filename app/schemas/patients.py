@@ -143,3 +143,13 @@ class ActivationResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+class RespondVisitRequest(BaseModel):
+    """Patient's response to a doctor-flagged visit.
+
+    Approving is a billing event — it can increment PatientVisit.visit_counter,
+    which is what revenue is summed from — so the action is an explicit literal
+    rather than a bool, to keep the intent unambiguous at the call site.
+    """
+    action: Literal["approve", "reject"]

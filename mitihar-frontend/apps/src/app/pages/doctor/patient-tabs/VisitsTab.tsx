@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Activity, CheckCircle, XCircle, Loader2, RefreshCw } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, Loader2, RefreshCw, Flag } from 'lucide-react';
 import { doctorApi, PatientVisit } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
+import { StatusBadge } from '../../../components/ui/StatusBadge';
 
 interface VisitsTabProps {
   patientId: number;
@@ -19,17 +20,41 @@ export function VisitsTab({ patientId, patientName }: VisitsTabProps) {
     staleTime: 30_000,
   });
 
+  const [token2, setToken2] = useState('');
+
   const recordMut = useMutation({
-    mutationFn: () => doctorApi.recordVisit(patientId),
+    mutationFn: () => doctorApi.recordVisit(patientId, token2.trim()),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: qk.patientVisits(patientId) });
-      if (res.charged) {
-        toast.success(`Visit charged ₹1,200 · Total visits: ${res.visit_counter}`);
-      } else {
-        toast.info(res.message);
-      }
+      setToken2('');
+      // Show the backend's own message rather than rebuilding it here — the
+      // charge amount lives in one constant server-side, and a second copy in
+      // the UI is how the old "₹1,200" string drifted from the real ₹1,500.
+      if (res.charged) toast.success(res.message);
+      else toast.info(res.message);
     },
-    onError: () => toast.error('Failed to record visit'),
+    // The backend returns genuinely actionable detail ("Token 2 does not
+    // match…", "No active visit cycle…"); a generic string throws that away.
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail ?? 'Failed to record visit');
+    },
+  });
+
+  const flagMut = useMutation({
+    mutationFn: () => doctorApi.flagVisit(patientId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: qk.patientVisits(patientId) });
+      queryClient.invalidateQueries({ queryKey: qk.patientFlaggedVisits(patientId) });
+      toast.success(res.message);
+    },
+    onError: () => toast.error('Failed to flag visit'),
+  });
+
+  const { data: flagged = [] } = useQuery({
+    queryKey: qk.patientFlaggedVisits(patientId),
+    queryFn: () => doctorApi.getFlaggedVisits({ patientId }),
+    staleTime: 30_000,
   });
 
   // Active cycle = most recent visit row
@@ -61,16 +86,45 @@ export function VisitsTab({ patientId, patientName }: VisitsTabProps) {
           <p className="text-sm text-[#9CA3AF] mb-5">No active cycle. Record a visit to start one.</p>
         )}
 
-        <button
-          onClick={() => recordMut.mutate()}
-          disabled={recordMut.isPending}
-          className="flex items-center gap-2 h-10 px-5 rounded-lg bg-[#1E7C45] text-white text-sm font-medium hover:bg-[#166534] transition-colors disabled:opacity-50"
-        >
-          {recordMut.isPending
-            ? <Loader2 size={16} className="animate-spin" />
-            : <Activity size={16} />}
-          Record Patient Visit
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <input
+            value={token2}
+            onChange={(e) => setToken2(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && token2.trim().length >= 5 && !recordMut.isPending) {
+                recordMut.mutate();
+              }
+            }}
+            placeholder="Token 2 (e.g. TKN2-AB3K7)"
+            aria-label="Token 2 shown by the patient"
+            className="h-10 px-3 w-56 rounded-lg border border-[#E5E7EB] text-sm font-mono text-[#111827] placeholder:font-sans placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#1E7C45]"
+          />
+
+          <button
+            onClick={() => recordMut.mutate()}
+            /* min 5 chars mirrors RecordVisitRequest.min_length — blocks a
+               guaranteed 422 rather than round-tripping to find out. */
+            disabled={recordMut.isPending || token2.trim().length < 5}
+            className="flex items-center gap-2 h-10 px-5 rounded-lg bg-[#1E7C45] text-white text-sm font-medium hover:bg-[#166534] transition-colors disabled:opacity-50"
+          >
+            {recordMut.isPending
+              ? <Loader2 size={16} className="animate-spin" />
+              : <Activity size={16} />}
+            Record Patient Visit
+          </button>
+
+          <button
+            onClick={() => flagMut.mutate()}
+            disabled={flagMut.isPending}
+            title="Use when the patient can't show Token 2 — they confirm in their app before the visit is charged"
+            className="flex items-center gap-2 h-10 px-5 rounded-lg border border-[#E5E7EB] bg-white text-[#374151] text-sm font-medium hover:bg-[#F9FAFB] transition-colors disabled:opacity-50"
+          >
+            {flagMut.isPending
+              ? <Loader2 size={16} className="animate-spin" />
+              : <Flag size={16} />}
+            Flag Visit (No Token 2)
+          </button>
+        </div>
 
         {recordMut.data && (
           <div className={`mt-3 flex items-center gap-2 text-sm font-medium ${recordMut.data.charged ? 'text-[#1E7C45]' : 'text-[#6B7280]'}`}>
@@ -79,6 +133,47 @@ export function VisitsTab({ patientId, patientName }: VisitsTabProps) {
           </div>
         )}
       </div>
+
+      {/* Flagged visits — only rendered once at least one exists, so the tab
+          stays clean for the normal Token-2 flow. */}
+      {flagged.length > 0 && (
+        <div className="bg-white border border-[#E5E7EB] rounded-lg overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#E5E7EB]">
+            <p className="text-base font-medium text-[#111827]">Flagged Visits</p>
+            <p className="text-xs text-[#6B7280] mt-0.5">
+              Raised without Token 2 — {patientName} confirms or denies each from their app.
+              Only a confirmed visit is charged.
+            </p>
+          </div>
+          <table className="w-full">
+            <thead>
+              <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB]">
+                {['Visit Date', 'Status', 'Answered', 'Your Note'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {flagged.map(f => (
+                <tr key={f.id} className="border-b border-[#F3F4F6] last:border-0 hover:bg-[#F9FAFB]">
+                  <td className="px-4 py-3 text-sm text-[#374151]">
+                    {new Date(f.visit_date).toLocaleDateString('en-IN')}
+                  </td>
+                  <td className="px-4 py-3"><StatusBadge status={f.status} /></td>
+                  <td className="px-4 py-3 text-sm text-[#374151]">
+                    {f.responded_at
+                      ? new Date(f.responded_at).toLocaleDateString('en-IN')
+                      : <span className="text-[#9CA3AF]">Awaiting patient</span>}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-[#6B7280]">
+                    {f.doctor_note || <span className="text-[#9CA3AF]">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Visit history */}
       <div className="bg-white border border-[#E5E7EB] rounded-lg overflow-hidden">

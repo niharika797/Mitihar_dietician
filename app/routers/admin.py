@@ -15,6 +15,7 @@ from ..models.db_models import (
     DataChangeRequest, DataChangeAuditLog,
 )
 from ..services.dish_service import normalize_dish_name, canonical_collision
+from ..services.token_service import VISIT_CHARGE_INR, CYCLE_DAYS
 from ..schemas.admin import (
     CreateDoctorRequest, UpdateDoctorRequest, DoctorAdminView, PlatformStats,
     DoctorDetailView, PaginatedAuditLogs,
@@ -325,7 +326,6 @@ async def get_audit_logs(
 
 
 import secrets, string
-from datetime import datetime
 
 
 def _gen_code(length: int = 12) -> str:
@@ -756,7 +756,7 @@ async def get_consultations(
 ):
     """
     Platform-wide consultation stats.
-    Per-doctor: patient count, visits this month, revenue (×₹1500), royalty (2% per contract Art. IV).
+    Per-doctor: patient count, visits this month, revenue (×₹1,500), royalty (2% per contract Art. IV).
     """
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
@@ -785,7 +785,7 @@ async def get_consultations(
         consultations_this_month = int(visits_result.scalar() or 0)
         total_consultations += consultations_this_month
 
-        revenue = consultations_this_month * 1500
+        revenue = consultations_this_month * VISIT_CHARGE_INR
         royalty = round(revenue * 0.02, 2)
 
         per_doctor.append({
@@ -801,8 +801,8 @@ async def get_consultations(
     return {
         "month": month_start.strftime("%B %Y"),
         "total_consultations_this_month": total_consultations,
-        "total_revenue": total_consultations * 1500,
-        "total_royalty": round(total_consultations * 1500 * 0.02, 2),
+        "total_revenue": total_consultations * VISIT_CHARGE_INR,
+        "total_royalty": round(total_consultations * VISIT_CHARGE_INR * 0.02, 2),
         "per_doctor": per_doctor,
     }
 
@@ -848,7 +848,7 @@ async def get_annual_consultations(
         )
     )
     ytd_consultations = int(total_result.scalar() or 0)
-    ytd_revenue = ytd_consultations * 1500
+    ytd_revenue = ytd_consultations * VISIT_CHARGE_INR
     ytd_royalty_pool = round(ytd_revenue * 0.02, 2)
 
     # Per-doctor breakdown with tier assignments
@@ -867,7 +867,7 @@ async def get_annual_consultations(
         )
         usage = int(dr_result.scalar() or 0)
         tier = _tier(usage)
-        doc_revenue = usage * 1500
+        doc_revenue = usage * VISIT_CHARGE_INR
         per_doctor_annual.append({
             "doctor_id": doc.id,
             "doctor_name": doc.name,
@@ -960,7 +960,7 @@ async def admin_override_approve_renewal(
             doctor_id=patient.doctor_id,
             token_2=generate_token_2(),
             cycle_start=now,
-            cycle_expiry=now + timedelta(days=30),
+            cycle_expiry=now + timedelta(days=CYCLE_DAYS),
             visit_counter=0,
         )
         session.add(pv)
