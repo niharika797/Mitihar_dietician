@@ -24,6 +24,8 @@ def _check_secret(x_cron_secret: str | None) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+# dead-code-scan: external-trigger — invoked by Cloud Scheduler, not by any
+# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh (NOT yet deployed).
 @router.post("/flag-expiring-patients")
 async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None)):
     """
@@ -90,6 +92,8 @@ async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None
             raise HTTPException(status_code=500, detail="Cron job failed")
 
 
+# dead-code-scan: external-trigger — invoked by Cloud Scheduler, not by any
+# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh (NOT yet deployed).
 @router.post("/deactivate-expired-patients")
 async def deactivate_expired_patients(x_cron_secret: str | None = Header(default=None)):
     """
@@ -123,6 +127,9 @@ async def deactivate_expired_patients(x_cron_secret: str | None = Header(default
             raise HTTPException(status_code=500, detail="Cron job failed")
 
 
+# dead-code-scan: external-trigger — invoked by Cloud Scheduler, not by any
+# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh (NOT yet deployed).
+# Scheduled Mondays only: last_monday below depends on the run day.
 @router.post("/complete-expired-plans")
 async def complete_expired_plans_endpoint(x_cron_secret: str | None = Header(default=None)):
     """
