@@ -81,8 +81,19 @@ export async function getPantry(search?: string): Promise<PantryResponse> {
   return data as PantryResponse;
 }
 
-export async function togglePantryItem(ingredient_id: number, have: boolean) {
-  const { data } = await api.post("/meal-plan/pantry/toggle", null, { params: { ingredient_id, have } });
+// quantity_g is optional: omit it and the backend stores NULL, meaning "have it,
+// amount unknown". Pass a number and the shopping list can subtract it and
+// confirm-choice can draw it down.
+export async function togglePantryItem(
+  ingredient_id: number, have: boolean, quantity_g?: number | null,
+) {
+  const { data } = await api.post("/meal-plan/pantry/toggle", null, {
+    params: {
+      ingredient_id,
+      have,
+      ...(quantity_g == null ? {} : { quantity_g }),
+    },
+  });
   return data;
 }
 

@@ -42,13 +42,36 @@ export default function PantrySection() {
   });
 
   const toggle = useMutation({
-    mutationFn: ({ id, have }: { id: number; have: boolean }) => togglePantryItem(id, have),
+    mutationFn: ({ id, have, quantity }: { id: number; have: boolean; quantity?: number | null }) =>
+      togglePantryItem(id, have, quantity),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["meal-plan", "pantry"] });
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN });   // re-rank combos by new coverage
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN });      // re-rank combos by new coverage
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.SHOPPING_LIST });  // list subtracts the pantry
     },
     onError: () => showToast("Failed to update pantry", "error"),
   });
+
+  // Grams are optional. Typing fires one request per pause, not per keystroke —
+  // same 300ms the search box uses. Empty input clears back to "amount unknown"
+  // rather than 0, which would read as out-of-stock.
+  const [draftQty, setDraftQty] = useState<Record<number, string>>({});
+  const qtyTimers = React.useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  React.useEffect(() => {
+    const timers = qtyTimers.current;
+    return () => Object.values(timers).forEach(clearTimeout);
+  }, []);
+
+  const onQtyChange = (id: number, text: string) => {
+    setDraftQty(p => ({ ...p, [id]: text }));
+    clearTimeout(qtyTimers.current[id]);
+    qtyTimers.current[id] = setTimeout(() => {
+      const trimmed = text.trim();
+      const parsed = trimmed === "" ? null : Number(trimmed);
+      if (parsed !== null && (Number.isNaN(parsed) || parsed < 0)) return;
+      toggle.mutate({ id, have: true, quantity: parsed });
+    }, 300);
+  };
 
   const items: PantryItem[] = pantry?.items ?? [];
   const sugg: PantrySuggestion[] = suggestions ?? [];
@@ -109,18 +132,33 @@ export default function PantrySection() {
                 {items.length === 0 ? (
                   <Text style={s.empty}>No ingredients found.</Text>
                 ) : items.map((it, i) => (
-                  <Pressable
-                    key={it.ingredient_id}
-                    onPress={() => toggle.mutate({ id: it.ingredient_id, have: !it.have })}
-                    style={[s.itemRow, i < items.length - 1 && s.itemBorder]}
-                  >
-                    <View style={[s.checkbox, it.have && s.checkboxChecked]}>
-                      {it.have && <Check size={12} color="#fff" strokeWidth={3} />}
-                    </View>
-                    <Text style={[s.itemName, it.have && s.itemHave]}>
-                      {it.name}{it.name_hindi ? `  ·  ${it.name_hindi}` : ""}
-                    </Text>
-                  </Pressable>
+                  <View key={it.ingredient_id} style={[s.itemRow, i < items.length - 1 && s.itemBorder]}>
+                    <Pressable
+                      onPress={() => toggle.mutate({ id: it.ingredient_id, have: !it.have })}
+                      style={s.itemTap}
+                      hitSlop={6}
+                    >
+                      <View style={[s.checkbox, it.have && s.checkboxChecked]}>
+                        {it.have && <Check size={12} color="#fff" strokeWidth={3} />}
+                      </View>
+                      <Text style={[s.itemName, it.have && s.itemHave]} numberOfLines={1}>
+                        {it.name}{it.name_hindi ? `  ·  ${it.name_hindi}` : ""}
+                      </Text>
+                    </Pressable>
+                    {it.have && (
+                      <View style={s.qtyWrap}>
+                        <TextInput
+                          style={s.qtyInput}
+                          keyboardType="number-pad"
+                          placeholder="—"
+                          placeholderTextColor="#C4C8CE"
+                          value={draftQty[it.ingredient_id] ?? (it.quantity_g == null ? "" : String(it.quantity_g))}
+                          onChangeText={t => onQtyChange(it.ingredient_id, t)}
+                        />
+                        <Text style={s.qtyUnit}>g</Text>
+                      </View>
+                    )}
+                  </View>
                 ))}
               </View>
             </>
@@ -142,7 +180,11 @@ const s = StyleSheet.create({
   searchInput:    { flex: 1, fontSize: 14, color: "#111827" },
   catLabel:       { paddingHorizontal: 14, paddingVertical: 8, fontSize: 11, fontWeight: "600", color: "#9CA3AF", letterSpacing: 1 },
   catCard:        { borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#F3F4F6" },
-  itemRow:        { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  itemRow:        { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  itemTap:        { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  qtyWrap:        { flexDirection: "row", alignItems: "center", gap: 3 },
+  qtyInput:       { minWidth: 46, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#F9FAFB", fontSize: 13, color: "#111827", textAlign: "right" },
+  qtyUnit:        { fontSize: 12, color: "#9CA3AF" },
   itemBorder:     { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   checkbox:       { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: "#D1D5DB", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   checkboxChecked:{ borderColor: "#1E7C45", backgroundColor: "#1E7C45" },

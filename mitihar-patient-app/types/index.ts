@@ -350,6 +350,9 @@ export interface PantryItem {
   name: string;
   name_hindi: string | null;
   have: boolean;
+  // null = "have it, amount unknown" (the pre-quantity default). 0 means the
+  // pantry tracked it and it ran out, so `have` comes back false.
+  quantity_g: number | null;
 }
 export interface PantryResponse { items: PantryItem[]; have_count: number; }
 export interface PantrySuggestion {

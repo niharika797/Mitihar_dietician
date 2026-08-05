@@ -3,7 +3,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 
-from sqlalchemy import select, func, delete as sa_delete
+from sqlalchemy import select, func, or_, delete as sa_delete, update as sa_update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
 from ..services.user_service import get_current_user
@@ -24,6 +25,19 @@ from ..core.limiter import limiter
 def _norm_name(s: str) -> str:
     """Normalize an ingredient name for pantry↔recipe matching (collapse case + whitespace)."""
     return " ".join(str(s).strip().lower().split())
+
+
+# A pantry row alone no longer means "has it" — quantity_g = 0 is an explicit
+# out-of-stock marker (auto-deduct writes it). NULL still means "have it, amount
+# unknown". Defined once so coverage ranking, the pantry catalogue and the
+# shopping list can never disagree about what "have" means.
+_PANTRY_IN_STOCK = or_(PatientPantry.quantity_g.is_(None), PatientPantry.quantity_g > 0)
+
+# Serving multipliers per bowl size. MUST stay in sync with BOWL_FACTORS in
+# mitihar-patient-app/app/meals/combo-detail.tsx — the app scales the calories it
+# displays by these, and the pantry deduction below scales ingredient grams by
+# the same factor, so a drift would silently mis-bill stock.
+BOWL_FACTORS: dict[str, float] = {"small": 0.75, "medium": 1.0, "large": 1.25}
 
 class CalorieReductionInput(BaseModel):
     reduction_amount: int
@@ -185,7 +199,7 @@ async def get_week_plan(
     pantry_rows = await session.execute(
         select(Ingredient.name)
         .join(PatientPantry, PatientPantry.ingredient_id == Ingredient.id)
-        .where(PatientPantry.patient_id == current_user.id)
+        .where(PatientPantry.patient_id == current_user.id, _PANTRY_IN_STOCK)
     )
     pantry_names = {_norm_name(r[0]) for r in pantry_rows}
 
@@ -293,32 +307,97 @@ async def get_shopping_list(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Returns the full ingredient list for the active meal plan.
-    Aggregates duplicate ingredients, groups by a simple category heuristic.
+    What the patient still needs to buy, derived live from the plan.
+
+    Replaces the old read of `recommendations.ingredient_checklist`, a blob
+    frozen at plan-generation time: it ignored which combos the patient actually
+    picked, carried no real quantities, and tracked `at_home` in the blob rather
+    than in the pantry. The column itself is untouched — /diet-plans/my-plan, the
+    doctor schema and the doctor dashboard still read it.
+
+    Per meal slot from today onwards, the dish set is whichever combo the patient
+    confirmed, falling back to combo_index=0 where they haven't chosen yet.
+    Required grams come from recipe_ingredients scaled by the confirmed bowl
+    size, then the pantry is subtracted.
+
     Returns 404 if no active plan exists.
-    Returns empty grouped list if plan has no ingredient_checklist.
     """
-    diet_service = DietPlanService()
-    plan = await diet_service.get_diet_plan(str(current_user.id), session=session)
-    if plan is None:
+    rec = (await session.execute(
+        select(Recommendation)
+        .where(Recommendation.patient_id == current_user.id, Recommendation.is_active == True)  # noqa: E712
+        .order_by(Recommendation.created_at.desc())
+        .limit(1)
+    )).scalars().first()
+    if rec is None:
         raise HTTPException(status_code=404, detail="No active meal plan found")
 
-    checklist = plan.ingredient_checklist or []
+    today = date.today()
 
-    # Aggregate duplicates by ingredient name (case-insensitive)
+    # Confirmed choices, keyed by slot, with their dishes and bowl size.
+    choice_rows = (await session.execute(
+        select(PatientMealChoice.date, PatientMealChoice.meal_type,
+               PatientMealChoice.bowl_size, PatientMealChoiceDish.food_item_id)
+        .join(PatientMealChoiceDish, PatientMealChoiceDish.choice_id == PatientMealChoice.id)
+        .where(PatientMealChoice.patient_id == current_user.id,
+               PatientMealChoice.date >= today)
+    )).all()
+    chosen: dict[tuple, dict] = {}
+    for slot_date, meal_type, bowl_size, food_item_id in choice_rows:
+        entry = chosen.setdefault((slot_date, meal_type),
+                                  {"ids": [], "factor": BOWL_FACTORS.get(bowl_size or "medium", 1.0)})
+        entry["ids"].append(food_item_id)
+
+    # Recommended combo per remaining slot, used wherever nothing was confirmed.
+    combo_rows = (await session.execute(
+        select(WeeklyCombo.slot_date, WeeklyCombo.meal_type, WeeklyCombo.dishes)
+        .where(WeeklyCombo.recommendation_id == rec.id,
+               WeeklyCombo.combo_index == 0,
+               WeeklyCombo.slot_date >= today)
+    )).all()
+
+    required: dict[int, float] = {}
+
+    async def _add(food_ids: list[int], factor: float) -> None:
+        for iid, grams in (await _dish_ingredient_grams(session, food_ids, factor)).items():
+            required[iid] = required.get(iid, 0.0) + grams
+
+    for slot_date, meal_type, dishes in combo_rows:
+        key = (slot_date, meal_type)
+        if key in chosen:
+            continue   # the confirmed choice wins; added below
+        ids = [fid for d in (dishes or []) if (fid := (d.get("food_id") or d.get("food_item_id")))]
+        await _add(ids, 1.0)
+    for entry in chosen.values():
+        await _add(entry["ids"], entry["factor"])
+
+    if not required:
+        return {"total_items": 0, "grouped": {}}
+
+    # Subtract what's on hand. A NULL pantry quantity means the patient said they
+    # have it without saying how much -- take them at their word and mark it
+    # at_home rather than guessing a shortfall.
+    pantry = await _pantry_quantities(session, current_user.id)
+    names: dict[int, str] = {
+        iid: nm for iid, nm in (await session.execute(
+            select(Ingredient.id, Ingredient.name).where(Ingredient.id.in_(required.keys()))
+        )).all()
+    }
+
     aggregated: dict[str, dict] = {}
-    for item in checklist:
-        name = str(item.get("ingredient") or item.get("Ingredient") or item.get("name") or "Unknown").strip()
-        key = name.lower()
-        if key not in aggregated:
-            aggregated[key] = {
-                "ingredient": name,
-                "quantity": item.get("quantity") or item.get("Total Amount (g)") or item.get("amount") or "",
-                "unit": item.get("unit") or item.get("Unit") or ("g" if item.get("Total Amount (g)") else ""),
-                "at_home": item.get("at_home", False)
-            }
-        # If already exists, quantities are left as-is (unit mismatch risk)
-        # Full numeric aggregation deferred to Phase 2 after standardising units
+    for iid, needed_g in required.items():
+        on_hand = pantry.get(iid, 0.0)
+        if iid in pantry and on_hand is None:
+            still_needed, at_home = 0.0, True
+        else:
+            still_needed = max(0.0, needed_g - (on_hand or 0.0))
+            at_home = still_needed == 0.0
+        name = names.get(iid) or "Unknown"
+        aggregated[name.lower()] = {
+            "ingredient": name,
+            "quantity": round(still_needed if not at_home else needed_g),
+            "unit": "g",
+            "at_home": at_home,
+        }
 
     # Simple category heuristic based on keyword matching
     CATEGORIES: dict[str, list[str]] = {
@@ -371,53 +450,29 @@ async def toggle_ingredient_at_home(
 ):
     """
     Mark an ingredient as 'available at home' or 'need to buy'.
-    Stores the toggle state on the active Recommendation's ingredient_checklist JSONB.
 
-    Each checklist item gets an 'at_home' boolean field.
-    Matching is case-insensitive on ingredient name.
+    Writes to `patient_pantry`, the same store /pantry/toggle uses — previously
+    this set an `at_home` flag inside the plan's ingredient_checklist JSONB, so
+    ticking something here did nothing for combo coverage ranking and was lost
+    on the next plan. Same thing, one source of truth.
 
-    Returns 404 if no active plan.
-    Returns 404 if the ingredient is not found in the checklist.
+    Marking at_home stores a NULL quantity ("have it, amount unknown"); use
+    /pantry/toggle when the patient knows the grams.
+
+    Returns 404 if the name matches no known ingredient.
     """
-    rec_result = await session.execute(
-        select(Recommendation)
-        .where(
-            Recommendation.patient_id == current_user.id,
-            Recommendation.is_active == True,
-        )
-        .order_by(Recommendation.created_at.desc())
+    ing = (await session.execute(
+        select(Ingredient.id)
+        .where(func.lower(func.trim(Ingredient.name)) == _norm_name(ingredient_name))
         .limit(1)
-    )
-    rec = rec_result.scalars().first()
-    if rec is None:
-        raise HTTPException(status_code=404, detail="No active meal plan found")
-
-    checklist = list(rec.ingredient_checklist or [])
-    search = ingredient_name.strip().lower()
-    found = False
-
-    updated_checklist = []
-    for item in checklist:
-        name = str(item.get("ingredient") or item.get("Ingredient") or item.get("name") or "").lower()
-        if name == search:
-            item = dict(item)      # copy — JSONB items are read-only dicts
-            item["at_home"] = at_home
-            found = True
-        updated_checklist.append(item)
-
-    if not found:
+    )).scalars().first()
+    if ing is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Ingredient '{ingredient_name}' not found in checklist",
+            detail=f"Ingredient '{ingredient_name}' not found",
         )
 
-    from sqlalchemy import update as sa_update
-    await session.execute(
-        sa_update(Recommendation)
-        .where(Recommendation.id == rec.id)
-        .values(ingredient_checklist=updated_checklist)
-    )
-    await session.flush()
+    await _pantry_set(session, current_user.id, ing, at_home)
     return {
         "ingredient": ingredient_name,
         "at_home": at_home,
@@ -439,10 +494,104 @@ _PANTRY_SEARCH_LIMIT = 50
 
 
 async def _pantry_have_ids(session: AsyncSession, patient_id: int) -> set[int]:
+    """Ingredient ids the patient actually has — a row at quantity_g = 0 is
+    excluded, so a depleted ingredient reads back as `have: false`."""
     rows = await session.execute(
-        select(PatientPantry.ingredient_id).where(PatientPantry.patient_id == patient_id)
+        select(PatientPantry.ingredient_id)
+        .where(PatientPantry.patient_id == patient_id, _PANTRY_IN_STOCK)
     )
     return {r[0] for r in rows}
+
+
+async def _pantry_quantities(session: AsyncSession, patient_id: int) -> dict[int, float | None]:
+    """ingredient_id -> grams on hand (None = have it, amount unknown).
+    Includes zero rows so callers can tell "out of stock" from "never tracked"."""
+    rows = await session.execute(
+        select(PatientPantry.ingredient_id, PatientPantry.quantity_g)
+        .where(PatientPantry.patient_id == patient_id)
+    )
+    return {iid: (float(q) if q is not None else None) for iid, q in rows}
+
+
+async def _pantry_set(
+    session: AsyncSession, patient_id: int, ingredient_id: int,
+    have: bool, quantity_g: float | None = None,
+) -> None:
+    """Shared upsert/delete behind both /pantry/toggle and /shopping-list/toggle.
+
+    do_update rather than do_nothing: re-toggling an ingredient the patient
+    already has must be able to correct its quantity, and passing no quantity
+    resets it to NULL ("have it, amount unknown") rather than keeping a stale
+    number the patient never confirmed."""
+    if have:
+        await session.execute(
+            pg_insert(PatientPantry)
+            .values(patient_id=patient_id, ingredient_id=ingredient_id, quantity_g=quantity_g)
+            .on_conflict_do_update(
+                constraint="uq_patient_pantry",
+                set_={"quantity_g": quantity_g},
+            )
+        )
+    else:
+        await session.execute(
+            sa_delete(PatientPantry).where(
+                PatientPantry.patient_id == patient_id,
+                PatientPantry.ingredient_id == ingredient_id,
+            )
+        )
+    await session.flush()
+
+
+async def _dish_ingredient_grams(
+    session: AsyncSession, food_item_ids: list[int], scale: float,
+) -> dict[int, float]:
+    """ingredient_id -> total grams for these dishes at this serving scale.
+    Staples are dropped: they never enter the pantry catalogue, so there is
+    nothing to deduct from and nothing worth putting on a shopping list."""
+    if not food_item_ids:
+        return {}
+    rows = await session.execute(
+        select(RecipeIngredient.ingredient_id, Ingredient.name, RecipeIngredient.quantity_g)
+        .join(Ingredient, Ingredient.id == RecipeIngredient.ingredient_id)
+        .where(RecipeIngredient.food_item_id.in_(food_item_ids))
+    )
+    out: dict[int, float] = {}
+    for iid, name, grams in rows:
+        if is_staple(name):
+            continue
+        out[iid] = out.get(iid, 0.0) + float(grams or 0) * scale
+    return out
+
+
+async def _apply_pantry_delta(
+    session: AsyncSession, patient_id: int,
+    new_grams: dict[int, float], old_grams: dict[int, float],
+) -> None:
+    """Draw the pantry down by (new - old) grams per ingredient.
+
+    Only rows that already exist AND carry a known quantity are touched:
+      - an ingredient the patient never added has nothing to deduct from
+      - a NULL quantity means "have it, amount unknown", and subtracting from
+        an unknown would fabricate a number
+    Clamped at 0 in SQL rather than in Python so concurrent confirms can't race
+    the value negative — the CHECK constraint would reject that anyway."""
+    deltas = {
+        iid: new_grams.get(iid, 0.0) - old_grams.get(iid, 0.0)
+        for iid in set(new_grams) | set(old_grams)
+    }
+    for iid, delta in deltas.items():
+        if delta == 0:
+            continue
+        await session.execute(
+            sa_update(PatientPantry)
+            .where(
+                PatientPantry.patient_id == patient_id,
+                PatientPantry.ingredient_id == iid,
+                PatientPantry.quantity_g.is_not(None),
+            )
+            .values(quantity_g=func.greatest(PatientPantry.quantity_g - delta, 0))
+        )
+    await session.flush()
 
 
 @router.get("/pantry")
@@ -451,7 +600,8 @@ async def get_pantry(
     session: AsyncSession = Depends(get_db),
     search: str | None = Query(None),
 ):
-    have_ids = await _pantry_have_ids(session, current_user.id)
+    quantities = await _pantry_quantities(session, current_user.id)
+    have_ids = {iid for iid, q in quantities.items() if q is None or q > 0}
 
     freq = func.count(RecipeIngredient.id)
     stmt = (
@@ -475,6 +625,7 @@ async def get_pantry(
             "name": name,
             "name_hindi": name_hindi,
             "have": iid in have_ids,
+            "quantity_g": quantities.get(iid),
         })
         if len(items) >= cap:
             break
@@ -489,24 +640,14 @@ async def toggle_pantry_item(
     session: AsyncSession = Depends(get_db),
     ingredient_id: int = Query(...),
     have: bool = Query(...),
+    quantity_g: float | None = Query(None, ge=0),
 ):
-    """Presence toggle: insert a pantry row if `have`, delete it if not. Idempotent."""
-    if have:
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-        await session.execute(
-            pg_insert(PatientPantry)
-            .values(patient_id=current_user.id, ingredient_id=ingredient_id)
-            .on_conflict_do_nothing(constraint="uq_patient_pantry")
-        )
-    else:
-        await session.execute(
-            sa_delete(PatientPantry).where(
-                PatientPantry.patient_id == current_user.id,
-                PatientPantry.ingredient_id == ingredient_id,
-            )
-        )
-    await session.flush()
-    return {"ingredient_id": ingredient_id, "have": have}
+    """Insert a pantry row if `have`, delete it if not. Idempotent.
+
+    `quantity_g` is optional — omitting it stores NULL, which means "have it,
+    amount unknown" and is exactly the pre-quantity behaviour."""
+    await _pantry_set(session, current_user.id, ingredient_id, have, quantity_g)
+    return {"ingredient_id": ingredient_id, "have": have, "quantity_g": quantity_g}
 
 
 # ─── GET /api/v1/meal-plan/pantry/suggestions ────────────────────────────
@@ -646,15 +787,37 @@ async def confirm_meal_choice(
 
     total_calories = sum(float(fi.cal_per_serving) for fi in confirmed_items)
     primary_food_item_id = body.food_item_ids[0]
-
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
     resolved_bowl_size = body.bowl_size or "medium"
+    bowl_factor = BOWL_FACTORS[resolved_bowl_size]
+
+    # Read the choice being replaced BEFORE the upsert overwrites it. This slot
+    # upserts on uq_pmc_patient_date_meal, so without crediting the previous
+    # dishes back, every re-pick would deduct again and drain the pantry.
+    prev_result = await session.execute(
+        select(PatientMealChoice).where(
+            PatientMealChoice.patient_id == current_user.id,
+            PatientMealChoice.date == body.date,
+            PatientMealChoice.meal_type == body.meal_type,
+        )
+    )
+    prev_choice = prev_result.scalars().first()
+    prev_food_ids: list[int] = []
+    prev_factor = 1.0
+    if prev_choice is not None:
+        prev_factor = BOWL_FACTORS.get(prev_choice.bowl_size or "medium", 1.0)
+        prev_rows = await session.execute(
+            select(PatientMealChoiceDish.food_item_id)
+            .where(PatientMealChoiceDish.choice_id == prev_choice.id)
+        )
+        prev_food_ids = [r[0] for r in prev_rows]
+
     stmt = pg_insert(PatientMealChoice).values(
         patient_id=current_user.id,
         food_item_id=primary_food_item_id,
         date=body.date,
         meal_type=body.meal_type,
         calories=total_calories,
+        actual_calories=round(total_calories * bowl_factor, 2),
         weekly_combo_id=body.weekly_combo_id,
         bowl_size=resolved_bowl_size,
     ).on_conflict_do_update(
@@ -662,6 +825,7 @@ async def confirm_meal_choice(
         set_={
             "food_item_id": primary_food_item_id,
             "calories": total_calories,
+            "actual_calories": round(total_calories * bowl_factor, 2),
             "weekly_combo_id": body.weekly_combo_id,
             "bowl_size": resolved_bowl_size,
             "confirmed_at": func.now(),
@@ -682,6 +846,17 @@ async def confirm_meal_choice(
             calories=float(fi.cal_per_serving),
         ))
     await session.flush()
+
+    # ── Pantry auto-deduct ────────────────────────────────────────────────
+    # Net delta, not a raw subtraction: credit back what the previous choice for
+    # this slot reserved, then charge the new one. Re-confirming the same combo
+    # nets to zero, which is what makes this endpoint safe to call repeatedly.
+    await _apply_pantry_delta(
+        session,
+        current_user.id,
+        new_grams=await _dish_ingredient_grams(session, body.food_item_ids, bowl_factor),
+        old_grams=await _dish_ingredient_grams(session, prev_food_ids, prev_factor),
+    )
 
     consumed_result = await session.execute(
         select(func.coalesce(func.sum(PatientMealChoice.calories), 0.0))

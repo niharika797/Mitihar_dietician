@@ -199,7 +199,7 @@ All of the following have been built and verified across Sessions 1–8:
 
 ## CURRENT STATUS
 
-> _Updated 2026-08-04. Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-08-05. Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Phase:** Staging deployed — first successful Cloud Run deploy 2026-07-05. Prior "Done" block archived to BUILD_TRACKER_ARCHIVE.md.
 
@@ -228,11 +228,13 @@ All of the following have been built and verified across Sessions 1–8:
 - **2026-07-30 (later still):** Built pantry-first meal planning end-to-end, uncommitted: `PatientPantry` model + migration `c1d2e3f4a5b6` (not yet run); `meal_generator.is_staple()` substring staple-check; `meal_plan.py` router gets `GET/POST /pantry` and `GET /pantry/suggestions` (condition-aware, IFCT iron/calcium/fiber cols), `GET /week` now scores + sorts combos by pantry coverage (have/required/missing/cookable). Mobile: new `meals/pantry.tsx` screen + nav entry, types/service/queryKeys wired, `meals.tsx` tab shows "Cook now"/coverage badge and "My Pantry" button.
 
 **Blockers / pending:**
-- Fixed two variety-failure root causes (`meal_generator.py` fallback-pool ordering, `test_plan_quality.py` accompaniment-repeat false positive) but unverified — `bulk_generate_plans_real_patients.py` has not been re-run since.
-- 61 flagged `ingredient_ifct_map.csv` rows + 1,388 dangling `weekly_combos` refs need manual review/decision.
-- `reclassify_low_kcal_dishes.py` needs an actual `--write` pass; staging restore needs GCS upload + `mityahar-migrate` run.
-- New Home-dashboard Kitchen sections are uncommitted and not yet manually verified in-app.
+- Migration `e4f5a6b7c8d9` still not run; no endpoint/UI verification done.
+- Thin pools cap non-veg split (8 breakfast, 3 lunch-accompaniment non-veg mains) — 85/630 slots miss 2/4.
+- Home-dashboard Kitchen sections still unverified in a running app.
+- 61 flagged `ingredient_ifct_map.csv` rows need manual review; IFCT scrambled multi-line Food Names unfixed.
+- Cloud Scheduler jobs for the 3 `/internal/cron/*` endpoints not created; `mityahar-audit-tmp` Cloud Run job left behind.
 
 **Next action:**
-Re-run `bulk_generate_plans_real_patients.py` to confirm the variety fix clears real patients before relying on it; staging restore and Kitchen-section in-app verification stay queued behind it.
+Run `alembic upgrade head` for `e4f5a6b7c8d9`, then verify pantry auto-deduct + shopping-list endpoints and the PantrySection quantity UI end-to-end before committing.
+
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).

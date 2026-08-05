@@ -348,6 +348,9 @@ export default function MealsScreen() {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.DAILY_CHOICES(vars.date) });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN });
+      // Confirming deducts pantry stock, which moves both of these.
+      qc.invalidateQueries({ queryKey: ["meal-plan", "pantry"] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.SHOPPING_LIST });
     },
     onError: () => showToast("Failed to confirm choice. Try again.", "error"),
   });

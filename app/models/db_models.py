@@ -863,13 +863,25 @@ class PatientDishPreferences(Base):
 
 class PatientPantry(Base):
     """Pantry-first meal planning: which ingredients a patient has on hand.
-    Presence-based (row exists = have it); no quantities. Read by GET /meal-plan/week
-    to rank combos by ingredient coverage. Coverage matches by normalized name, not id."""
+
+    Read by GET /meal-plan/week to rank combos by ingredient coverage (matched by
+    normalized name, not id) and by GET /meal-plan/shopping-list to subtract what
+    the patient already has. POST /meal-plan/confirm-choice draws stock down.
+
+    `quantity_g` is three-state and the distinction matters:
+      NULL  -- have it, amount unknown. Counts as "have"; never deducted from,
+               because subtracting from an unknown would invent data.
+      0     -- out of stock. Counts as NOT having it.
+      > 0   -- grams on hand.
+    Presence alone is no longer sufficient — read membership through the
+    _PANTRY_IN_STOCK predicate in routers/meal_plan.py so the zero case is
+    handled consistently."""
     __tablename__ = "patient_pantry"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
     ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
+    quantity_g: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     patient: Mapped["Patient"] = relationship("Patient")
@@ -878,6 +890,7 @@ class PatientPantry(Base):
     __table_args__ = (
         UniqueConstraint("patient_id", "ingredient_id", name="uq_patient_pantry"),
         Index("idx_pantry_patient", "patient_id"),
+        CheckConstraint("quantity_g IS NULL OR quantity_g >= 0", name="ck_pantry_quantity_nonneg"),
     )
 
 
