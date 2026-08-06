@@ -288,7 +288,10 @@ class RecordVisitResponse(BaseModel):
 
 class RenewalApproveResponse(BaseModel):
     message: str
-    token_1: str
+    # Nullable: patients.token_1 is nullable at the DB level (db_models.py:238).
+    # A non-Optional str here made approve_renewal 500 on Pydantic response
+    # validation for any patient whose token_1 was never issued.
+    token_1: Optional[str]
     token_2: str
     token_1_expiry: datetime
 
