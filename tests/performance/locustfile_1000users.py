@@ -39,9 +39,17 @@ from pathlib import Path
 from locust import HttpUser, between, task
 
 MANIFEST_PATH = Path(__file__).parent / "test_manifest.json"
+# Pre-minted access tokens, produced by scripts/mint_load_test_tokens.py and
+# pulled from GCS before the run. When present, virtual users skip login
+# entirely: ramping to 1000 users otherwise means ~1000 logins in ~50s against a
+# 5-per-15-minutes limit that GCLB collapses onto a single client IP, so the
+# ramp measures rate limiting rather than the application.
+TOKENS_PATH = Path(__file__).parent / "tokens.json"
 
 _manifest_data = None
 _manifest_lock = threading.Lock()
+_tokens_data = None
+_tokens_lock = threading.Lock()
 
 # Global atomic counter for unique per-user IP assignment
 _user_counter = 0
@@ -57,6 +65,18 @@ def _load_manifest():
             else:
                 _manifest_data = {"patients": [], "doctors": []}
     return _manifest_data
+
+
+def _load_tokens():
+    """Pre-minted tokens, or empty dict to fall back to live login."""
+    global _tokens_data
+    with _tokens_lock:
+        if _tokens_data is None:
+            if TOKENS_PATH.exists():
+                _tokens_data = json.loads(TOKENS_PATH.read_text())
+            else:
+                _tokens_data = {"patients": [], "doctors": []}
+    return _tokens_data
 
 
 def _next_user_id() -> int:
@@ -86,28 +106,39 @@ class PatientUser(HttpUser):
         self._xff = _user_id_to_xff(self._uid)
         self._xff_headers = {"X-Forwarded-For": self._xff}
 
-        manifest = _load_manifest()
-        patients = manifest.get("patients", [])
-        if patients:
-            p = random.choice(patients)
-            email = p["email"]
-            password = manifest.get("patient_password", "TestPat@2026")
-            self._patient_id = p["patient_id"]
-        else:
-            email = "testpatient001@mityahar.test"
-            password = "TestPat@2026"
-            self._patient_id = 1
-
         self._token = ""
-        r = self.client.post(
-            "/api/v1/auth/token",
-            data={"username": email, "password": password},
-            headers=self._xff_headers,
-            name="POST /auth/token [patient]",
-        )
         self._combo_entries = []  # [{combo_id, food_item_ids, meal_type, date}]
-        if r.status_code == 200:
-            self._token = r.json().get("access_token", "")
+
+        pre = _load_tokens().get("patients", [])
+        if pre:
+            # Assign by uid, not random.choice: with ~990 VUs over 1000 accounts
+            # random selection collides heavily, leaving many accounts untouched
+            # and piling several VUs onto one patient's rows.
+            p = pre[self._uid % len(pre)]
+            self._patient_id = p["patient_id"]
+            self._token = p["token"]
+        else:
+            manifest = _load_manifest()
+            patients = manifest.get("patients", [])
+            if patients:
+                p = random.choice(patients)
+                email = p["email"]
+                password = manifest.get("patient_password", "TestPat@2026")
+                self._patient_id = p["patient_id"]
+            else:
+                email = "testpatient001@mityahar.test"
+                password = "TestPat@2026"
+                self._patient_id = 1
+            r = self.client.post(
+                "/api/v1/auth/token",
+                data={"username": email, "password": password},
+                headers=self._xff_headers,
+                name="POST /auth/token [patient]",
+            )
+            if r.status_code == 200:
+                self._token = r.json().get("access_token", "")
+
+        if self._token:
             r2 = self.client.get(
                 "/api/v1/meal-plan/week",
                 headers=self._auth(),
@@ -192,28 +223,36 @@ class DoctorUser(HttpUser):
         self._xff = _user_id_to_xff(self._uid)
         self._xff_headers = {"X-Forwarded-For": self._xff}
 
-        manifest = _load_manifest()
-        doctors = manifest.get("doctors", [])
-        if doctors:
-            d = random.choice(doctors)
-            email = d["email"]
-            password = d.get("password", "DoctorTest@2026")
-        else:
-            email = "dr.ashok.mehta@mityahar-perf.com"
-            password = "DoctorTest@2026"
-
         self._token = ""
-        r = self.client.post(
-            "/api/v1/auth/doctor/login",
-            data={"username": email, "password": password},
-            headers=self._xff_headers,
-            name="POST /auth/doctor/login [doctor]",
-        )
-        if r.status_code == 200:
-            self._token = r.json().get("access_token", "")
-
-        patients = manifest.get("patients", [])
-        self._patient_id = patients[0]["patient_id"] if patients else 2
+        pre = _load_tokens()
+        pre_doctors = pre.get("doctors", [])
+        if pre_doctors:
+            d = pre_doctors[self._uid % len(pre_doctors)]
+            self._token = d["token"]
+            # Query a patient this doctor actually owns — doctor endpoints scope
+            # by doctor_id, so a foreign patient_id just 404s and measures nothing.
+            mine = [p for p in pre.get("patients", []) if p.get("doctor_id") == d["doctor_id"]]
+            self._patient_id = mine[0]["patient_id"] if mine else 2
+        else:
+            manifest = _load_manifest()
+            doctors = manifest.get("doctors", [])
+            if doctors:
+                d = random.choice(doctors)
+                email = d["email"]
+                password = d.get("password", "DoctorTest@2026")
+            else:
+                email = "dr.ashok.mehta@mityahar-perf.com"
+                password = "DoctorTest@2026"
+            r = self.client.post(
+                "/api/v1/auth/doctor/login",
+                data={"username": email, "password": password},
+                headers=self._xff_headers,
+                name="POST /auth/doctor/login [doctor]",
+            )
+            if r.status_code == 200:
+                self._token = r.json().get("access_token", "")
+            patients = manifest.get("patients", [])
+            self._patient_id = patients[0]["patient_id"] if patients else 2
 
     def _auth(self):
         headers = dict(self._xff_headers)
