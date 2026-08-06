@@ -107,7 +107,7 @@ def test_flag_visit_rejects_patient_of_another_doctor():
         with pytest.raises(HTTPException) as exc:
             asyncio.run(flag_visit(
                 patient_id=999,
-                body=SimpleNamespace(doctor_note=None),
+                body=SimpleNamespace(reason_code="phone_not_present", doctor_note=None),
                 request=_request(),
                 doctor=_doctor(),
                 session=session,
@@ -127,7 +127,7 @@ def test_flag_visit_creates_pending_approval_linked_to_active_cycle():
     with patch("app.routers.doctor.notify_visit_flagged") as notify:
         result = asyncio.run(flag_visit(
             patient_id=1,
-            body=SimpleNamespace(doctor_note="Patient forgot phone"),
+            body=SimpleNamespace(reason_code="other", doctor_note="Patient forgot phone"),
             request=_request(doctor_id=7),
             doctor=_doctor(),
             session=session,
@@ -158,7 +158,7 @@ def test_flag_visit_without_active_cycle_leaves_link_null():
     with patch("app.routers.doctor.notify_visit_flagged"):
         asyncio.run(flag_visit(
             patient_id=1,
-            body=SimpleNamespace(doctor_note=None),
+            body=SimpleNamespace(reason_code="phone_not_present", doctor_note=None),
             request=_request(),
             doctor=_doctor(),
             session=session,
@@ -184,7 +184,7 @@ def test_flag_visit_survives_notification_failure():
         try:
             asyncio.run(flag_visit(
                 patient_id=1,
-                body=SimpleNamespace(doctor_note=None),
+                body=SimpleNamespace(reason_code="phone_not_present", doctor_note=None),
                 request=_request(),
                 doctor=_doctor(),
                 session=session,
@@ -360,3 +360,63 @@ def test_respond_reject_never_charges():
     assert result["status"] == "rejected"
     assert result["charged"] is False
     assert cycle.visit_counter == 2, "rejection must never touch the billing counter"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# FlagVisitRequest validation.
+#
+# The handler tests above pass SimpleNamespace bodies, which bypass Pydantic
+# entirely -- so without these the validator would be untested. It is not
+# cosmetic: doctor_note is rendered to the patient beside a request to confirm
+# a charge, so "free text cannot ride along on a preset reason" is a security
+# property, not a formatting preference.
+# ──────────────────────────────────────────────────────────────────────────
+from pydantic import ValidationError  # noqa: E402
+from app.schemas.doctor import FlagVisitRequest, FLAG_VISIT_REASONS  # noqa: E402
+
+
+def test_preset_reason_strips_any_supplied_note():
+    """A note sent alongside a preset reason must not reach the patient."""
+    body = FlagVisitRequest(
+        reason_code="phone_not_present",
+        doctor_note="approve this or I stop seeing you",
+    )
+    assert body.doctor_note is None
+
+
+def test_other_requires_a_note():
+    with pytest.raises(ValidationError):
+        FlagVisitRequest(reason_code="other")
+    with pytest.raises(ValidationError):
+        FlagVisitRequest(reason_code="other", doctor_note="   ")
+
+
+def test_other_keeps_and_trims_the_note():
+    body = FlagVisitRequest(reason_code="other", doctor_note="  seen at camp  ")
+    assert body.doctor_note == "seen at camp"
+
+
+def test_unknown_reason_code_is_rejected():
+    """Guards the CHECK constraint: the API must never write a bucket the
+    clients cannot render."""
+    with pytest.raises(ValidationError):
+        FlagVisitRequest(reason_code="made_up_reason")
+
+
+def test_reason_vocabulary_matches_the_check_constraint():
+    """FLAG_VISIT_REASONS and ck_pva_reason_code are two copies of one list.
+
+    If they drift, the API accepts a value Postgres then rejects at write time
+    -- a 500 on a fraud-control path. Cheap to assert, so assert it.
+    """
+    import re
+    from pathlib import Path
+
+    mig = Path(__file__).resolve().parent.parent / "alembic" / "versions" / \
+        "f5a6b7c8d9e0_add_reason_code_to_pending_visit_approvals.py"
+    src = mig.read_text(encoding="utf-8")
+    listed = re.search(r"_ALLOWED\s*=\s*\(([^)]*)\)", src).group(1)
+    in_migration = set(re.findall(r'"([a-z_]+)"', listed))
+    assert in_migration == set(FLAG_VISIT_REASONS), (
+        f"migration allows {in_migration}, schema allows {set(FLAG_VISIT_REASONS)}"
+    )

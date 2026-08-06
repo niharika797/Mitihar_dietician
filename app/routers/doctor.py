@@ -41,7 +41,7 @@ from ..schemas.doctor import (
     DoctorDashboardStats,
     PatientVisitResponse, RecordVisitResponse, RenewalApproveResponse,
     BulkRenewalResponse, PendingRenewalItem,
-    RecordVisitRequest, FlagVisitRequest, MealConfigRequest, DishPrefRequest,
+    RecordVisitRequest, FlagVisitRequest, FLAG_VISIT_REASONS, MealConfigRequest, DishPrefRequest,
     RecipeTagsResponse, RecipeTagsPatchRequest,
     WeeklyPlanApproveRequest, ComboSwapRequest, WeeklyDishPatchRequest,
 )
@@ -2390,6 +2390,8 @@ async def flag_visit(
         patient_visit_id=pv.id if pv else None,
         status="pending",
         visit_date=now,
+        reason_code=body.reason_code,
+        # Already forced to None by FlagVisitRequest unless reason is "other".
         doctor_note=body.doctor_note,
     )
     session.add(pending)
@@ -2461,6 +2463,10 @@ async def list_flagged_visits(
             "patient_name": patient_name,
             "status": pva.status,
             "visit_date": pva.visit_date.isoformat(),
+            "reason_code": pva.reason_code,
+            # Label resolved server-side so the doctor dashboard and the patient
+            # app cannot drift into showing different words for the same code.
+            "reason_label": FLAG_VISIT_REASONS.get(pva.reason_code or "", "Not specified"),
             "doctor_note": pva.doctor_note,
             "responded_at": pva.responded_at.isoformat() if pva.responded_at else None,
             "created_at": pva.created_at.isoformat() if pva.created_at else None,

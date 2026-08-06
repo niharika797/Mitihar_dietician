@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Activity, CheckCircle, XCircle, Loader2, RefreshCw, Flag } from 'lucide-react';
-import { doctorApi, PatientVisit } from '../../../../lib/doctorApi';
+import { doctorApi, PatientVisit, FLAG_VISIT_REASONS, FlagVisitReason } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
 import { StatusBadge } from '../../../components/ui/StatusBadge';
 
@@ -41,9 +41,15 @@ export function VisitsTab({ patientId, patientName }: VisitsTabProps) {
     },
   });
 
+  const [flagReason, setFlagReason] = useState<FlagVisitReason>('phone_not_present');
+  const [flagOther, setFlagOther] = useState('');
+  const flagNeedsNote = flagReason === 'other' && flagOther.trim().length === 0;
+
   const flagMut = useMutation({
-    mutationFn: () => doctorApi.flagVisit(patientId),
+    mutationFn: () => doctorApi.flagVisit(patientId, flagReason, flagOther),
     onSuccess: (res) => {
+      setFlagOther('');
+      setFlagReason('phone_not_present');
       queryClient.invalidateQueries({ queryKey: qk.patientVisits(patientId) });
       queryClient.invalidateQueries({ queryKey: qk.patientFlaggedVisits(patientId) });
       toast.success(res.message);
@@ -113,17 +119,51 @@ export function VisitsTab({ patientId, patientName }: VisitsTabProps) {
             Record Patient Visit
           </button>
 
-          <button
-            onClick={() => flagMut.mutate()}
-            disabled={flagMut.isPending}
-            title="Use when the patient can't show Token 2 — they confirm in their app before the visit is charged"
-            className="flex items-center gap-2 h-10 px-5 rounded-lg border border-[#E5E7EB] bg-white text-[#374151] text-sm font-medium hover:bg-[#F9FAFB] transition-colors disabled:opacity-50"
-          >
-            {flagMut.isPending
-              ? <Loader2 size={16} className="animate-spin" />
-              : <Flag size={16} />}
-            Flag Visit (No Token 2)
-          </button>
+        </div>
+
+        {/* Flag path — separate row because it needs a reason before it can be
+            submitted. The reason is shown to the patient, so it is a fixed list
+            rather than free text. */}
+        <div className="mt-4 pt-4 border-t border-[#F3F4F6]">
+          <p className="text-xs text-[#6B7280] mb-2">
+            Patient can't show Token 2? Pick a reason — they confirm in their app before anything is charged.
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              value={flagReason}
+              onChange={(e) => setFlagReason(e.target.value as FlagVisitReason)}
+              aria-label="Reason the patient cannot show Token 2"
+              className="h-10 px-3 rounded-lg border border-[#E5E7EB] bg-white text-sm text-[#374151] focus:outline-none focus:border-[#1E7C45]"
+            >
+              {FLAG_VISIT_REASONS.map(r => (
+                <option key={r.code} value={r.code}>{r.label}</option>
+              ))}
+            </select>
+
+            {flagReason === 'other' && (
+              <input
+                value={flagOther}
+                onChange={(e) => setFlagOther(e.target.value)}
+                maxLength={1000}
+                placeholder="Describe the reason"
+                aria-label="Reason description"
+                className="h-10 px-3 w-64 rounded-lg border border-[#E5E7EB] text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#1E7C45]"
+              />
+            )}
+
+            <button
+              onClick={() => flagMut.mutate()}
+              /* Mirrors the server rule: "other" requires a note. */
+              disabled={flagMut.isPending || flagNeedsNote}
+              title={flagNeedsNote ? 'Describe the reason first' : "Flag this visit for the patient to confirm"}
+              className="flex items-center gap-2 h-10 px-5 rounded-lg border border-[#E5E7EB] bg-white text-[#374151] text-sm font-medium hover:bg-[#F9FAFB] transition-colors disabled:opacity-50"
+            >
+              {flagMut.isPending
+                ? <Loader2 size={16} className="animate-spin" />
+                : <Flag size={16} />}
+              Flag Visit
+            </button>
+          </div>
         </div>
 
         {recordMut.data && (
@@ -148,7 +188,7 @@ export function VisitsTab({ patientId, patientName }: VisitsTabProps) {
           <table className="w-full">
             <thead>
               <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB]">
-                {['Visit Date', 'Status', 'Answered', 'Your Note'].map(h => (
+                {['Visit Date', 'Status', 'Answered', 'Reason'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280]">{h}</th>
                 ))}
               </tr>
@@ -166,7 +206,12 @@ export function VisitsTab({ patientId, patientName }: VisitsTabProps) {
                       : <span className="text-[#9CA3AF]">Awaiting patient</span>}
                   </td>
                   <td className="px-4 py-3 text-sm text-[#6B7280]">
-                    {f.doctor_note || <span className="text-[#9CA3AF]">—</span>}
+                    {f.reason_label}
+                    {/* Free text only exists on "other", so show it as detail
+                        under the label rather than as a competing column. */}
+                    {f.doctor_note && (
+                      <span className="block text-xs text-[#9CA3AF] mt-0.5">{f.doctor_note}</span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -15,6 +15,7 @@ from ..schemas.patients import (
     DoctorRequestBody, PatientProfileResponse, PublicDoctorResponse,
     ActivationResponse, RespondVisitRequest
 )
+from ..schemas.doctor import FLAG_VISIT_REASONS
 from ..services.meal_generator.calculations import (
     calculate_bmr, calculate_tdee, calculate_bmi,
 )
@@ -546,6 +547,11 @@ async def list_pending_visits(
             "doctor_id": pv.doctor_id,
             "doctor_name": doctor_name,
             "visit_date": pv.visit_date.isoformat(),
+            "reason_code": pv.reason_code,
+            "reason_label": FLAG_VISIT_REASONS.get(pv.reason_code or "", "Not specified"),
+            # Only ever populated when the doctor picked "other" — the schema
+            # strips it on preset reasons so this surface stays a fixed
+            # vocabulary next to a charge the patient is asked to confirm.
             "doctor_note": pv.doctor_note,
             "status": pv.status,
             "created_at": pv.created_at.isoformat() if pv.created_at else None,

@@ -65,6 +65,10 @@ export default function PendingVisitSection() {
               . Confirm only if this visit actually happened.
             </Text>
 
+            <Text style={s.reason}>Reason given: {v.reason_label}</Text>
+
+            {/* Present only when the doctor picked "other"; preset reasons are
+                stripped server-side so this stays a controlled surface. */}
             {v.doctor_note ? <Text style={s.note}>“{v.doctor_note}”</Text> : null}
 
             <View style={s.actions}>
@@ -107,9 +111,10 @@ const s = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   title: { fontSize: 15, fontWeight: "600", color: "#92400E" },
   body: { fontSize: 14, lineHeight: 20, color: "#374151" },
+  reason: { fontSize: 13, fontWeight: "500", color: "#92400E", marginTop: 8 },
   note: {
     fontSize: 13, fontStyle: "italic", color: "#6B7280",
-    marginTop: 8, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: "#FDE68A",
+    marginTop: 6, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: "#FDE68A",
   },
   actions: { flexDirection: "row", gap: 10, marginTop: 14 },
   approveBtn: {

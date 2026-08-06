@@ -794,7 +794,13 @@ class PendingVisitApproval(Base):
     status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")
     # "pending" | "approved" | "rejected"
     visit_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Why Token 2 could not be shown. Constrained by ck_pva_reason_code to the
+    # values in FLAG_VISIT_REASONS. NULL only on rows predating the field.
     doctor_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Free text, and ONLY set when reason_code == "other" — the API strips it
+    # otherwise. This string is shown to the patient next to a charge they are
+    # being asked to confirm, so the preset path deliberately cannot carry one.
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

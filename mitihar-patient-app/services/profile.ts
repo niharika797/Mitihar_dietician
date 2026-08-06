@@ -109,6 +109,10 @@ export interface PendingVisit {
   doctor_id: number;
   doctor_name: string;
   visit_date: string;
+  reason_code: string | null;
+  /** Server-resolved label from a fixed vocabulary. */
+  reason_label: string;
+  /** Only set when the doctor chose "other" — preset reasons carry no free text. */
   doctor_note: string | null;
   status: string;
   created_at: string | null;

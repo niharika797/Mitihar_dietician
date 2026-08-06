@@ -51,6 +51,20 @@ export interface PatientVisit {
   created_at: string;
 }
 
+/** Why Token 2 could not be shown.
+ *  Mirrors FLAG_VISIT_REASONS in app/schemas/doctor.py and the
+ *  ck_pva_reason_code constraint — the server rejects anything else, so a
+ *  drifted list here fails loudly with a 422 rather than storing junk. */
+export const FLAG_VISIT_REASONS = [
+  { code: 'phone_not_present', label: 'Phone not with patient' },
+  { code: 'battery_dead',      label: 'Phone battery dead' },
+  { code: 'app_issue',         label: "App issue — couldn't show Token 2" },
+  { code: 'signed_out',        label: 'Patient signed out / login trouble' },
+  { code: 'other',             label: 'Other (describe below)' },
+] as const;
+
+export type FlagVisitReason = (typeof FLAG_VISIT_REASONS)[number]['code'];
+
 /** A visit the doctor flagged because Token 2 could not be shown, plus the
  *  patient's answer. status: pending until they respond, then approved/rejected. */
 export interface FlaggedVisit {
@@ -59,6 +73,10 @@ export interface FlaggedVisit {
   patient_name: string;
   status: 'pending' | 'approved' | 'rejected';
   visit_date: string;
+  reason_code: FlagVisitReason | null;
+  /** Server-resolved display text, so both clients show identical wording. */
+  reason_label: string;
+  /** Only ever set when reason_code === 'other'. */
   doctor_note: string | null;
   responded_at: string | null;
   created_at: string | null;
@@ -588,11 +606,13 @@ export const doctorApi = {
   // Fallback when the patient can't show Token 2 (phone forgotten/lost). Creates a
   // PendingVisitApproval instead of charging immediately — the patient confirms in
   // their app before the visit is recorded.
-  flagVisit: (patientId: number, doctor_note?: string) =>
+  // doctor_note is only accepted when reason_code === 'other'; the server drops
+  // it otherwise, so the patient never sees free text beside a charge request.
+  flagVisit: (patientId: number, reason_code: FlagVisitReason, doctor_note?: string) =>
     apiClient
       .post<{ message: string; pending_visit_id: number }>(
         `/doctor/patients/${patientId}/flag-visit`,
-        { doctor_note: doctor_note ?? null },
+        { reason_code, doctor_note: doctor_note?.trim() || null },
       )
       .then(r => r.data),
 

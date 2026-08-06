@@ -230,11 +230,12 @@ All of the following have been built and verified across Sessions 1–8:
 - **2026-07-30 (later still):** Built pantry-first meal planning end-to-end, uncommitted: `PatientPantry` model + migration `c1d2e3f4a5b6` (not yet run); `meal_generator.is_staple()` substring staple-check; `meal_plan.py` router gets `GET/POST /pantry` and `GET /pantry/suggestions` (condition-aware, IFCT iron/calcium/fiber cols), `GET /week` now scores + sorts combos by pantry coverage (have/required/missing/cookable). Mobile: new `meals/pantry.tsx` screen + nav entry, types/service/queryKeys wired, `meals.tsx` tab shows "Cook now"/coverage badge and "My Pantry" button.
 
 **Blockers / pending:**
-- New pending-visit approve/reject flow not yet verified end-to-end in a running app.
+- `PendingVisitSection.tsx` (patient app) never run — typechecks only, no emulator driven.
 - `infra/cloud_scheduler_jobs.sh` not yet executed — the 3 cron endpoints remain unscheduled in GCP.
 - Pantry endpoints/UI (prior session) still unverified against a running app.
+- **Pre-existing, untouched:** `approve-renewal` 500s for any patient with NULL `token_1` (`RenewalApproveResponse` requires a str).
 
 **Next action:**
-Run the app and walk the flag → approve/reject loop end-to-end, then run `infra/cloud_scheduler_jobs.sh` against staging (needs `CRON_SECRET` from Secret Manager).
+Exercise `PendingVisitSection` in the patient app, then run `infra/cloud_scheduler_jobs.sh` against staging (needs `CRON_SECRET` from Secret Manager).
 
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).
