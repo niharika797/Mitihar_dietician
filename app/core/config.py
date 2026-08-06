@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     GEMINI_API_KEY_4: Optional[str] = None
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: Optional[str] = None
 
     # ── Internal cron secret ──────────────────────────────────────────────
     # Shared secret for /internal/cron/* endpoints called by Cloud Scheduler.

@@ -130,7 +130,7 @@ In-process APScheduler is **fully removed** (verified 2026-07-05, zero reference
 - `POST /internal/cron/deactivate-expired-patients` — deactivate patients whose `token_1_expiry` has passed
 - `POST /internal/cron/complete-expired-plans` — snapshot weekly summaries for the week that just ended (Mon–Sun)
 
-All three are idempotent and race-safe. **Cloud Scheduler jobs are NOT yet created** — pending; they will invoke via `mityahar-scheduler-sa`.
+All three are idempotent and race-safe. **Cloud Scheduler jobs are live in staging** (3 ENABLED jobs, named `flag-expiring-patients`, `deactivate-expired-patients`, `complete-expired-plans`, timezone `Etc/UTC`) and `infra/cloud_scheduler_jobs.sh` was reconciled 2026-08-06 to match these live names/timezone/schedules exactly — re-running it now correctly hits `ALREADY_EXISTS` instead of creating duplicates. Auth: OIDC token via `mityahar-scheduler-sa` plus the `X-Cron-Secret` header (the header is the only auth that actually matters — Cloud Run ingress is `allUsers`/public, so OIDC/IAM never rejects an unauthenticated call). **`complete-expired-plans` previously fired Sundays (`0 1 * * 0`) instead of Mondays**, silently snapshotting one week too early against `internal.py:141`'s `last_monday = today - (today.weekday() + 7)` math — fixed 2026-08-06 via `gcloud scheduler jobs update` to `0 1 * * 1` (Mondays, `Etc/UTC`).
 
 ### Rate limiting
 - Uses `slowapi` with Redis-backed storage (`app/core/limiter.py`); falls back to in-memory with warning if `REDIS_URL` unset.
@@ -171,8 +171,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES=15
 REFRESH_TOKEN_EXPIRE_MINUTES=10080
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 GOOGLE_CLIENT_ID=
-# GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI: DEAD CONFIG — never read by any code path
-# (verified 2026-07-05). Not in Secret Manager, not on Cloud Run. Safe to delete from .env.
+# GOOGLE_REDIRECT_URI removed 2026-08-06 (dead config, zero references anywhere).
+# GOOGLE_CLIENT_SECRET: DEAD CONFIG — never read by any code path, but kept because
+# scripts/audit_google_oauth.py checks for its presence via hasattr(). Not in Secret
+# Manager, not on Cloud Run. Safe to delete from .env.
 GEMINI_API_KEY_1=      # Only KEY_1 is used; rotating keys doesn't help (quota is per project)
 COOKIE_SECURE=False    # Set True in production
 ALLOW_HARD_DELETE=False

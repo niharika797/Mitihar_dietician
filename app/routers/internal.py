@@ -25,7 +25,8 @@ def _check_secret(x_cron_secret: str | None) -> None:
 
 
 # dead-code-scan: external-trigger — invoked by Cloud Scheduler, not by any
-# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh (NOT yet deployed).
+# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh — deployed and reconciled with
+# the live staging jobs (names/schedule/timezone match as of 2026-08-06).
 @router.post("/flag-expiring-patients")
 async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None)):
     """
@@ -93,7 +94,8 @@ async def flag_expiring_patients(x_cron_secret: str | None = Header(default=None
 
 
 # dead-code-scan: external-trigger — invoked by Cloud Scheduler, not by any
-# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh (NOT yet deployed).
+# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh — deployed and reconciled with
+# the live staging jobs (names/schedule/timezone match as of 2026-08-06).
 @router.post("/deactivate-expired-patients")
 async def deactivate_expired_patients(x_cron_secret: str | None = Header(default=None)):
     """
@@ -128,7 +130,8 @@ async def deactivate_expired_patients(x_cron_secret: str | None = Header(default
 
 
 # dead-code-scan: external-trigger — invoked by Cloud Scheduler, not by any
-# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh (NOT yet deployed).
+# in-repo caller. Job definition: infra/cloud_scheduler_jobs.sh — deployed and reconciled with
+# the live staging jobs (names/schedule/timezone match as of 2026-08-06).
 # Scheduled Mondays only: last_monday below depends on the run day.
 @router.post("/complete-expired-plans")
 async def complete_expired_plans_endpoint(x_cron_secret: str | None = Header(default=None)):

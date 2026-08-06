@@ -199,7 +199,7 @@ All of the following have been built and verified across Sessions 1–8:
 
 ## CURRENT STATUS
 
-> _Updated 2026-08-05. Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-08-06 (later same day). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Committed (`0a2cfbe`):** Quantity-aware pantry backend + grams input UI — `patient_pantry.quantity_g` three-state, migration `e4f5a6b7c8d9`, `_PANTRY_IN_STOCK` predicate, live-computed `/shopping-list`, `confirm-choice` pantry deltas, debounced grams input in `PantrySection`.
 
@@ -230,12 +230,10 @@ All of the following have been built and verified across Sessions 1–8:
 - **2026-07-30 (later still):** Built pantry-first meal planning end-to-end, uncommitted: `PatientPantry` model + migration `c1d2e3f4a5b6` (not yet run); `meal_generator.is_staple()` substring staple-check; `meal_plan.py` router gets `GET/POST /pantry` and `GET /pantry/suggestions` (condition-aware, IFCT iron/calcium/fiber cols), `GET /week` now scores + sorts combos by pantry coverage (have/required/missing/cookable). Mobile: new `meals/pantry.tsx` screen + nav entry, types/service/queryKeys wired, `meals.tsx` tab shows "Cook now"/coverage badge and "My Pantry" button.
 
 **Blockers / pending:**
-- `PendingVisitSection.tsx` (patient app) never run — typechecks only, no emulator driven.
-- `infra/cloud_scheduler_jobs.sh` not yet executed — the 3 cron endpoints remain unscheduled in GCP.
-- Pantry endpoints/UI (prior session) still unverified against a running app.
-- **Pre-existing, untouched:** `approve-renewal` 500s for any patient with NULL `token_1` (`RenewalApproveResponse` requires a str).
+- `PendingVisitSection.tsx` (patient app) never run in an emulator — typechecks only.
+- **Pre-existing, untouched:** `approve-renewal` 500s for any patient with NULL `token_1`.
 
 **Next action:**
-Exercise `PendingVisitSection` in the patient app, then run `infra/cloud_scheduler_jobs.sh` against staging (needs `CRON_SECRET` from Secret Manager).
+Confirm the live `complete-expired-plans` job shows the updated Monday/`Etc/UTC` schedule (`gcloud scheduler jobs describe`), then exercise `PendingVisitSection.tsx` in an emulator.
 
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).
