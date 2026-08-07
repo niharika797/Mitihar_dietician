@@ -173,6 +173,11 @@ cloud-sql-proxy.exe
 test-results/
 tests/performance/e2e/playwright.compiled.config.ts
 
+# ── Load-test pre-minted JWTs (live credentials, pulled from GCS per run) ────
+# Produced by scripts/mint_load_test_tokens.py. Real signed access tokens for
+# every load-test account — never commit.
+tests/performance/tokens.json
+
 # ── Local Claude Code config (machine-specific paths, personal hooks) ────────
 .claude/*
 !.claude/rules/

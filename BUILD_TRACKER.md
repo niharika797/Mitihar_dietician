@@ -199,7 +199,7 @@ All of the following have been built and verified across Sessions 1–8:
 
 ## CURRENT STATUS
 
-> _Updated 2026-08-06 (later same day). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-08-07 (later same day). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Committed (`0a2cfbe`):** Quantity-aware pantry backend + grams input UI — `patient_pantry.quantity_g` three-state, migration `e4f5a6b7c8d9`, `_PANTRY_IN_STOCK` predicate, live-computed `/shopping-list`, `confirm-choice` pantry deltas, debounced grams input in `PantrySection`.
 
@@ -229,11 +229,19 @@ All of the following have been built and verified across Sessions 1–8:
 - **2026-07-30 (later same day):** Bumped `mitihar-patient-app` deps (`package.json`/`pnpm-lock.yaml`): `expo` 55.0.27→55.0.28 (+ expo-* patch bumps), `@react-navigation/native` 7.1.28→7.3.14, `react-native` 0.83.6→0.83.10. Uncommitted.
 - **2026-07-30 (later still):** Built pantry-first meal planning end-to-end, uncommitted: `PatientPantry` model + migration `c1d2e3f4a5b6` (not yet run); `meal_generator.is_staple()` substring staple-check; `meal_plan.py` router gets `GET/POST /pantry` and `GET /pantry/suggestions` (condition-aware, IFCT iron/calcium/fiber cols), `GET /week` now scores + sorts combos by pantry coverage (have/required/missing/cookable). Mobile: new `meals/pantry.tsx` screen + nav entry, types/service/queryKeys wired, `meals.tsx` tab shows "Cook now"/coverage badge and "My Pantry" button.
 
+**Done (2026-08-07, later same day) — 1000-user load test, 4 isolated runs:**
+- Run 1 (1 worker/1 vCPU, `db-custom-2-7680`): Cloud Run CPU pinned 0.80/0.88, queue depth 177/281; sustained p95 mean/max 3448/5000ms — failed.
+- Run 2 (2 workers/2 vCPU): fixed Cloud Run (CPU 0.60/0.77, queue 0) but pegged Postgres CPU 0.88/1.00, QI latency mean 704ms→12,694ms; 55s continuous p95>3s streak — failed.
+- Run 3 (1 worker/2 vCPU, isolating vCPU from worker count): confirmed worker count — not vCPU — drives Cloud Run relief (CPU 0.46/0.55, lowest of all runs, yet queue depth and p95 worst of all runs — 272s streak) — failed, ruled out vCPU-alone.
+- Run 4 (2 workers/2 vCPU + Postgres bumped to `db-custom-4-15360`): **both abort conditions cleared** — sustained error rate 0.0088%, p95>3s streak ~4s (vs 30s threshold), Cloud SQL CPU 0.44/0.54 (below Run 1's original baseline), QI latency mean 176.6ms.
+- Enabled `pg_stat_statements` on staging (no restart — confirmed empirically via direct `CREATE EXTENSION`, not assumed). Top-5 query analysis: `/meal-plan/week`'s `selectinload` combo-materialization query is ~77% of top-5 total time — confirmed as the dominant cost driver, not evenly spread across endpoints. Not yet remediated.
+- Working config candidate: Cloud Run 2 workers/2 vCPU, `DB_POOL_SIZE=12`/`DB_MAX_OVERFLOW=7`, Postgres `db-custom-4-15360`. PR opened `feature/api-remediation-v0.2` → `main` (not merged) with this as the recommended baseline.
+
 **Blockers / pending:**
-- `PendingVisitSection.tsx` (patient app) never run in an emulator — typechecks only.
-- **Pre-existing, untouched:** `approve-renewal` 500s for any patient with NULL `token_1`.
+- Known coverage gap: pre-minted tokens skip `POST /auth/token` and `POST /auth/refresh` entirely, unlike real client traffic.
+- `/meal-plan/week` selectinload cost concentration confirmed but not addressed this session.
 
 **Next action:**
-Confirm the live `complete-expired-plans` job shows the updated Monday/`Etc/UTC` schedule (`gcloud scheduler jobs describe`), then exercise `PendingVisitSection.tsx` in an emulator.
+Review/merge decision on the open PR. If merged, consider addressing the `/meal-plan/week` selectinload cost concentration as a follow-up.
 
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).

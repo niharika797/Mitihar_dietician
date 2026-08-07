@@ -139,6 +139,16 @@ class PatientUser(HttpUser):
                 self._token = r.json().get("access_token", "")
 
         if self._token:
+            # Fetched once here, not as a recurring task: a real client loads its
+            # own profile on session start and caches it, it doesn't refetch on
+            # every action. The old per-task version pushed ~1000 GETs/minute at
+            # users.py:17's 100/minute-per-IP limit and was pure noise, not a
+            # measurement of anything the app does under load.
+            self.client.get(
+                "/api/v1/users/me",
+                headers=self._auth(),
+                name="GET /users/me [setup]",
+            )
             r2 = self.client.get(
                 "/api/v1/meal-plan/week",
                 headers=self._auth(),
@@ -183,14 +193,6 @@ class PatientUser(HttpUser):
             "/api/v1/progress/today",
             headers=self._auth(),
             name="GET /progress/today",
-        )
-
-    @task(1)
-    def view_profile(self):
-        self.client.get(
-            "/api/v1/users/me",
-            headers=self._auth(),
-            name="GET /users/me",
         )
 
     @task(2)
