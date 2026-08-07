@@ -13,7 +13,10 @@ jobs:
       # (full_backend_test.py, security_verification_test.py) needs a Postgres
       # service container + seed data and is not wired into CI yet.
       DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
-      SECRET_KEY: 0000000000000000000000000000000000000000000000000000000000
+      # Quoted: an unquoted all-digit value is parsed as a YAML 1.1 octal
+      # literal (all zeros -> integer 0), collapsing to "0" at runtime and
+      # failing the 32-char SECRET_KEY validator in app/core/config.py.
+      SECRET_KEY: "0000000000000000000000000000000000000000000000000000000000"
     steps:
       - uses: actions/checkout@v4
 
