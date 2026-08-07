@@ -1,9 +1,11 @@
+from datetime import date, datetime
+from decimal import Decimal
 from sqlalchemy import (
     Column, Integer, SmallInteger, String, Numeric, Float, Boolean, DateTime, Date,
     Text, Index, UniqueConstraint, CheckConstraint, ForeignKey, text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 from app.core.database import Base
 
@@ -23,11 +25,28 @@ class FoodItem(Base):
     fat_per_serving     = Column(Numeric(6, 2), nullable=False, default=0)
     fiber_per_serving   = Column(Numeric(6, 2), nullable=False, default=0)
     sodium_per_serving  = Column(Numeric(6, 2), default=0)
+    # IFCT2017-derived per-serving nutrients (added 2026-07-29). Nullable — computed
+    # from the ingredient chain only where coverage is sufficient (NULL = unknown, not 0).
+    # Minerals + fatty acids in mg; free sugars in g. Numeric(8,2) headroom for oils/fats.
+    iron_per_serving          = Column(Numeric(8, 2), nullable=True)
+    calcium_per_serving       = Column(Numeric(8, 2), nullable=True)
+    potassium_per_serving     = Column(Numeric(8, 2), nullable=True)
+    phosphorus_per_serving    = Column(Numeric(8, 2), nullable=True)
+    zinc_per_serving          = Column(Numeric(8, 2), nullable=True)
+    free_sugars_per_serving   = Column(Numeric(8, 2), nullable=True)
+    saturated_fat_per_serving = Column(Numeric(8, 2), nullable=True)
+    # Doctor-override guard: set true when a doctor edits this dish's tags, so the
+    # nutrition-derived tag script (derive_medical_tags.py) skips it.
+    tags_locked         = Column(Boolean, nullable=False, server_default='false')
     serving_weight_g    = Column(Numeric(6, 1))
     diet_type           = Column(String(30), nullable=False)   # see diet values below
     region_tags         = Column(ARRAY(Text), nullable=False, default=[])
     meal_time_tags      = Column(ARRAY(Text), nullable=False, default=[])
     ingredients         = Column(JSONB, nullable=False, default=[])  # [{"name": str, "amount_g": float}]
+    # ^ DEPRECATED (Stage 2, 2026-07-15): recipe_ingredients is the authoritative
+    #   ingredient source — all app readers repointed (meal_generator, meal_plan combo
+    #   detail); doctor add-recipe dual-writes. Do not add new readers. Column drop is
+    #   Stage 3 scope (after the 61 flagged artifact rows are resolved).
     source              = Column(String(20), nullable=False, default="manual")
     nutrition_source    = Column(Text, nullable=False, server_default="manual")
     is_verified         = Column(Boolean, nullable=False, default=False)
@@ -40,6 +59,16 @@ class FoodItem(Base):
     # Tracks which doctor submitted this item. NULL for system/ETL food items.
     created_at          = Column(DateTime(timezone=True), server_default=func.now())
     updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    deleted_at          = Column(DateTime(timezone=True), nullable=True)
+    # Soft-delete (Stage 6). NULL = active. Set by Tier 1 auto-merge instead of
+    # a hard DELETE. Distinct from is_verified=False, which means "unreviewed",
+    # not "deleted" — the Data Review tab must filter on this, not is_verified.
+    name_normalized     = Column(String(255), nullable=True)
+    # Canonical form of recipe_name (lower/strip/collapse-whitespace) for dedup +
+    # the uq_fi_canonical partial-unique index. Maintained on every insert/rename.
+    original_name       = Column(Text, nullable=True)
+    # Rollback-safety snapshot of recipe_name before clean_dish_names.py runs (migration
+    # b5c6d7e8f9a0). Modelled here so `alembic check` matches the live column.
 
     # relationships
     doctor              = relationship("Doctor")
@@ -55,6 +84,16 @@ Index("idx_fi_regions",    FoodItem.region_tags,   postgresql_using="gin")
 Index("idx_fi_meal_times", FoodItem.meal_time_tags, postgresql_using="gin")
 Index("idx_fi_avoid_tags",  FoodItem.avoid_tags,     postgresql_using="gin")
 Index("idx_fi_prefer_tags", FoodItem.prefer_tags,    postgresql_using="gin")
+Index("idx_fi_deleted_at", FoodItem.deleted_at, postgresql_where=text("deleted_at IS NULL"))
+Index("idx_fi_name_norm", FoodItem.name_normalized)
+# At most one CANONICAL dish per (normalized name, slot, diet) in the served pool.
+# Private/unverified doctor dishes and soft-deleted history are exempt (predicate),
+# and diet-variants differ on diet_type so both diet pools keep their copy.
+Index(
+    "uq_fi_canonical", FoodItem.name_normalized, FoodItem.slot_type, FoodItem.diet_type,
+    unique=True,
+    postgresql_where=text("deleted_at IS NULL AND is_verified = true AND name_normalized IS NOT NULL"),
+)
 
 # ---------------------------------------------------------------------------
 # MealTemplate  (DO NOT MODIFY)
@@ -87,36 +126,36 @@ class MealTemplate(Base):
 class Doctor(Base):
     __tablename__ = "doctors"
 
-    id                = Column(Integer, primary_key=True, autoincrement=True)
-    email             = Column(String, unique=True, nullable=False)
-    hashed_password   = Column(String, nullable=False)
-    name              = Column(String, nullable=False)
-    phone             = Column(String, nullable=True)
-    specialization    = Column(String, nullable=True)
-    clinic_name       = Column(String, nullable=True)
-    clinic_address    = Column(Text, nullable=True)
-    city              = Column(String, nullable=True)
-    state             = Column(String, nullable=True)
-    experience_years  = Column(Integer, nullable=True, default=0)
-    fee_per_month     = Column(Integer, nullable=True, default=0)   # in ₹
-    rating            = Column(Numeric(3, 2), nullable=True, default=0)
-    review_count      = Column(Integer, nullable=True, default=0)
-    is_accepting      = Column(Boolean, default=True)               # false = not taking new patients
-    mfa_secret              = Column(String, nullable=True)
-    mfa_enabled             = Column(Boolean, default=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    phone: Mapped[str | None] = mapped_column(String, nullable=True)
+    specialization: Mapped[str | None] = mapped_column(String, nullable=True)
+    clinic_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    clinic_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    city: Mapped[str | None] = mapped_column(String, nullable=True)
+    state: Mapped[str | None] = mapped_column(String, nullable=True)
+    experience_years: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    fee_per_month: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)   # in ₹
+    rating: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True, default=0)
+    review_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    is_accepting: Mapped[bool | None] = mapped_column(Boolean, default=True)               # false = not taking new patients
+    mfa_secret: Mapped[str | None] = mapped_column(String, nullable=True)
+    mfa_enabled: Mapped[bool | None] = mapped_column(Boolean, default=False)
     # ── Login lockout (T1-6) ──────────────────────────────────────────────
-    failed_login_attempts   = Column(Integer, default=0, nullable=False)
-    locked_until            = Column(DateTime(timezone=True), nullable=True)
-    is_active               = Column(Boolean, default=True)
-    role                    = Column(String(10), default="doctor")
-    created_at              = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at              = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    role: Mapped[str | None] = mapped_column(String(10), default="doctor")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # relationships
-    patients          = relationship("Patient", back_populates="doctor", foreign_keys="Patient.doctor_id")
-    patient_requests  = relationship("PatientRequest", back_populates="doctor")
-    subscription_codes = relationship("SubscriptionCode", back_populates="doctor")
-    clinical_notes    = relationship("ClinicalNote", foreign_keys="ClinicalNote.doctor_id", overlaps="doctor")
+    patients: Mapped[list["Patient"]] = relationship("Patient", back_populates="doctor", foreign_keys="Patient.doctor_id")
+    patient_requests: Mapped[list["PatientRequest"]] = relationship("PatientRequest", back_populates="doctor")
+    subscription_codes: Mapped[list["SubscriptionCode"]] = relationship("SubscriptionCode", back_populates="doctor")
+    clinical_notes: Mapped[list["ClinicalNote"]] = relationship("ClinicalNote", foreign_keys="ClinicalNote.doctor_id", overlaps="doctor")
 
 
 # ---------------------------------------------------------------------------
@@ -126,20 +165,20 @@ class Doctor(Base):
 class Admin(Base):
     __tablename__ = "admins"
 
-    id              = Column(Integer, primary_key=True, autoincrement=True)
-    email           = Column(String, unique=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    name            = Column(String, nullable=False)
-    mfa_secret              = Column(String, nullable=True)
-    mfa_enabled             = Column(Boolean, default=False)
-    allowed_ips             = Column(JSONB, default=[])
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    mfa_secret: Mapped[str | None] = mapped_column(String, nullable=True)
+    mfa_enabled: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    allowed_ips: Mapped[list | None] = mapped_column(JSONB, default=[])
     # ── Login lockout (T1-6) ──────────────────────────────────────────────
-    failed_login_attempts   = Column(Integer, default=0, nullable=False)
-    locked_until            = Column(DateTime(timezone=True), nullable=True)
-    is_active               = Column(Boolean, default=True)
-    role                    = Column(String(10), default="admin")
-    created_at              = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at              = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    role: Mapped[str | None] = mapped_column(String(10), default="admin")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 # ---------------------------------------------------------------------------
@@ -149,91 +188,91 @@ class Admin(Base):
 class Patient(Base):
     __tablename__ = "patients"
 
-    id                    = Column(Integer, primary_key=True, autoincrement=True)
-    email                 = Column(String, unique=True, nullable=False)
-    hashed_password       = Column(String, nullable=False)
-    name                  = Column(String, nullable=False)
-    phone                 = Column(String, nullable=True)
-    date_of_birth         = Column(Date, nullable=True)
-    gender                = Column(String, nullable=False)
-    height_cm             = Column(Numeric, nullable=False)
-    weight_kg             = Column(Numeric, nullable=False)
-    activity_level        = Column(String(5), nullable=False)      # S / LA / MA / VA / SA
-    diet_type             = Column(String(30), nullable=False)
-    region                = Column(String(10), nullable=False)
-    health_condition      = Column(String(30), default="Healthy")
-    bmi                   = Column(Numeric(5, 2), nullable=True)
-    bmr                   = Column(Numeric(7, 2), nullable=True)
-    tdee                  = Column(Numeric(7, 2), nullable=True)
-    target_weight_kg      = Column(Numeric, nullable=True)
-    health_goals          = Column(JSONB, default=[])
-    medical_conditions    = Column(JSONB, default=[])
-    food_allergies        = Column(JSONB, default=[])
-    dietary_preferences   = Column(JSONB, default=[])
-    meals_per_day         = Column(Integer, default=3)
-    fasting_days          = Column(JSONB, default=[])
-    sleep_hours           = Column(Numeric, nullable=True)
-    water_glasses         = Column(Integer, default=8)
-    occupation            = Column(String, nullable=True)
-    smoking               = Column(Boolean, default=False)
-    alcohol               = Column(Boolean, default=False)
-    user_type             = Column(String(20), default="standalone")   # standalone | doctor_connected
-    doctor_id             = Column(Integer, ForeignKey("doctors.id"), nullable=True)
-    subscription_status   = Column(String(20), default="inactive")
-    subscription_end_date = Column(DateTime(timezone=True), nullable=True)
-    disclaimer_accepted_at = Column(DateTime(timezone=True), nullable=True)
-    nonveg_meals_per_week = Column(Integer, default=3)
-    role                  = Column(String(10), default="patient")
-    is_active             = Column(Boolean, default=True)
-    google_id             = Column(String(128), unique=True, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    phone: Mapped[str | None] = mapped_column(String, nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    gender: Mapped[str] = mapped_column(String, nullable=False)
+    height_cm: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    weight_kg: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    activity_level: Mapped[str] = mapped_column(String(5), nullable=False)      # S / LA / MA / VA / SA
+    diet_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    region: Mapped[str] = mapped_column(String(10), nullable=False)
+    health_condition: Mapped[str | None] = mapped_column(String(30), default="Healthy")
+    bmi: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    bmr: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
+    tdee: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
+    target_weight_kg: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    health_goals: Mapped[list | None] = mapped_column(JSONB, default=[])
+    medical_conditions: Mapped[list | None] = mapped_column(JSONB, default=[])
+    food_allergies: Mapped[list | None] = mapped_column(JSONB, default=[])
+    dietary_preferences: Mapped[list | None] = mapped_column(JSONB, default=[])
+    meals_per_day: Mapped[int | None] = mapped_column(Integer, default=3)
+    fasting_days: Mapped[list | None] = mapped_column(JSONB, default=[])
+    sleep_hours: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    water_glasses: Mapped[int | None] = mapped_column(Integer, default=8)
+    occupation: Mapped[str | None] = mapped_column(String, nullable=True)
+    smoking: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    alcohol: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    user_type: Mapped[str | None] = mapped_column(String(20), default="standalone")   # standalone | doctor_connected
+    doctor_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=True)
+    subscription_status: Mapped[str | None] = mapped_column(String(20), default="inactive")
+    subscription_end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disclaimer_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    nonveg_meals_per_week: Mapped[int | None] = mapped_column(Integer, default=3)
+    role: Mapped[str | None] = mapped_column(String(10), default="patient")
+    is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    google_id: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     # Stable Google 'sub' claim — set on first Google Sign-In, never changes
-    is_email_verified     = Column(Boolean, default=False)
+    is_email_verified: Mapped[bool | None] = mapped_column(Boolean, default=False)
     # True once the patient clicks the verification link in their welcome email.
     # Google-authenticated patients are auto-verified (Google already confirmed the email).
-    pace_preference       = Column(String(20), nullable=True)
+    pace_preference: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # valid values: "slow" | "moderate" | "fast" — patient's preferred weight-loss pace
-    eating_habits         = Column(JSONB, default=[])
+    eating_habits: Mapped[list | None] = mapped_column(JSONB, default=[])
     # e.g. ["skips_breakfast", "late_night_eating", "irregular_meals"]
 
     # ── Token 1 — permanent meal plan identity ────────────────────────────
-    token_1               = Column(String(20), unique=True, nullable=True)
+    token_1: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
     # e.g. TKN1-PAT-00142 — generated once at onboarding, never changes
-    token_1_active        = Column(Boolean, default=False)
+    token_1_active: Mapped[bool | None] = mapped_column(Boolean, default=False)
     # True = meal plan active, False = inactive (expired or not yet onboarded)
-    token_1_expiry        = Column(DateTime(timezone=True), nullable=True)
+    token_1_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 30-day rolling window — reset on each renewal
 
     # ── Renewal flags ─────────────────────────────────────────────────────
-    renewal_requested     = Column(Boolean, default=False)
-    renewal_requested_at  = Column(DateTime(timezone=True), nullable=True)
-    expiring_soon         = Column(Boolean, default=False)
+    renewal_requested: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    renewal_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expiring_soon: Mapped[bool | None] = mapped_column(Boolean, default=False)
     # set True by daily cron when ≤4 days left on token_1_expiry
 
     # ── FCM push notifications ──────────────────────────────────────────────
-    fcm_token             = Column(String(512), nullable=True)
-    notification_preferences = Column(JSONB, nullable=True, default={})
+    fcm_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    notification_preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default={})
     # Device FCM token — updated on every login, cleared on logout.
     # NULL means patient has not granted notification permission or is logged out.
 
     # ── Login lockout (T1-6) ─────────────────────────────────────────────────
-    failed_login_attempts = Column(Integer, default=0, nullable=False)
-    locked_until          = Column(DateTime(timezone=True), nullable=True)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Session invalidation on password change (T1-7) ─────────────────────
     # Set to now() on every password reset. Tokens issued before this timestamp
     # are rejected, providing stateless session invalidation without a blacklist.
-    password_changed_at   = Column(DateTime(timezone=True), nullable=True)
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    created_at            = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at            = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # relationships
-    doctor                = relationship("Doctor", back_populates="patients", foreign_keys=[doctor_id])
-    recommendations       = relationship("Recommendation", back_populates="patient")
-    meal_logs             = relationship("MealLog", back_populates="patient")
-    progress_logs         = relationship("ProgressLog", back_populates="patient")
-    patient_requests      = relationship("PatientRequest", back_populates="patient")
-    patient_visits        = relationship("PatientVisit", back_populates="patient", order_by="PatientVisit.created_at.desc()")
+    doctor: Mapped["Doctor | None"] = relationship("Doctor", back_populates="patients", foreign_keys=[doctor_id])
+    recommendations: Mapped[list["Recommendation"]] = relationship("Recommendation", back_populates="patient")
+    meal_logs: Mapped[list["MealLog"]] = relationship("MealLog", back_populates="patient")
+    progress_logs: Mapped[list["ProgressLog"]] = relationship("ProgressLog", back_populates="patient")
+    patient_requests: Mapped[list["PatientRequest"]] = relationship("PatientRequest", back_populates="patient")
+    patient_visits: Mapped[list["PatientVisit"]] = relationship("PatientVisit", back_populates="patient", order_by="PatientVisit.created_at.desc()")
 
 
 # Partial unique index on google_id — declared here so Alembic autogenerate doesn't flag it as drift
@@ -243,6 +282,7 @@ Index(
     unique=True,
     postgresql_where=text("google_id IS NOT NULL"),
 )
+Index("idx_patients_doctor_id", Patient.doctor_id)
 
 
 # ---------------------------------------------------------------------------
@@ -252,28 +292,28 @@ Index(
 class Recommendation(Base):
     __tablename__ = "recommendations"
 
-    id                   = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id           = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    week_start_date      = Column(Date)
-    week_number          = Column(Integer)
-    meals                = Column(JSONB, nullable=False, default=[])
-    ingredient_checklist = Column(JSONB, default=[])
-    used_food_ids        = Column(JSONB, default=[])
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
+    week_start_date: Mapped[date | None] = mapped_column(Date)
+    week_number: Mapped[int | None] = mapped_column(Integer)
+    meals: Mapped[list] = mapped_column(JSONB, nullable=False, default=[])
+    ingredient_checklist: Mapped[list | None] = mapped_column(JSONB, default=[])
+    used_food_ids: Mapped[list | None] = mapped_column(JSONB, default=[])
     # List of food_item IDs used in this plan — enables cross-week variety
-    is_active            = Column(Boolean, default=True)
-    generated_by         = Column(String(20), default="system")   # system | doctor
-    doctor_notes         = Column(Text, nullable=True)
-    version              = Column(Integer, default=1)
-    generation_version   = Column(Integer, nullable=False, default=1)
+    is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
+    generated_by: Mapped[str | None] = mapped_column(String(20), default="system")   # system | doctor
+    doctor_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int | None] = mapped_column(Integer, default=1)
+    generation_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     # 1 = old single-combo JSONB model, 2 = new multi-combo weekly_combos model
-    approval_status      = Column(String(20), nullable=False, default="approved")
+    approval_status: Mapped[str] = mapped_column(String(20), nullable=False, default="approved")
     # 'draft' | 'approved' — v1 plans default 'approved' (always patient-visible)
-    created_at           = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at           = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # relationships
-    patient              = relationship("Patient", back_populates="recommendations")
-    meal_logs            = relationship("MealLog", back_populates="recommendation")
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="recommendations")
+    meal_logs: Mapped[list["MealLog"]] = relationship("MealLog", back_populates="recommendation")
 
     __table_args__ = (
         Index("idx_rec_patient", "patient_id"),
@@ -288,18 +328,18 @@ class Recommendation(Base):
 class WeeklyCombo(Base):
     __tablename__ = "weekly_combos"
 
-    id                 = Column(Integer, primary_key=True, autoincrement=True)
-    recommendation_id  = Column(Integer, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False)
-    slot_date          = Column(Date, nullable=False)
-    meal_type          = Column(String(20), nullable=False)   # 'Breakfast' / 'Lunch' / 'Dinner'
-    combo_index        = Column(SmallInteger, nullable=False)   # 0-3, hard cap 4 per slot
-    slot_composition   = Column(ARRAY(Text), nullable=False)   # e.g. ['grain','dal_protein','sabzi']
-    total_calories     = Column(Numeric(7, 2), nullable=False)   # unscaled SUM(cal_per_serving)
-    dishes              = Column(JSONB, nullable=False, default=[])   # same shape as meals[].dishes[]
-    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    recommendation_id: Mapped[int] = mapped_column(Integer, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False)
+    slot_date: Mapped[date] = mapped_column(Date, nullable=False)
+    meal_type: Mapped[str] = mapped_column(String(20), nullable=False)   # 'Breakfast' / 'Lunch' / 'Dinner'
+    combo_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)   # 0-3, hard cap 4 per slot
+    slot_composition: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)   # e.g. ['grain','dal_protein','sabzi']
+    total_calories: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False)   # unscaled SUM(cal_per_serving)
+    dishes: Mapped[list] = mapped_column(JSONB, nullable=False, default=[])   # same shape as meals[].dishes[]
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
-    recommendation      = relationship("Recommendation")
+    recommendation: Mapped["Recommendation"] = relationship("Recommendation")
 
     __table_args__ = (
         UniqueConstraint("recommendation_id", "slot_date", "meal_type", "combo_index", name="uq_weekly_combo"),
@@ -317,16 +357,16 @@ class WeeklyCombo(Base):
 class WeeklyPatientSummary(Base):
     __tablename__ = "weekly_patient_summary"
 
-    id                 = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id         = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
-    recommendation_id  = Column(Integer, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False)
-    week_start_date    = Column(Date, nullable=False)
-    generated_at       = Column(DateTime(timezone=True), server_default=func.now())
-    summary_data       = Column(JSONB, nullable=False, default={})
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    recommendation_id: Mapped[int] = mapped_column(Integer, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False)
+    week_start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    summary_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default={})
 
     # relationships
-    patient            = relationship("Patient")
-    recommendation     = relationship("Recommendation")
+    patient: Mapped["Patient"] = relationship("Patient")
+    recommendation: Mapped["Recommendation"] = relationship("Recommendation")
 
     __table_args__ = (
         UniqueConstraint("patient_id", "week_start_date", name="uq_wps_patient_week"),
@@ -341,26 +381,26 @@ class WeeklyPatientSummary(Base):
 class MealLog(Base):
     __tablename__ = "meal_logs"
 
-    id                  = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id          = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    recommendation_id   = Column(Integer, ForeignKey("recommendations.id"), nullable=True)
-    logged_date         = Column(Date, nullable=False)
-    meal_type           = Column(String(20))   # Breakfast / MorningSnacks / Lunch / EveningSnacks / Dinner
-    food_id             = Column(Integer, ForeignKey("food_items.id"), nullable=True)
-    custom_food_name    = Column(String, nullable=True)
-    calories_consumed   = Column(Numeric(7, 2))
-    protein_g           = Column(Numeric(6, 2), default=0)
-    carbs_g             = Column(Numeric(6, 2), default=0)
-    fat_g               = Column(Numeric(6, 2), default=0)
-    fiber_g             = Column(Numeric(6, 2), default=0)
-    portion_servings    = Column(Numeric(4, 2), default=1.0)
-    notes               = Column(Text, nullable=True)
-    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
+    recommendation_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("recommendations.id"), nullable=True)
+    logged_date: Mapped[date] = mapped_column(Date, nullable=False)
+    meal_type: Mapped[str | None] = mapped_column(String(20))   # Breakfast / MorningSnacks / Lunch / EveningSnacks / Dinner
+    food_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("food_items.id"), nullable=True)
+    custom_food_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    calories_consumed: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
+    protein_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), default=0)
+    carbs_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), default=0)
+    fat_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), default=0)
+    fiber_g: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), default=0)
+    portion_servings: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), default=1.0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
-    patient             = relationship("Patient", back_populates="meal_logs")
-    recommendation      = relationship("Recommendation", back_populates="meal_logs")
-    food_item           = relationship("FoodItem")
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="meal_logs")
+    recommendation: Mapped["Recommendation | None"] = relationship("Recommendation", back_populates="meal_logs")
+    food_item: Mapped["FoodItem | None"] = relationship("FoodItem")
 
     __table_args__ = (
         Index("idx_ml_patient_date", "patient_id", "logged_date"),
@@ -374,23 +414,23 @@ class MealLog(Base):
 class ProgressLog(Base):
     __tablename__ = "progress_logs"
 
-    id                       = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id               = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    log_date                 = Column(Date, nullable=False)
-    weight_kg                = Column(Numeric, nullable=True)
-    water_glasses            = Column(Integer, nullable=True)
-    steps                    = Column(Integer, nullable=True)
-    calories_burned          = Column(Numeric, nullable=True)
-    total_calories_consumed  = Column(Numeric, nullable=True)
-    protein_pct              = Column(Numeric, nullable=True)
-    carbs_pct                = Column(Numeric, nullable=True)
-    fat_pct                  = Column(Numeric, nullable=True)
-    streak_days              = Column(Integer, nullable=False, default=0)
-    calorie_adjustment       = Column(Numeric, nullable=True)
-    created_at               = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
+    log_date: Mapped[date] = mapped_column(Date, nullable=False)
+    weight_kg: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    water_glasses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    steps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    calories_burned: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    total_calories_consumed: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    protein_pct: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    carbs_pct: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    fat_pct: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    streak_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    calorie_adjustment: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
-    patient                  = relationship("Patient", back_populates="progress_logs")
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="progress_logs")
 
     __table_args__ = (
         UniqueConstraint("patient_id", "log_date", name="uq_progress_patient_date"),
@@ -404,17 +444,21 @@ class ProgressLog(Base):
 class PatientRequest(Base):
     __tablename__ = "patient_requests"
 
-    id              = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id      = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    doctor_id       = Column(Integer, ForeignKey("doctors.id"), nullable=False)
-    status          = Column(String(20), default="pending")   # pending / accepted / rejected
-    rejection_note  = Column(Text, nullable=True)
-    requested_at    = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    responded_at    = Column(DateTime(timezone=True), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False)
+    status: Mapped[str | None] = mapped_column(String(20), default="pending")   # pending / accepted / rejected
+    rejection_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # relationships
-    patient         = relationship("Patient", back_populates="patient_requests")
-    doctor          = relationship("Doctor", back_populates="patient_requests")
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="patient_requests")
+    doctor: Mapped["Doctor"] = relationship("Doctor", back_populates="patient_requests")
+
+    __table_args__ = (
+        Index("idx_patient_requests_doctor_id", "doctor_id"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -424,22 +468,26 @@ class PatientRequest(Base):
 class SubscriptionCode(Base):
     __tablename__ = "subscription_codes"
 
-    id                 = Column(Integer, primary_key=True, autoincrement=True)
-    doctor_id          = Column(Integer, ForeignKey("doctors.id"), nullable=False)
-    code               = Column(String(20), unique=True, nullable=False)
-    is_used            = Column(Boolean, default=False)
-    used_by_patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
-    used_at            = Column(DateTime(timezone=True), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    is_used: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    used_by_patient_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("patients.id"), nullable=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Three-state lifecycle: AVAILABLE → RESERVED → CONSUMED
     # reserved_by set at registration; used_by_patient_id set at activation
-    reserved_by        = Column(Integer, ForeignKey("patients.id"), nullable=True)
-    reserved_at        = Column(DateTime(timezone=True), nullable=True)
-    expires_at         = Column(DateTime(timezone=True), nullable=True)
-    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+    reserved_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("patients.id"), nullable=True)
+    reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
-    doctor             = relationship("Doctor", back_populates="subscription_codes")
-    used_by_patient    = relationship("Patient", foreign_keys=[used_by_patient_id])
+    doctor: Mapped["Doctor"] = relationship("Doctor", back_populates="subscription_codes")
+    used_by_patient: Mapped["Patient | None"] = relationship("Patient", foreign_keys=[used_by_patient_id])
+
+    __table_args__ = (
+        Index("idx_sc_reserved_by", "reserved_by"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -449,19 +497,19 @@ class SubscriptionCode(Base):
 class ClinicalNote(Base):
     __tablename__ = "clinical_notes"
 
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    doctor_id   = Column(Integer, ForeignKey("doctors.id"), nullable=False)
-    patient_id  = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    note_type   = Column(String(20), nullable=False, default="general")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
+    note_type: Mapped[str] = mapped_column(String(20), nullable=False, default="general")
     # "general" | "dietary" | "medical" | "progress"
-    content     = Column(Text, nullable=False)
-    is_private  = Column(Boolean, default=True)   # True = doctor-only, False = visible to patient
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at  = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    is_private: Mapped[bool | None] = mapped_column(Boolean, default=True)   # True = doctor-only, False = visible to patient
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # relationships
-    doctor      = relationship("Doctor", overlaps="clinical_notes")
-    patient     = relationship("Patient")
+    doctor: Mapped["Doctor"] = relationship("Doctor", overlaps="clinical_notes")
+    patient: Mapped["Patient"] = relationship("Patient")
 
     __table_args__ = (
         Index("idx_cn_doctor_patient", "doctor_id", "patient_id"),
@@ -475,19 +523,82 @@ class ClinicalNote(Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    actor_id    = Column(Integer, nullable=False)   # doctor.id or admin.id
-    actor_role  = Column(String(10), nullable=False)  # "doctor" | "admin"
-    action      = Column(String(100), nullable=False)  # e.g. "accept_request", "deactivate_doctor"
-    entity_type = Column(String(50), nullable=True)   # e.g. "patient", "doctor", "recipe"
-    entity_id   = Column(Integer, nullable=True)      # ID of the affected record
-    detail      = Column(JSONB, default={})           # any extra context
-    ip_address  = Column(String(45), nullable=True)   # IPv4 or IPv6
-    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    actor_id: Mapped[int] = mapped_column(Integer, nullable=False)   # doctor.id or admin.id
+    actor_role: Mapped[str] = mapped_column(String(10), nullable=False)  # "doctor" | "admin"
+    action: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g. "accept_request", "deactivate_doctor"
+    entity_type: Mapped[str | None] = mapped_column(String(50), nullable=True)   # e.g. "patient", "doctor", "recipe"
+    entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)      # ID of the affected record
+    detail: Mapped[dict | None] = mapped_column(JSONB, default={})           # any extra context
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)   # IPv4 or IPv6
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         Index("idx_al_actor", "actor_id", "actor_role"),
         Index("idx_al_created", "created_at"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# DataChangeRequest  (Stage 6 — dish-duplicate merge/conflict pipeline)
+# ---------------------------------------------------------------------------
+
+class DataChangeRequest(Base):
+    __tablename__ = "data_change_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_table: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    field_changed: Mapped[str] = mapped_column(String(100), nullable=False)
+    old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # doctor user_id (as string), or "system:ai_observer" / "system:tier1_auto" — polymorphic like AuditLog.actor_id, can't FK
+    proposed_by: Mapped[str] = mapped_column(String(50), nullable=False)
+    proposal_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    tier: Mapped[str] = mapped_column(String(20), nullable=False)  # "tier1_auto" | "tier2_review"
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # "pending" | "approved" | "rejected" | "auto_applied"
+    reviewed_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("admins.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_dcr_status_tier", "status", "tier"),
+        Index("idx_dcr_proposed_by", "proposed_by"),
+        Index("idx_dcr_target", "target_table", "target_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# DataChangeAuditLog  (Stage 6 — append-only trail of every data-change action)
+# ---------------------------------------------------------------------------
+# One row per state transition (merge / proposed / approved / rejected / applied).
+# App code only ever INSERTs here — never UPDATE/DELETE — so the trail is immutable.
+# (DB-grant enforcement of that is deferred; see docs/STAGE6_SPEC.md §1.2.)
+
+class DataChangeAuditLog(Base):
+    __tablename__ = "data_change_audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    request_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("data_change_requests.id"), nullable=True
+    )  # null for direct actions (e.g. tier1_auto merge) that skip the request queue
+    target_table: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    # "merge" | "proposed" | "approved" | "rejected" | "applied" | "soft_delete"
+    field_changed: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    before_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # actor: doctor user_id (as string), admin id, or "system:tier1_auto" / "system:ai_observer"
+    actor: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_dcal_target", "target_table", "target_id"),
+        Index("idx_dcal_request", "request_id"),
+        Index("idx_dcal_action", "action"),
     )
 
 
@@ -498,24 +609,24 @@ class AuditLog(Base):
 class PatientVisit(Base):
     __tablename__ = "patient_visits"
 
-    id               = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id       = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    doctor_id        = Column(Integer, ForeignKey("doctors.id"), nullable=False)
-    token_2          = Column(String(24), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False)
+    token_2: Mapped[str] = mapped_column(String(24), nullable=False)
     # e.g. TKN2-XK9-20260301 — freshly generated every 30-day cycle
-    cycle_start      = Column(DateTime(timezone=True), nullable=False)
-    cycle_expiry     = Column(DateTime(timezone=True), nullable=False)
+    cycle_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    cycle_expiry: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # cycle_expiry = cycle_start + 30 days
-    last_charged_at  = Column(DateTime(timezone=True), nullable=True)
+    last_charged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # timestamp of most recent chargeable visit (>15 days since previous)
-    visit_counter    = Column(Integer, default=0, nullable=False)
+    visit_counter: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # increments only on chargeable visits (>15-day gap)
-    created_at       = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at       = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # relationships
-    patient          = relationship("Patient", back_populates="patient_visits")
-    doctor           = relationship("Doctor")
+    patient: Mapped["Patient"] = relationship("Patient", back_populates="patient_visits")
+    doctor: Mapped["Doctor"] = relationship("Doctor")
 
     __table_args__ = (
         Index("idx_pv_patient", "patient_id"),
@@ -535,36 +646,36 @@ class DoctorMealOverride(Base):
     """
     __tablename__ = "doctor_meal_overrides"
 
-    id                       = Column(Integer, primary_key=True, autoincrement=True)
-    doctor_id                = Column(Integer, ForeignKey("doctors.id"), nullable=False)
-    patient_id               = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    override_date            = Column(Date, nullable=False)
-    slot_type                = Column(String(50), nullable=True)   # grain / main_dish / snack_item etc.
-    meal_type                = Column(String(30), nullable=False)   # Breakfast / Lunch etc.
-    rejected_food_id         = Column(Integer, ForeignKey("food_items.id"), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id"), nullable=False)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
+    override_date: Mapped[date] = mapped_column(Date, nullable=False)
+    slot_type: Mapped[str | None] = mapped_column(String(50), nullable=True)   # grain / main_dish / snack_item etc.
+    meal_type: Mapped[str] = mapped_column(String(30), nullable=False)   # Breakfast / Lunch etc.
+    rejected_food_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("food_items.id"), nullable=True)
     # NULL if original meal was a custom (non-DB) meal
-    chosen_food_id           = Column(Integer, ForeignKey("food_items.id"), nullable=True)
+    chosen_food_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("food_items.id"), nullable=True)
     # NULL if doctor replaced with a free-text custom meal
     # ── Patient context snapshot at time of override ──────────────────────
-    patient_health_condition = Column(String(30), nullable=True)   # "Healthy" / "Diabetic-Friendly" etc.
-    patient_medical_conditions = Column(JSONB, default=[])         # ["PCOS/PCOD"] etc.
-    patient_region           = Column(String(10), nullable=True)   # "North" / "South" etc.
-    patient_diet_type        = Column(String(30), nullable=True)   # "Vegetarian" etc.
-    patient_age_bucket       = Column(String(10), nullable=True)   # "18-25" / "26-35" etc.
-    patient_bmi_bucket       = Column(String(15), nullable=True)   # "normal" / "overweight" etc.
-    created_at               = Column(DateTime(timezone=True), server_default=func.now())
+    patient_health_condition: Mapped[str | None] = mapped_column(String(30), nullable=True)   # "Healthy" / "Diabetic-Friendly" etc.
+    patient_medical_conditions: Mapped[list | None] = mapped_column(JSONB, default=[])         # ["PCOS/PCOD"] etc.
+    patient_region: Mapped[str | None] = mapped_column(String(10), nullable=True)   # "North" / "South" etc.
+    patient_diet_type: Mapped[str | None] = mapped_column(String(30), nullable=True)   # "Vegetarian" etc.
+    patient_age_bucket: Mapped[str | None] = mapped_column(String(10), nullable=True)   # "18-25" / "26-35" etc.
+    patient_bmi_bucket: Mapped[str | None] = mapped_column(String(15), nullable=True)   # "normal" / "overweight" etc.
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # ── Clinical edit-trail enrichment (R-1) ───────────────────────────────
-    patient_condition_snapshot = Column(JSONB, nullable=True)
+    patient_condition_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # {"conditions": ["Type 2 Diabetes"], "avoid_tags": ["avoid_diabetes"]}
-    edit_reason               = Column(String(20), nullable=False, default="swap")
+    edit_reason: Mapped[str] = mapped_column(String(20), nullable=False, default="swap")
     # 'swap' | 'add' | 'remove' | 'custom_add'
-    doctor_note                = Column(Text, nullable=True)
+    doctor_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # relationships
-    doctor                   = relationship("Doctor")
-    patient                  = relationship("Patient")
-    rejected_food            = relationship("FoodItem", foreign_keys=[rejected_food_id])
-    chosen_food              = relationship("FoodItem", foreign_keys=[chosen_food_id])
+    doctor: Mapped["Doctor"] = relationship("Doctor")
+    patient: Mapped["Patient"] = relationship("Patient")
+    rejected_food: Mapped["FoodItem | None"] = relationship("FoodItem", foreign_keys=[rejected_food_id])
+    chosen_food: Mapped["FoodItem | None"] = relationship("FoodItem", foreign_keys=[chosen_food_id])
 
     __table_args__ = (
         Index("idx_dmo_doctor",  "doctor_id"),
@@ -586,17 +697,17 @@ class MealRating(Base):
     """
     __tablename__ = "meal_ratings"
 
-    id                = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id        = Column(Integer, ForeignKey("patients.id"), nullable=False)
-    food_item_id      = Column(Integer, ForeignKey("food_items.id"), nullable=False)
-    recommendation_id = Column(Integer, ForeignKey("recommendations.id"), nullable=True)
-    rating            = Column(Integer, nullable=False)   # +1 (liked) or -1 (disliked)
-    rated_at          = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
+    food_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("food_items.id"), nullable=False)
+    recommendation_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("recommendations.id"), nullable=True)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)   # +1 (liked) or -1 (disliked)
+    rated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
-    patient           = relationship("Patient")
-    food_item         = relationship("FoodItem")
-    recommendation    = relationship("Recommendation")
+    patient: Mapped["Patient"] = relationship("Patient")
+    food_item: Mapped["FoodItem"] = relationship("FoodItem")
+    recommendation: Mapped["Recommendation | None"] = relationship("Recommendation")
 
     __table_args__ = (
         UniqueConstraint("patient_id", "food_item_id", "recommendation_id",
@@ -617,13 +728,13 @@ class EmailVerificationToken(Base):
     """
     __tablename__ = "email_verification_tokens"
 
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, unique=True)
-    token      = Column(String(64), unique=True, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, unique=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    patient    = relationship("Patient")
+    patient: Mapped["Patient"] = relationship("Patient")
 
     __table_args__ = (
         Index("idx_evt_token",   "token"),
@@ -644,13 +755,13 @@ class PasswordResetToken(Base):
     """
     __tablename__ = "password_reset_tokens"
 
-    id         = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, unique=True)
-    token      = Column(String(64), unique=True, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, unique=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    patient    = relationship("Patient")
+    patient: Mapped["Patient"] = relationship("Patient")
 
     __table_args__ = (
         Index("idx_prt_token",   "token"),
@@ -675,20 +786,26 @@ class PendingVisitApproval(Base):
     """
     __tablename__ = "pending_visit_approvals"
 
-    id              = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id      = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
-    doctor_id       = Column(Integer, ForeignKey("doctors.id", ondelete="CASCADE"), nullable=False)
-    patient_visit_id= Column(Integer, ForeignKey("patient_visits.id"), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id", ondelete="CASCADE"), nullable=False)
+    patient_visit_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("patient_visits.id"), nullable=True)
     # Linked to the PatientVisit cycle (set on creation, may be None if no cycle yet)
-    status          = Column(String(10), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")
     # "pending" | "approved" | "rejected"
-    visit_date      = Column(DateTime(timezone=True), nullable=False)
-    doctor_note     = Column(Text, nullable=True)
-    responded_at    = Column(DateTime(timezone=True), nullable=True)
-    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    visit_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Why Token 2 could not be shown. Constrained by ck_pva_reason_code to the
+    # values in FLAG_VISIT_REASONS. NULL only on rows predating the field.
+    doctor_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Free text, and ONLY set when reason_code == "other" — the API strips it
+    # otherwise. This string is shown to the patient next to a charge they are
+    # being asked to confirm, so the preset path deliberately cannot carry one.
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    patient         = relationship("Patient")
-    doctor          = relationship("Doctor")
+    patient: Mapped["Patient"] = relationship("Patient")
+    doctor: Mapped["Doctor"] = relationship("Doctor")
 
     __table_args__ = (
         Index("idx_pva_patient", "patient_id"),
@@ -703,16 +820,16 @@ class PendingVisitApproval(Base):
 class PatientMealConfig(Base):
     __tablename__ = "patient_meal_config"
 
-    id                  = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id          = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"),
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"),
                                  nullable=False, unique=True)
-    meal_split_override = Column(JSONB, nullable=True)
+    meal_split_override: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # {"breakfast_pct": 25, "lunch_pct": 35, "dinner_pct": 25} when set.
     # NULL = use system defaults. Application layer enforces the three values sum to 85.
-    created_at          = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    patient             = relationship("Patient")
+    patient: Mapped["Patient"] = relationship("Patient")
 
     __table_args__ = (
         Index("idx_pmc_patient", "patient_id"),
@@ -726,16 +843,16 @@ class PatientMealConfig(Base):
 class PatientDishPreferences(Base):
     __tablename__ = "patient_dish_preferences"
 
-    id                 = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id         = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
-    food_item_id       = Column(Integer, ForeignKey("food_items.id", ondelete="CASCADE"), nullable=False)
-    preference_type    = Column(Text, nullable=False)  # 'pin' or 'block'
-    added_by_doctor_id = Column(Integer, ForeignKey("doctors.id", ondelete="RESTRICT"), nullable=False)
-    note               = Column(Text, nullable=True)
-    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    food_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("food_items.id", ondelete="CASCADE"), nullable=False)
+    preference_type: Mapped[str] = mapped_column(Text, nullable=False)  # 'pin' or 'block'
+    added_by_doctor_id: Mapped[int] = mapped_column(Integer, ForeignKey("doctors.id", ondelete="RESTRICT"), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    patient   = relationship("Patient")
-    food_item = relationship("FoodItem")
+    patient: Mapped["Patient"] = relationship("Patient")
+    food_item: Mapped["FoodItem"] = relationship("FoodItem")
 
     __table_args__ = (
         UniqueConstraint("patient_id", "food_item_id", name="uq_patient_dish_preference"),
@@ -747,27 +864,64 @@ class PatientDishPreferences(Base):
 
 
 # ---------------------------------------------------------------------------
+# PatientPantry  (presence set — one row = "this patient has this ingredient")
+# ---------------------------------------------------------------------------
+
+class PatientPantry(Base):
+    """Pantry-first meal planning: which ingredients a patient has on hand.
+
+    Read by GET /meal-plan/week to rank combos by ingredient coverage (matched by
+    normalized name, not id) and by GET /meal-plan/shopping-list to subtract what
+    the patient already has. POST /meal-plan/confirm-choice draws stock down.
+
+    `quantity_g` is three-state and the distinction matters:
+      NULL  -- have it, amount unknown. Counts as "have"; never deducted from,
+               because subtracting from an unknown would invent data.
+      0     -- out of stock. Counts as NOT having it.
+      > 0   -- grams on hand.
+    Presence alone is no longer sufficient — read membership through the
+    _PANTRY_IN_STOCK predicate in routers/meal_plan.py so the zero case is
+    handled consistently."""
+    __tablename__ = "patient_pantry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"), nullable=False)
+    quantity_g: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    patient: Mapped["Patient"] = relationship("Patient")
+    ingredient: Mapped["Ingredient"] = relationship("Ingredient")
+
+    __table_args__ = (
+        UniqueConstraint("patient_id", "ingredient_id", name="uq_patient_pantry"),
+        Index("idx_pantry_patient", "patient_id"),
+        CheckConstraint("quantity_g IS NULL OR quantity_g >= 0", name="ck_pantry_quantity_nonneg"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # PatientMealChoice  (plan-time dish selection per slot per day)
 # ---------------------------------------------------------------------------
 
 class PatientMealChoice(Base):
     __tablename__ = "patient_meal_choices"
 
-    id           = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id   = Column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
-    food_item_id = Column(Integer, ForeignKey("food_items.id", ondelete="CASCADE"), nullable=False)
-    date         = Column(Date, nullable=False)
-    meal_type    = Column(String(20), nullable=False)   # 'Breakfast' / 'Lunch' / 'Dinner'
-    calories     = Column(Float, nullable=True)
-    confirmed_at = Column(DateTime(timezone=True), server_default=func.now())
-    weekly_combo_id = Column(Integer, ForeignKey("weekly_combos.id", ondelete="SET NULL"), nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    food_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("food_items.id", ondelete="CASCADE"), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    meal_type: Mapped[str] = mapped_column(String(20), nullable=False)   # 'Breakfast' / 'Lunch' / 'Dinner'
+    calories: Mapped[float | None] = mapped_column(Float, nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    weekly_combo_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("weekly_combos.id", ondelete="SET NULL"), nullable=True)
     # NULL for v1 legacy choices; points to the selected combo for v2
-    bowl_size       = Column(String(6), nullable=True)   # 'small' | 'medium' | 'large' (PD-9)
-    actual_calories = Column(Numeric(7, 2), nullable=True)   # bowl_multiplier × cal_per_serving
+    bowl_size: Mapped[str | None] = mapped_column(String(6), nullable=True)   # 'small' | 'medium' | 'large' (PD-9)
+    actual_calories: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)   # bowl_multiplier × cal_per_serving
 
-    patient      = relationship("Patient")
-    food_item    = relationship("FoodItem")
-    weekly_combo = relationship("WeeklyCombo")
+    patient: Mapped["Patient"] = relationship("Patient")
+    food_item: Mapped["FoodItem"] = relationship("FoodItem")
+    weekly_combo: Mapped["WeeklyCombo | None"] = relationship("WeeklyCombo")
 
     __table_args__ = (
         UniqueConstraint("patient_id", "date", "meal_type", name="uq_pmc_patient_date_meal"),
@@ -792,14 +946,14 @@ class PatientMealChoiceDish(Base):
     """
     __tablename__ = "patient_meal_choice_dishes"
 
-    id           = Column(Integer, primary_key=True, autoincrement=True)
-    choice_id    = Column(Integer, ForeignKey("patient_meal_choices.id", ondelete="CASCADE"), nullable=False)
-    food_item_id = Column(Integer, ForeignKey("food_items.id"), nullable=False)
-    slot_type    = Column(String(30), nullable=True)
-    calories     = Column(Float, nullable=True)   # UNSCALED (= cal_per_serving)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    choice_id: Mapped[int] = mapped_column(Integer, ForeignKey("patient_meal_choices.id", ondelete="CASCADE"), nullable=False)
+    food_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("food_items.id"), nullable=False)
+    slot_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    calories: Mapped[float | None] = mapped_column(Float, nullable=True)   # UNSCALED (= cal_per_serving)
 
-    choice    = relationship("PatientMealChoice")
-    food_item = relationship("FoodItem")
+    choice: Mapped["PatientMealChoice"] = relationship("PatientMealChoice")
+    food_item: Mapped["FoodItem"] = relationship("FoodItem")
 
     __table_args__ = (
         Index("idx_pmcd_choice", "choice_id"),
@@ -813,29 +967,39 @@ class PatientMealChoiceDish(Base):
 class Ingredient(Base):
     __tablename__ = "ingredients"
 
-    id                  = Column(Integer, primary_key=True, autoincrement=True)
-    name                = Column(Text, nullable=False)
-    name_hindi          = Column(Text, nullable=True)
-    name_normalized     = Column(Text, nullable=True)
-    calories_per_100g   = Column(Float, nullable=True)
-    protein_per_100g    = Column(Float, nullable=True)
-    carbs_per_100g      = Column(Float, nullable=True)
-    fat_per_100g        = Column(Float, nullable=True)
-    fiber_per_100g      = Column(Float, nullable=True)
-    sodium_per_100g     = Column(Float, nullable=True)
-    iron_per_100g       = Column(Float, nullable=True)
-    calcium_per_100g    = Column(Float, nullable=True)
-    unit_weight_g       = Column(Numeric, nullable=True)
-    source              = Column(Text, nullable=False)
-    is_verified         = Column(Boolean, nullable=False, default=False)
-    added_by_doctor_id  = Column(Integer, ForeignKey("doctors.id", ondelete="SET NULL"), nullable=True)
-    created_at          = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at          = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    avoid_tags          = Column(JSONB, nullable=False, server_default='[]')
-    prefer_tags         = Column(JSONB, nullable=False, server_default='[]')
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    name_hindi: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name_normalized: Mapped[str | None] = mapped_column(Text, nullable=True)
+    calories_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    protein_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    carbs_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fat_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fiber_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sodium_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    iron_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    calcium_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # IFCT2017-sourced nutrients (added 2026-07-29). Minerals + fatty acids in mg/100g;
+    # sugars/fat in g/100g. All nullable — populated only for name-matched ingredients.
+    potassium_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    phosphorus_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zinc_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_sugars_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    free_sugars_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    saturated_fat_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mufa_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pufa_per_100g: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit_weight_g: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    added_by_doctor_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("doctors.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    avoid_tags: Mapped[list] = mapped_column(JSONB, nullable=False, server_default='[]')
+    prefer_tags: Mapped[list] = mapped_column(JSONB, nullable=False, server_default='[]')
 
     # relationships
-    recipe_ingredients  = relationship("RecipeIngredient", back_populates="ingredient")
+    recipe_ingredients: Mapped[list["RecipeIngredient"]] = relationship("RecipeIngredient", back_populates="ingredient")
 
     __table_args__ = (
         UniqueConstraint("name", "source", name="uq_ingredient_name_source"),
@@ -854,15 +1018,15 @@ class Ingredient(Base):
 class RecipeIngredient(Base):
     __tablename__ = "recipe_ingredients"
 
-    id            = Column(Integer, primary_key=True, autoincrement=True)
-    food_item_id  = Column(Integer, ForeignKey("food_items.id",  ondelete="CASCADE"),  nullable=False)
-    ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="RESTRICT"), nullable=False)
-    quantity_g    = Column(Float, nullable=False)
-    notes         = Column(Text, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    food_item_id: Mapped[int] = mapped_column(Integer, ForeignKey("food_items.id",  ondelete="CASCADE"),  nullable=False)
+    ingredient_id: Mapped[int] = mapped_column(Integer, ForeignKey("ingredients.id", ondelete="RESTRICT"), nullable=False)
+    quantity_g: Mapped[float] = mapped_column(Float, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # relationships
-    food_item  = relationship("FoodItem",   back_populates="recipe_ingredients")
-    ingredient = relationship("Ingredient", back_populates="recipe_ingredients")
+    food_item: Mapped["FoodItem"] = relationship("FoodItem",   back_populates="recipe_ingredients")
+    ingredient: Mapped["Ingredient"] = relationship("Ingredient", back_populates="recipe_ingredients")
 
     __table_args__ = (
         UniqueConstraint("food_item_id", "ingredient_id", name="uq_recipe_ingredient"),

@@ -100,6 +100,48 @@ export async function getMyVisit(): Promise<MyVisitResponse> {
   return data;
 }
 
+// ── GET /patients/pending-visits ───────────────────────────────────────────
+// Visits the doctor flagged because Token 2 could not be shown. Nothing is
+// charged until the patient answers here, so this is the only place a pending
+// charge is visible to them.
+export interface PendingVisit {
+  id: number;
+  doctor_id: number;
+  doctor_name: string;
+  visit_date: string;
+  reason_code: string | null;
+  /** Server-resolved label from a fixed vocabulary. */
+  reason_label: string;
+  /** Only set when the doctor chose "other" — preset reasons carry no free text. */
+  doctor_note: string | null;
+  status: string;
+  created_at: string | null;
+}
+
+export async function getPendingVisits(): Promise<PendingVisit[]> {
+  const { data } = await api.get("/patients/pending-visits");
+  return data;
+}
+
+// ── POST /patients/pending-visits/{id}/respond ─────────────────────────────
+export interface RespondVisitResult {
+  status: "approved" | "rejected";
+  charged: boolean;
+  visit_counter?: number;
+  message: string;
+}
+
+export async function respondToPendingVisit(
+  approvalId: number,
+  action: "approve" | "reject",
+): Promise<RespondVisitResult> {
+  const { data } = await api.post(
+    `/patients/pending-visits/${approvalId}/respond`,
+    { action },
+  );
+  return data;
+}
+
 // ── DELETE /users/me ───────────────────────────────────────────────────────
 // Patient self-delete with password confirmation.
 // Backend anonymises PII and hard-deletes all associated logs.

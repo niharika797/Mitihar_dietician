@@ -1,7 +1,15 @@
 import "../global.css";
 import React, { useEffect, useRef, useState } from "react";
-import { LogBox } from "react-native";
+import { LogBox, Text, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
+import * as Sentry from "@sentry/react-native";
+
+// Crash reporting. DSN comes from EXPO_PUBLIC_SENTRY_DSN (eas.json env) —
+// disabled when unset (local dev without a Sentry project).
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+});
 
 // Suppress the dev-mode-only Android activity lifecycle race in expo-keep-awake.
 // expo-router internally calls useKeepAwake(); if the Android Activity is
@@ -120,7 +128,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const bootstrap     = useAuthStore(s => s.bootstrap);
   const isLoading     = useAuthStore(s => s.isLoading);
   const checkHardware = useBiometricStore(s => s.checkHardware);
@@ -167,6 +175,18 @@ export default function RootLayout() {
   } as const;
 
   return (
+    <Sentry.ErrorBoundary
+      fallback={
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
+          <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827" }}>
+            Something went wrong
+          </Text>
+          <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center" }}>
+            Please close and reopen the app.
+          </Text>
+        </View>
+      }
+    >
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <BiometricGate>
@@ -181,7 +201,6 @@ export default function RootLayout() {
               <Stack.Screen name="home/notifications" options={SLIDE} />
               <Stack.Screen name="meals/meal-detail"    options={SLIDE} />
               <Stack.Screen name="meals/week-view"      options={SLIDE} />
-              <Stack.Screen name="meals/shopping-list"  options={SLIDE} />
               <Stack.Screen name="meals/plan-history"   options={SLIDE} />
               <Stack.Screen name="meals/plan-empty"     options={SLIDE} />
               <Stack.Screen name="log/log-meal"      options={MODAL} />
@@ -199,5 +218,8 @@ export default function RootLayout() {
         </BiometricGate>
       </ToastProvider>
     </QueryClientProvider>
+    </Sentry.ErrorBoundary>
   );
 }
+
+export default Sentry.wrap(RootLayout);

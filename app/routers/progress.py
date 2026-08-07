@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,15 +10,14 @@ from ..services.progress_service import (
     log_meal, log_water, log_steps, log_weight, log_activity,
     get_today_summary, get_weekly_summary,
     calculate_and_store_calorie_adjustment,
-    get_meal_log_by_id, update_meal_log, delete_meal_log,
+    update_meal_log, delete_meal_log,
     get_weight_history, get_weekly_report, calculate_and_store_streak,
     calculate_adherence,
 )
 from ..schemas.progress import (
     MealLogCreate, WaterLogCreate, StepsLogCreate,
     WeightLogCreate, ActivityLogCreate,
-    MealLogUpdate, MealLogResponse, WeeklyReportResponse,
-    MealRateRequest, MealRatingResponse,
+    MealLogUpdate, MealLogResponse, MealRateRequest, MealRatingResponse,
 )
 from ..core.database import get_db
 from ..models.db_models import Patient
@@ -77,12 +78,25 @@ async def post_log_steps(
     return {"message": "Steps logged successfully"}
 
 
+async def _regen_diet_plan_background(user_data: dict) -> None:
+    """Regenerate diet plan after weight update. Opens its own DB session; never blocks the request."""
+    from ..core.database import AsyncSessionLocal
+    from ..services.diet_plan_service import DietPlanService
+    async with AsyncSessionLocal() as session:
+        try:
+            diet_service = DietPlanService()
+            new_plan = await diet_service.generate_diet_plan(user_data, session)
+            await diet_service.store_diet_plan(new_plan, session=session)
+            await session.commit()
+            print("Auto-regenerated diet plan upon weight update")
+        except Exception as e:
+            print(f"Failed to auto-generate diet plan: {e}")
+
+
 async def _handle_weight_change(session: AsyncSession, current_user: Patient, new_weight: float):
     from sqlalchemy import update as sa_update
     from ..models.db_models import Patient as PatientModel
     from ..services.meal_generator.calculations import calculate_bmr, calculate_tdee, calculate_bmi
-    from ..services.diet_plan_service import DietPlanService
-    from ..services.user_service import get_patient_by_id
 
     if current_user.date_of_birth:
         from datetime import date as _date
@@ -91,10 +105,10 @@ async def _handle_weight_change(session: AsyncSession, current_user: Patient, ne
         age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
     else:
         age = 30
-        
+
     height = float(current_user.height_cm) if current_user.height_cm else 170.0
     activity = getattr(current_user, "activity_level", "Lightly Active")
-    
+
     new_bmr = calculate_bmr(current_user.gender, float(new_weight), height, age)
     new_tdee = calculate_tdee(new_bmr, activity)
     new_bmi = calculate_bmi(height, float(new_weight))
@@ -110,28 +124,21 @@ async def _handle_weight_change(session: AsyncSession, current_user: Patient, ne
         )
     )
     await session.flush()
-    updated = await get_patient_by_id(session, current_user.id)
 
-    diet_service = DietPlanService()
     user_data = {
-        "id": updated.id,
+        "id": current_user.id,
         "age": age,
-        "gender": updated.gender,
+        "gender": current_user.gender,
         "weight": float(new_weight),
         "height": height,
-        "diet": updated.diet_type or "Anything",
-        "health_state": updated.health_condition or "Healthy",
-        "region": updated.region or "none",
-        "target_weight": float(updated.target_weight_kg) if getattr(updated, "target_weight_kg", None) else None,
+        "diet": current_user.diet_type or "Anything",
+        "health_state": current_user.health_condition or "Healthy",
+        "region": current_user.region or "none",
+        "target_weight": float(current_user.target_weight_kg) if getattr(current_user, "target_weight_kg", None) else None,
         "activity_level": activity,
-        "tdee": float(updated.tdee) if getattr(updated, "tdee", None) else 2000.0,
+        "tdee": round(new_tdee, 2),
     }
-    try:
-        new_plan = await diet_service.generate_diet_plan(user_data, session)
-        await diet_service.store_diet_plan(new_plan, session)
-        print("Auto-regenerated diet plan upon weight update")
-    except Exception as e:
-        print(f"Failed to auto-generate diet plan: {e}")
+    asyncio.create_task(_regen_diet_plan_background(user_data))
 
 
 @router.post("/log/weight")

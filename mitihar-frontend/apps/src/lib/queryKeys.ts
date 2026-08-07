@@ -28,6 +28,8 @@ export const qk = {
   patientLogs:     (id: number, days: number) => ['doctor', 'patient', id, 'logs', days] as const,
   patientNotes:    (id: number) => ['doctor', 'patient', id, 'notes'] as const,
   patientVisits:      (id: number) => ['doctor', 'patient', id, 'visits'] as const,
+  patientFlaggedVisits: (id: number) => ['doctor', 'patient', id, 'flagged-visits'] as const,
+  answeredFlaggedVisits: ['doctor', 'flagged-visits', 'answered'] as const,
   patientMealConfig:  (id: number) => ['doctor', 'patient', id, 'meal-config'] as const,
   weeklyPlan:      (id: number) => ['doctor', 'patient', id, 'weekly-plan'] as const,
   weeklySummary:   (id: number) => ['doctor', 'patient', id, 'weekly-summary'] as const,

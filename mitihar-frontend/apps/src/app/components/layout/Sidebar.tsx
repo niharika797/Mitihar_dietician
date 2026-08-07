@@ -4,7 +4,7 @@ import { logout } from '../../../lib/authService';
 import {
   LayoutDashboard, Users, Bell, ChefHat, Settings, LogOut,
   Stethoscope, Utensils, CreditCard, ScrollText, ChevronLeft, ChevronRight,
-  Leaf,
+  Leaf, ClipboardCheck,
 } from 'lucide-react';
 
 type Role = 'doctor' | 'admin';
@@ -49,6 +49,7 @@ export function Sidebar({ role, userName, userRole, pendingCount = 0, pendingFoo
         { icon: <Users size={18} />, label: 'Patients', to: '/doctor/patients' },
         { icon: <Bell size={18} />, label: 'Requests', to: '/doctor/requests', badge: pendingCount },
         { icon: <ChefHat size={18} />, label: 'Recipes', to: '/doctor/recipes' },
+        { icon: <ClipboardCheck size={18} />, label: 'Data Review', to: '/doctor/data-review' },
       ],
     },
     {
@@ -72,6 +73,7 @@ export function Sidebar({ role, userName, userRole, pendingCount = 0, pendingFoo
         { icon: <Stethoscope size={18} />, label: 'Doctors', to: '/admin/doctors' },
         { icon: <Users size={18} />, label: 'Patients', to: '/admin/patients' },
         { icon: <Utensils size={18} />, label: 'Food Database', to: '/admin/food-database', badge: pendingFoodCount },
+        { icon: <ClipboardCheck size={18} />, label: 'Data Review', to: '/admin/data-review' },
       ],
     },
     {

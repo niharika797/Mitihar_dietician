@@ -1,5 +1,5 @@
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 from typing import Annotated, Literal, Optional
 from datetime import date, datetime
 
@@ -288,7 +288,10 @@ class RecordVisitResponse(BaseModel):
 
 class RenewalApproveResponse(BaseModel):
     message: str
-    token_1: str
+    # Nullable: patients.token_1 is nullable at the DB level (db_models.py:238).
+    # A non-Optional str here made approve_renewal 500 on Pydantic response
+    # validation for any patient whose token_1 was never issued.
+    token_1: Optional[str]
     token_2: str
     token_1_expiry: datetime
 
@@ -322,8 +325,44 @@ class RecordVisitRequest(BaseModel):
     token_2: str = Field(..., min_length=5, max_length=100, description="Token 2 shown by the patient on their app")
 
 
+# Why a patient could not show Token 2. Ordered most- to least-common.
+# Mirrored by ck_pva_reason_code in migration f5a6b7c8d9e0 — change both.
+FLAG_VISIT_REASONS: dict[str, str] = {
+    "phone_not_present": "Phone not with patient",
+    "battery_dead": "Phone battery dead",
+    "app_issue": "App issue — couldn't show Token 2",
+    "signed_out": "Patient signed out / login trouble",
+    "other": "Other",
+}
+
+FlagVisitReason = Literal["phone_not_present", "battery_dead", "app_issue", "signed_out", "other"]
+
+
 class FlagVisitRequest(BaseModel):
-    doctor_note: Optional[str] = Field(None, max_length=1000, description="Optional note for the patient about this flagged visit")
+    """A coded reason, with free text allowed only under "other".
+
+    The note is displayed to the patient beside a request to confirm a
+    chargeable visit, so free text on the preset path would be an unmonitored
+    doctor→patient channel attached to a bill. Restricting it to "other" keeps
+    the escape hatch without making it the default.
+    """
+    reason_code: FlagVisitReason
+    doctor_note: Optional[str] = Field(
+        None, max_length=1000,
+        description='Required when reason_code is "other"; ignored otherwise.',
+    )
+
+    @model_validator(mode="after")
+    def _check_note(self):
+        if self.reason_code == "other":
+            if not (self.doctor_note or "").strip():
+                raise ValueError('doctor_note is required when reason_code is "other"')
+            self.doctor_note = self.doctor_note.strip()
+        else:
+            # Drop rather than reject: a client sending both is not an error,
+            # but the preset reason is what the patient must see.
+            self.doctor_note = None
+        return self
 
 
 class PendingVisitApprovalResponse(BaseModel):

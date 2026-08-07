@@ -18,6 +18,9 @@ env/
 .env
 .env.*
 !.env.example
+# Production env value reference (was .env.production) — contains real secrets,
+# NOT read by the app; values injected into Cloud Run manually at deploy time.
+deploy-env-reference.txt
 mitihar-patient-app/.env
 mitihar-patient-app/.env.*
 !mitihar-patient-app/.env.example
@@ -43,6 +46,7 @@ htmlcov/
 Thumbs.db
 
 # ── Credential & key files ───────────────────────────────────────────────────
+docs/CREDENTIALS.local.md
 client_secret_*.json
 *service_account*.json
 *firebase_service_account*.json
@@ -85,18 +89,21 @@ credentials/
 scripts/rename_checkpoint.json
 
 # Internal docs and dev artifacts
-docs/
+# docs/ is tracked as of Stage 2 (2026-07-15): stage reports and data-migration
+# audit docs belong in version control. docs/CREDENTIALS.local.md stays ignored
+# (Credential & key files section above).
 logs/
 credentials/
-SPRINT_*.md
-MITIHAR_GUIDEBOOK.md
-RL_Roadmap.md
-Task_List.md
-implementation_plan.md
-walkthrough.md
-journal.txt
-test_results_latest.txt
-MITYAHAR_PREPRODUCTION_AUDIT.md
+# Root-anchored (leading /) so the tracked copies under docs/ are NOT ignored
+/SPRINT_*.md
+/MITIHAR_GUIDEBOOK.md
+/RL_Roadmap.md
+/Task_List.md
+/implementation_plan.md
+/walkthrough.md
+/journal.txt
+/test_results_latest.txt
+/MITYAHAR_PREPRODUCTION_AUDIT.md
 rename_checkpoint.json
 scripts/*.md
 
@@ -121,23 +128,57 @@ scripts/backup_food_items.py
 
 # ── Database backups (shared with team — dev/test data only, no production data) ──
 db-backups/*.sql.gz
+# Pre-change safety dumps taken by remediation scripts — local rollback only,
+# multi-MB, and superseded the moment the next one is taken. The curated
+# mityahar_content_*.sql restore dump stays tracked (see db-backups/RESTORE.md).
+db-backups/pre_*.sql
+# scripts/promote_data_fixes_to_staging.py output — regenerated per promotion attempt.
+db-backups/data_fixes_*.sql
 
-# ── Uvicorn process logs (local dev only) ─────────────────────────────────────
-uvicorn_*.txt
+# ── Test run output (regenerated every run) ──
+tests/results/
 
-# ── Checkpoint files (large/noisy, idempotent — safe to re-run scripts) ───────
-clean_dishes_llm_checkpoint.json
-tag_medical_checkpoint.json
+# ── Uvicorn process logs (local dev only, live in logs/ — already covered above) ──
 
-# ── Windows null device artifact ──────────────────────────────────────────────
-NUL
+# ── Checkpoint files (large/noisy, idempotent — live in data/review/, already covered above) ──
+
+# ── Windows null device artifact ────────────────────────────────────────────── (deleted, was NUL)
+
+# ── Docker smoke test env file ────────────────────────────────────────────────
+smoke.env
 
 # ── Local throwaway test files ────────────────────────────────────────────────
-test_claude_cli.py
+scripts/archive/test_claude_cli.py
 tests/test_output.txt
+
+# ── Pre-migration DB dumps (local only) ───────────────────────────────────────
+backups/
+
+# ── Frontend dev-server logs (local dev only) ─────────────────────────────────
+frontend_dev.txt
+frontend_err.txt
+
+# ── One-off debug/dead scripts kept as untracked reference ────────────────────
+scripts/archive/debug/
+scripts/archive/deprecated/
 
 # ── Performance test generated artifacts (contains plaintext test passwords) ──
 tests/performance/test_manifest.json
 tests/performance/reports/
 
+# ── Local tooling (downloaded binaries, not part of repo) ─────────────────────
+cloud-sql-proxy.exe
 
+# ── Playwright generated output ────────────────────────────────────────────────
+test-results/
+tests/performance/e2e/playwright.compiled.config.ts
+
+# ── Load-test pre-minted JWTs (live credentials, pulled from GCS per run) ────
+# Produced by scripts/mint_load_test_tokens.py. Real signed access tokens for
+# every load-test account — never commit.
+tests/performance/tokens.json
+
+# ── Local Claude Code config (machine-specific paths, personal hooks) ────────
+.claude/*
+!.claude/rules/
+!.claude/rules/**

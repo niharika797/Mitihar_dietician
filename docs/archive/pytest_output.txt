@@ -1,0 +1,24 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\Lenovo\Desktop\Code\2026\Nutria\Mitihar_dietician
+plugins: anyio-4.12.1
+collected 0 items / 1 error
+
+=================================== ERRORS ====================================
+_____________________ ERROR collecting tests/test_api.py ______________________
+ImportError while importing test module 'C:\Users\Lenovo\Desktop\Code\2026\Nutria\Mitihar_dietician\tests\test_api.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+..\..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_api.py:2: in <module>
+    from app.main import app
+app\main.py:7: in <module>
+    from .core.database import connect_to_mongodb, close_mongodb_connection
+E   ImportError: cannot import name 'connect_to_mongodb' from 'app.core.database' (C:\Users\Lenovo\Desktop\Code\2026\Nutria\Mitihar_dietician\app\core\database.py)
+=========================== short test summary info ===========================
+ERROR tests/test_api.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+============================== 1 error in 0.62s ===============================
+

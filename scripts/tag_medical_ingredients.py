@@ -7,7 +7,7 @@ Updates ingredients.avoid_tags JSONB column in DB.
 Propagates updated tags to food_items via scripts/derive_recipe_tags.py.
 
 Run: python -m scripts.tag_medical_ingredients
-Checkpoint: tag_medical_checkpoint.json
+Checkpoint: data/review/tag_medical_checkpoint.json
 Rollback: UPDATE ingredients SET avoid_tags = '[]' WHERE avoid_tags ?| array['avoid_pcos','avoid_gout'];
 """
 
@@ -17,6 +17,7 @@ import os
 import subprocess
 import time
 from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -24,7 +25,7 @@ load_dotenv()
 from sqlalchemy import text
 from app.core.database import AsyncSessionLocal
 
-CHECKPOINT_FILE = "tag_medical_checkpoint.json"
+CHECKPOINT_FILE = str(Path(__file__).resolve().parent.parent / "data" / "review" / "tag_medical_checkpoint.json")
 BATCH_SIZE = 50
 BATCH_SLEEP = 3
 

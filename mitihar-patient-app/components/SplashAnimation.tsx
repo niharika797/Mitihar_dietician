@@ -14,7 +14,7 @@
  * Uses react-native-reanimated so all animations run on the UI thread.
  */
 import React, { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import Animated, {
   useSharedValue, useAnimatedStyle,
   withSpring, withTiming, withDelay, withSequence,
@@ -42,6 +42,11 @@ function MityaharLeaf({ size = 72 }: { size?: number }) {
     </Svg>
   );
 }
+
+// Hoisted to a plain boolean: the withTiming callback below is a worklet and
+// runs on the UI thread, where it can only close over serializable values —
+// referencing the `Platform` module inside it throws "Platform is not defined".
+const IS_WEB = Platform.OS === "web";
 
 interface Props { onFinish: () => void; }
 
@@ -84,10 +89,21 @@ export default function SplashAnimation({ onFinish }: Props) {
       withSequence(
         withTiming(1, { duration: 1 }), // hold frame
         withTiming(0, { duration: 300 }, (done) => {
-          if (done) runOnJS(onFinish)();
+          // Native only — see the web branch below for why.
+          if (done && !IS_WEB) runOnJS(onFinish)();
         }),
       ),
     );
+
+    // On web, reanimated drives animations off requestAnimationFrame, which the
+    // browser suspends whenever the tab is backgrounded or not compositing. The
+    // withTiming completion callback above then never fires and the splash never
+    // hands off — the app is stuck here forever. setTimeout keeps running in
+    // background tabs (throttled, not suspended), so it is the reliable trigger.
+    if (Platform.OS === "web") {
+      const t = setTimeout(onFinish, 1700); // 1400ms delay + 300ms fade
+      return () => clearTimeout(t);
+    }
   }, []);
 
   return (

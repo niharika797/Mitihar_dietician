@@ -34,7 +34,7 @@ from ..models.db_models import Doctor, Patient
 from ..schemas.user import UserCreate
 from ..services.audit_service import log_action
 from ..services.mfa_service import generate_mfa_secret, get_totp_uri, verify_totp
-from ..services.user_service import authenticate_patient, create_patient, get_patient_by_email
+from ..services.user_service import create_patient, get_patient_by_email
 
 router = APIRouter()
 
@@ -244,63 +244,68 @@ async def login(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    session: AsyncSession = Depends(get_db),
 ):
-    """Patient login — returns JWT tokens. Refresh token is set as HttpOnly cookie."""
+    """Patient login — returns JWT tokens. Refresh token is returned in body for mobile SecureStore."""
+    import asyncio
     from datetime import datetime, timezone, timedelta
     from sqlalchemy import update as _sa_update
+    from ..core.database import AsyncSessionLocal
 
-    # Pre-fetch patient to check lockout before running bcrypt
-    result = await session.execute(select(Patient).where(Patient.email == form_data.username))
-    raw_patient = result.scalars().first()
+    # Phase 1: Read — single fetch; connection released before bcrypt runs
+    async with AsyncSessionLocal() as rs:
+        result = await rs.execute(select(Patient).where(Patient.email == form_data.username))
+        raw_patient = result.scalars().first()
 
     if raw_patient and raw_patient.locked_until:
-        if datetime.now(timezone.utc) < raw_patient.locked_until.replace(tzinfo=timezone.utc) \
-                if raw_patient.locked_until.tzinfo is None else raw_patient.locked_until:
+        locked = raw_patient.locked_until.replace(tzinfo=timezone.utc) \
+            if raw_patient.locked_until.tzinfo is None else raw_patient.locked_until
+        if datetime.now(timezone.utc) < locked:
             raise HTTPException(
                 status_code=423,
                 detail="Account temporarily locked due to too many failed login attempts. Try again later.",
             )
 
-    patient = await authenticate_patient(session, form_data.username, form_data.password)
-    if not patient:
-        # Increment failed attempt counter; lock after 10 consecutive failures
-        if raw_patient:
-            attempts = (raw_patient.failed_login_attempts or 0) + 1
-            lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
-            await session.execute(
-                _sa_update(Patient)
-                .where(Patient.id == raw_patient.id)
-                .values(failed_login_attempts=attempts, locked_until=lock_until)
-            )
-            await session.flush()
-        logger.warning(
-            "login_failed role=patient email=%s ip=%s",
-            form_data.username,
-            request.client.host if request.client else "unknown",
-        )
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    # Success — reset lockout counter
-    await session.execute(
-        _sa_update(Patient)
-        .where(Patient.id == patient.id)
-        .values(failed_login_attempts=0, locked_until=None)
+    # Phase 2: bcrypt in threadpool — event loop unblocked, no DB connection held
+    is_valid = raw_patient is not None and await asyncio.to_thread(
+        verify_password, form_data.password, raw_patient.hashed_password
     )
+
+    # Phase 3: Write — minimal session for counter update only
+    async with AsyncSessionLocal() as ws:
+        if not is_valid:
+            if raw_patient:
+                attempts = (raw_patient.failed_login_attempts or 0) + 1
+                lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
+                await ws.execute(
+                    _sa_update(Patient)
+                    .where(Patient.id == raw_patient.id)
+                    .values(failed_login_attempts=attempts, locked_until=lock_until)
+                )
+                await ws.commit()
+            logger.warning(
+                "login_failed role=patient email=%s ip=%s",
+                form_data.username,
+                request.client.host if request.client else "unknown",
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        await ws.execute(
+            _sa_update(Patient)
+            .where(Patient.id == raw_patient.id)
+            .values(failed_login_attempts=0, locked_until=None)
+        )
+        await ws.commit()
+
     logger.info(
         "login_success role=patient user_id=%s email=%s ip=%s",
-        patient.id,
-        patient.email,
+        raw_patient.id,
+        raw_patient.email,
         request.client.host if request.client else "unknown",
     )
-    tokens = _issue_tokens(_patient_token_data(patient))
-    # Patient app is React Native — it cannot read HttpOnly cookies.
-    # SecureStore on mobile provides equivalent security to HttpOnly cookies on web.
-    # We return the refresh_token in the body for the mobile app to store in SecureStore.
-    # Doctor/admin tokens use HttpOnly cookies (web browser clients only).
+    tokens = _issue_tokens(_patient_token_data(raw_patient))
     return {"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"], "token_type": "bearer"}
 
 
@@ -386,12 +391,17 @@ async def admin_login(
         request.client.host if request.client else "unknown",
     )
     tokens = _issue_tokens(_admin_token_data(admin))
+    # SameSite=None required for cross-origin dashboard (Firebase Hosting
+    # + Cloud Run). No CSRF token exists on /refresh or /logout — this is
+    # safe ONLY because all business endpoints authenticate via Bearer
+    # header, not this cookie. If any future endpoint accepts this cookie
+    # alone for a mutating action, CSRF protection must be added first.
     response.set_cookie(
         key="refresh_token",
         value=tokens["refresh_token"],
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         path="/api/v1/auth",
     )
@@ -570,7 +580,7 @@ async def refresh_token(
             value=tokens["refresh_token"],
             httponly=True,
             secure=settings.COOKIE_SECURE,
-            samesite="lax",
+            samesite="none",
             max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
             path="/api/v1/auth",
         )
@@ -588,7 +598,7 @@ async def refresh_token(
             value=tokens["refresh_token"],
             httponly=True,
             secure=settings.COOKIE_SECURE,
-            samesite="lax",
+            samesite="none",
             max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
             path="/api/v1/auth",
         )
@@ -713,20 +723,22 @@ async def doctor_login(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    session: AsyncSession = Depends(get_db),
 ):
     """
     Doctor login — email + password.
     If mfa_enabled=False → full JWT immediately.
     If mfa_enabled=True  → partial token (5 min); client must call /doctor/mfa-login.
     """
+    import asyncio
     from datetime import datetime, timezone, timedelta
     from sqlalchemy import update as _sa_update
+    from ..core.database import AsyncSessionLocal
 
-    result = await session.execute(select(Doctor).where(Doctor.email == form_data.username))
-    doctor = result.scalars().first()
+    # Phase 1: Read — fetch doctor; connection released before bcrypt runs
+    async with AsyncSessionLocal() as rs:
+        result = await rs.execute(select(Doctor).where(Doctor.email == form_data.username))
+        doctor = result.scalars().first()
 
-    # Check lockout before running bcrypt
     if doctor and doctor.locked_until:
         locked = doctor.locked_until if doctor.locked_until.tzinfo else \
             doctor.locked_until.replace(tzinfo=timezone.utc)
@@ -736,34 +748,40 @@ async def doctor_login(
                 detail="Account temporarily locked due to too many failed login attempts. Try again later.",
             )
 
-    if doctor is None or not verify_password(form_data.password, doctor.hashed_password):
-        if doctor:
-            attempts = (doctor.failed_login_attempts or 0) + 1
-            lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
-            await session.execute(
-                _sa_update(Doctor)
-                .where(Doctor.id == doctor.id)
-                .values(failed_login_attempts=attempts, locked_until=lock_until)
-            )
-            await session.flush()
-        logger.warning(
-            "login_failed role=doctor email=%s ip=%s",
-            form_data.username,
-            request.client.host if request.client else "unknown",
-        )
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not doctor.is_active:
-        raise HTTPException(status_code=403, detail="Account deactivated")
-
-    # Success — reset lockout counter
-    await session.execute(
-        _sa_update(Doctor).where(Doctor.id == doctor.id)
-        .values(failed_login_attempts=0, locked_until=None)
+    # Phase 2: bcrypt in threadpool — event loop unblocked, no DB connection held
+    is_valid = doctor is not None and await asyncio.to_thread(
+        verify_password, form_data.password, doctor.hashed_password
     )
+
+    # Phase 3: Write — minimal session for counter update only
+    async with AsyncSessionLocal() as ws:
+        if not is_valid:
+            if doctor:
+                attempts = (doctor.failed_login_attempts or 0) + 1
+                lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
+                await ws.execute(
+                    _sa_update(Doctor)
+                    .where(Doctor.id == doctor.id)
+                    .values(failed_login_attempts=attempts, locked_until=lock_until)
+                )
+                await ws.commit()
+            logger.warning(
+                "login_failed role=doctor email=%s ip=%s",
+                form_data.username,
+                request.client.host if request.client else "unknown",
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not doctor.is_active:
+            raise HTTPException(status_code=403, detail="Account deactivated")
+        await ws.execute(
+            _sa_update(Doctor).where(Doctor.id == doctor.id)
+            .values(failed_login_attempts=0, locked_until=None)
+        )
+        await ws.commit()
 
     if doctor.mfa_enabled:
         partial = _issue_partial_token("mfa_pending_doctor", doctor.id, doctor.email)
@@ -787,7 +805,7 @@ async def doctor_login(
         value=tokens["refresh_token"],
         httponly=True,
         secure=settings.COOKIE_SECURE,
-        samesite="lax",
+        samesite="none",
         max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         path="/api/v1/auth",
     )
@@ -971,7 +989,7 @@ async def logout(
         key="refresh_token",
         path="/api/v1/auth",
         httponly=True,
-        samesite="lax",
+        samesite="none",
     )
 
     # ── 3. Audit log ────────────────────────────────────────────────────

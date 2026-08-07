@@ -1,0 +1,39 @@
+# Migration of Meal Generator to PostgreSQL
+
+## Goal
+The objective was to migrate the meal planner from using an in-memory CSV dataset (`app/data/Mitihar_dietician_Dataset.csv`) to a fully database-driven approach using PostgreSQL.
+
+## What Was Accomplished
+
+1. **Created Seed Scripts**:
+   - [scripts/seed_food_items.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/scripts/seed_food_items.py): Written to parse the existing `Mitihar_dietician_Dataset.csv`, normalize the columns, and insert rows into the robust [FoodItem](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/db_models.py#6-29) PostgreSQL table.
+   - [scripts/seed_meal_templates.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/scripts/seed_meal_templates.py): Written to insert a baseline of structural meal templates for every permutation of `diet_type`, `meal_time`, [region](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/services/diet_plan_service.py#27-33), and `plan_type`.
+   
+2. **PostgreSQL Configuration**:
+   - Overhauled [app/core/database.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/core/database.py) to configure an Async SQLAlchemy engine + `async_sessionmaker`.
+   - Restored and integrated the MongoDB client configuration side-by-side so the rest of the application (like [DietPlanService](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/services/diet_plan_service.py#34-82)) could continue securely saving user plans in MongoDB without disruption.
+   
+3. **Rewrote [meal_generator.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/tests/test_meal_generator.py)**:
+   - Deprecated `data_loader.py` and removed the CSV dataset dependencies entirely.
+   - Using the `AsyncSession` passed from the router, the newly designed generator:
+     - Queries templates customized to the user's [region](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/services/diet_plan_service.py#27-33), `diet_type`, and `plan_type` (`Healthy`, `Gym-Friendly`, `Diabetic-Friendly`).
+     - Calculates precise macros based on user biometrics using revised calculations (e.g., Mifflin-St Jeor).
+     - Solves each slot requirement in the templates by executing parameterized PostgreSQL lookups for eligible [FoodItem](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/models/db_models.py#6-29) records.
+     
+4. **Endpoint Integration**:
+   - Modified [generate_diet_plan](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#108-192) in [app/routers/diet_plans.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py) to safely inject a PostgreSQL `AsyncSession` using FastAPI's dependency injection (`Depends(get_db)`).
+
+## Verification Results
+- Executed `venv\Scripts\pytest -v tests` spanning basic calculation, BMI/BMR/TDEE routing, and initialization tests.
+- Reconciled previously hardcoded BMR/TDEE math values in [tests/test_api.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/tests/test_api.py) and [tests/test_calculations.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/tests/test_calculations.py) with the updated formula outputs.
+- ✔️ **All 10 tests passed.**
+- 🐞 **Fixed a Bug**: Addressed a SQLAlchemy `ChunkedIteratorResult` exception by substituting `.scalar_first()` with `.scalars().first()` for async db session execution compatiblity.
+- 🧪 **E2E Testing**: Executed the `uvicorn` server, created a mock user via the endpoint, and tested [generate_diet_plan](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/app/routers/diet_plans.py#108-192). Results successfully returned `HTTP 200` with exactly **35 meals** stored back into MongoDB whilst fetching macro targets efficiently from PostgreSQL!
+
+## Suggested Next Steps
+The user can now execute the provided seed scripts:
+```bash
+venv\Scripts\python scripts/seed_food_items.py
+venv\Scripts\python scripts/seed_meal_templates.py
+```
+After making sure both run successfully and populate the PostgreSQL databases, they can kick off the API (`uvicorn app.main:app --reload`) and test diet generation structurally relying purely on the database.

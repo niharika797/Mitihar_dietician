@@ -84,6 +84,9 @@ export default function ComboDetailScreen() {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.DAILY_CHOICES(date) });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN });
+      // Confirming deducts pantry stock, which moves both of these.
+      qc.invalidateQueries({ queryKey: ["meal-plan", "pantry"] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.SHOPPING_LIST });
       showToast("Combo confirmed!", "success");
       setTimeout(() => router.back(), 800);
     },

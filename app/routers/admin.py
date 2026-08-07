@@ -6,14 +6,21 @@ from sqlalchemy import select, func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import datetime, timezone
+
 from ..core.database import get_db
 from ..core.security import get_current_admin, get_password_hash
-from ..models.db_models import Admin, Doctor, Patient, Recommendation, SubscriptionCode, AuditLog, FoodItem, PatientVisit
+from ..models.db_models import (
+    Admin, Doctor, Patient, Recommendation, SubscriptionCode, AuditLog, FoodItem, PatientVisit,
+    DataChangeRequest, DataChangeAuditLog,
+)
+from ..services.dish_service import normalize_dish_name, canonical_collision
+from ..services.token_service import VISIT_CHARGE_INR, CYCLE_DAYS
 from ..schemas.admin import (
     CreateDoctorRequest, UpdateDoctorRequest, DoctorAdminView, PlatformStats,
-    DoctorDetailView, AuditLogEntry, PaginatedAuditLogs,
+    DoctorDetailView, PaginatedAuditLogs,
     GenerateCodesAdminRequest, CodeAdminView, FoodAdminView,
-    AdminPatientView, PaginatedAdminPatients,
+    PaginatedAdminPatients,
 )
 from ..services.audit_service import log_action
 
@@ -319,7 +326,6 @@ async def get_audit_logs(
 
 
 import secrets, string
-from datetime import datetime
 
 
 def _gen_code(length: int = 12) -> str:
@@ -470,10 +476,28 @@ async def approve_food_item(
     if food.is_verified:
         raise HTTPException(status_code=400, detail="Already verified")
 
-    await session.execute(
-        update(FoodItem).where(FoodItem.id == food_id).values(is_verified=True)
+    # Ensure the canonical key exists, then block creating a SECOND canonical for it.
+    nn = food.name_normalized or normalize_dish_name(food.recipe_name)
+    clash = await canonical_collision(
+        session, name_normalized=nn, slot_type=food.slot_type,
+        diet_type=food.diet_type, exclude_id=food.id,
     )
-    await session.flush()
+    if clash is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A verified dish already exists for '{food.recipe_name}' "
+                   f"({food.slot_type}/{food.diet_type}): #{clash.id}. Merge into it instead of approving a duplicate.",
+        )
+    try:
+        await session.execute(
+            update(FoodItem).where(FoodItem.id == food_id)
+            .values(is_verified=True, name_normalized=nn)
+        )
+        await session.flush()
+    except IntegrityError:
+        # uq_fi_canonical backstop against a race between the check above and the write.
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="Duplicate canonical dish — approval blocked.")
     await log_action(session, actor_id=admin.id, actor_role="admin",
                      action="approve_food", entity_type="food_item", entity_id=food_id)
     return {"message": f"Food item {food_id} approved", "recipe_name": food.recipe_name}
@@ -512,20 +536,37 @@ async def reject_food_item(
 async def delete_food_item(
     food_id: int,
     request: Request,
+    hard: bool = Query(default=False, description="true = irreversible purge (test artifacts only)"),
     admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
-    """Permanently delete a food item from the database."""
+    """Soft-delete a food item (default): sets deleted_at, removing it from every pool while
+    keeping the row + FKs intact. Pass ?hard=true only to permanently purge (e.g. test rows)."""
     food_result = await session.execute(select(FoodItem).where(FoodItem.id == food_id))
     food = food_result.scalars().first()
     if food is None:
         raise HTTPException(status_code=404, detail="Food item not found")
 
-    await session.delete(food)
+    if hard:
+        await session.delete(food)
+        await session.flush()
+        await log_action(session, actor_id=admin.id, actor_role="admin",
+                         action="hard_delete_food", entity_type="food_item", entity_id=food_id)
+        return {"message": f"Food item {food_id} permanently deleted"}
+
+    await session.execute(
+        update(FoodItem).where(FoodItem.id == food_id)
+        .values(deleted_at=datetime.now(timezone.utc), is_verified=False)
+    )
+    session.add(DataChangeAuditLog(
+        request_id=None, target_table="food_items", target_id=food_id, action="soft_delete",
+        field_changed="deleted_at", before_value={"is_verified": food.is_verified},
+        after_value={"deleted_at": "now"}, actor=str(admin.id), reason="admin soft-delete",
+    ))
     await session.flush()
     await log_action(session, actor_id=admin.id, actor_role="admin",
-                     action="delete_food", entity_type="food_item", entity_id=food_id)
-    return {"message": f"Food item {food_id} permanently deleted"}
+                     action="soft_delete_food", entity_type="food_item", entity_id=food_id)
+    return {"message": f"Food item {food_id} soft-deleted"}
 
 
 # ─── GET /api/v1/admin/billing ────────────────────────────────────────────
@@ -715,9 +756,9 @@ async def get_consultations(
 ):
     """
     Platform-wide consultation stats.
-    Per-doctor: patient count, visits this month, revenue (×₹1500), royalty (2% per contract Art. IV).
+    Per-doctor: patient count, visits this month, revenue (×₹1,500), royalty (2% per contract Art. IV).
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
@@ -744,7 +785,7 @@ async def get_consultations(
         consultations_this_month = int(visits_result.scalar() or 0)
         total_consultations += consultations_this_month
 
-        revenue = consultations_this_month * 1500
+        revenue = consultations_this_month * VISIT_CHARGE_INR
         royalty = round(revenue * 0.02, 2)
 
         per_doctor.append({
@@ -760,8 +801,8 @@ async def get_consultations(
     return {
         "month": month_start.strftime("%B %Y"),
         "total_consultations_this_month": total_consultations,
-        "total_revenue": total_consultations * 1500,
-        "total_royalty": round(total_consultations * 1500 * 0.02, 2),
+        "total_revenue": total_consultations * VISIT_CHARGE_INR,
+        "total_royalty": round(total_consultations * VISIT_CHARGE_INR * 0.02, 2),
         "per_doctor": per_doctor,
     }
 
@@ -807,7 +848,7 @@ async def get_annual_consultations(
         )
     )
     ytd_consultations = int(total_result.scalar() or 0)
-    ytd_revenue = ytd_consultations * 1500
+    ytd_revenue = ytd_consultations * VISIT_CHARGE_INR
     ytd_royalty_pool = round(ytd_revenue * 0.02, 2)
 
     # Per-doctor breakdown with tier assignments
@@ -826,7 +867,7 @@ async def get_annual_consultations(
         )
         usage = int(dr_result.scalar() or 0)
         tier = _tier(usage)
-        doc_revenue = usage * 1500
+        doc_revenue = usage * VISIT_CHARGE_INR
         per_doctor_annual.append({
             "doctor_id": doc.id,
             "doctor_name": doc.name,
@@ -919,7 +960,7 @@ async def admin_override_approve_renewal(
             doctor_id=patient.doctor_id,
             token_2=generate_token_2(),
             cycle_start=now,
-            cycle_expiry=now + timedelta(days=30),
+            cycle_expiry=now + timedelta(days=CYCLE_DAYS),
             visit_counter=0,
         )
         session.add(pv)
@@ -1006,3 +1047,102 @@ async def hard_delete_patient(
     return {
         "message": f"Patient {patient_id} permanently deleted.",
     }
+
+
+# ─── Data Change Request review queue (Stage 6 governance) ────────────────────
+
+_MACRO_FIELDS = {"cal_per_serving", "protein_per_serving", "carbs_per_serving",
+                 "fat_per_serving", "fiber_per_serving", "sodium_per_serving", "serving_weight_g"}
+
+
+class ReviewDecision(BaseModel):
+    action: Literal["approve", "reject"]
+    admin_reason: Optional[str] = Field(default=None, max_length=1000)
+    override_value: Optional[dict] = None   # edit-and-approve: apply these fields instead of new_value
+
+
+@router.get("/data-requests")
+async def list_data_requests(
+    request: Request,
+    status: Optional[Literal["pending", "approved", "rejected"]] = Query(default="pending"),
+    tier: Optional[Literal["tier1_auto", "tier2_review"]] = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    admin: Admin = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """Queue of data-change requests. Joins the dish name for context."""
+    stmt = select(DataChangeRequest)
+    if status:
+        stmt = stmt.where(DataChangeRequest.status == status)
+    if tier:
+        stmt = stmt.where(DataChangeRequest.tier == tier)
+    stmt = stmt.order_by(DataChangeRequest.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    reqs = (await session.execute(stmt)).scalars().all()
+    # resolve dish names for food_items targets
+    food_ids = [r.target_id for r in reqs if r.target_table == "food_items"]
+    names = {}
+    if food_ids:
+        for fid, nm, cal, ver in (await session.execute(
+            select(FoodItem.id, FoodItem.recipe_name, FoodItem.cal_per_serving, FoodItem.is_verified)
+            .where(FoodItem.id.in_(food_ids))
+        )).all():
+            names[fid] = {"recipe_name": nm, "cal_per_serving": float(cal), "is_verified": ver}
+    return [{
+        "id": r.id, "target_table": r.target_table, "target_id": r.target_id,
+        "target": names.get(r.target_id),
+        "field_changed": r.field_changed, "old_value": r.old_value, "new_value": r.new_value,
+        "proposed_by": r.proposed_by, "proposal_reason": r.proposal_reason,
+        "tier": r.tier, "status": r.status,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r in reqs]
+
+
+@router.patch("/data-requests/{req_id}")
+async def review_data_request(
+    req_id: int,
+    body: ReviewDecision,
+    request: Request,
+    admin: Admin = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """Approve or reject a pending request. Approve applies numeric macro fields (from
+    override_value, else new_value) to the target food_items row; it does NOT auto-verify —
+    admin re-verifies via /food/{id}/approve so the canonical collision check still runs."""
+    req = (await session.execute(
+        select(DataChangeRequest).where(DataChangeRequest.id == req_id)
+    )).scalars().first()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Already {req.status}")
+
+    applied = None
+    if body.action == "approve":
+        payload = body.override_value or req.new_value or {}
+        fields = {k: v for k, v in payload.items() if k in _MACRO_FIELDS and v is not None}
+        if req.target_table == "food_items" and fields:
+            await session.execute(
+                update(FoodItem).where(FoodItem.id == req.target_id).values(**fields)
+            )
+            applied = fields
+        new_status = "approved"
+        action_log = "applied" if applied else "approved"
+    else:
+        new_status = "rejected"
+        action_log = "rejected"
+
+    await session.execute(
+        update(DataChangeRequest).where(DataChangeRequest.id == req_id)
+        .values(status=new_status, reviewed_by=admin.id, reviewed_at=datetime.now(timezone.utc))
+    )
+    session.add(DataChangeAuditLog(
+        request_id=req_id, target_table=req.target_table, target_id=req.target_id,
+        action=action_log, field_changed=req.field_changed,
+        before_value=req.old_value, after_value=applied or req.new_value,
+        actor=str(admin.id), reason=body.admin_reason or f"admin {body.action}",
+    ))
+    await session.flush()
+    await log_action(session, actor_id=admin.id, actor_role="admin",
+                     action=f"data_request_{body.action}", entity_type="data_change_request", entity_id=req_id)
+    return {"message": f"Request {req_id} {new_status}", "applied": applied}

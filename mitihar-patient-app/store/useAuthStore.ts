@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import * as Sentry from "@sentry/react-native";
 import { storage } from "../lib/storage";
 import axiosInstance, { SECURE_KEYS } from "../lib/axios";
 import type { PatientProfile } from "../types";
@@ -73,7 +74,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     try {
       await axiosInstance.post('/auth/register-fcm-token', { fcm_token: null });
-    } catch (_) {}
+    } catch (e) {
+      Sentry.captureException(e);
+    }
     await storage.deleteItemAsync(SECURE_KEYS.ACCESS_TOKEN);
     await storage.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
     // Clear biometric preference from BOTH SecureStore (persisted) AND the

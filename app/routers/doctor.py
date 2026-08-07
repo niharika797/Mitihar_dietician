@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,10 @@ from sqlalchemy.orm import selectinload
 from ..core.database import get_db
 from ..core.limiter import limiter
 from ..core.security import get_current_doctor
-from ..services.token_service import generate_token_2, token_1_expiry_from_now, is_chargeable_visit
+from ..services.token_service import (
+    generate_token_2, token_1_expiry_from_now, is_chargeable_visit,
+    VISIT_CHARGE_INR, CYCLE_DAYS,
+)
 from ..services.meal_generator.tag_utils import VALID_TAGS, get_avoid_tags, get_prefer_tags
 from ..services.meal_generator.meal_generator import meal_generator
 from ..models.db_models import (
@@ -20,24 +24,24 @@ from ..models.db_models import (
     MealLog, ProgressLog, ClinicalNote, FoodItem, PatientVisit,
     DoctorMealOverride, PendingVisitApproval,
     PatientMealConfig, PatientDishPreferences,
-    WeeklyCombo, PatientMealChoice, WeeklyPatientSummary,
+    WeeklyCombo, Ingredient, RecipeIngredient,
+    DataChangeRequest, DataChangeAuditLog,
 )
+from ..services.dish_service import normalize_dish_name, find_reusable_dish, get_assignable_dish
 from ..services.weekly_summary_service import compute_weekly_summary
 from ..services.notification_service import notify_weekly_plan_approved, notify_visit_flagged
 from ..schemas.doctor import (
     PatientSummary, PaginatedPatients, RecommendationDetail,
     PlanOverrideRequest, PatientRequestDetail, RejectRequest,
     GenerateCodesRequest, SubscriptionCodeDetail,
-    MealLogEntry, PatientProgressEntry, PatientLogsResponse, PatientProgressResponse,
+    PatientLogsResponse, PatientProgressResponse,
     ClinicalNoteCreate, ClinicalNoteResponse, MealPlanNoteRequest,
     FoodItemSummary, RecipeCreateRequest, RecipeAssignRequest, AddCustomDishRequest,
-    DishAction, CustomDishBody, PatchDishRequest,
+    DishAction, PatchDishRequest,
     DoctorDashboardStats,
     PatientVisitResponse, RecordVisitResponse, RenewalApproveResponse,
     BulkRenewalResponse, PendingRenewalItem,
-    RecordVisitRequest, FlagVisitRequest, PendingVisitApprovalResponse,
-    PatientSummaryWithVisit,
-    MealConfigRequest, DishPrefRequest,
+    RecordVisitRequest, FlagVisitRequest, FLAG_VISIT_REASONS, MealConfigRequest, DishPrefRequest,
     RecipeTagsResponse, RecipeTagsPatchRequest,
     WeeklyPlanApproveRequest, ComboSwapRequest, WeeklyDishPatchRequest,
 )
@@ -414,7 +418,7 @@ async def accept_request(
             doctor_id=did,
             token_2=generate_token_2(),
             cycle_start=now,
-            cycle_expiry=now + timedelta(days=30),
+            cycle_expiry=now + timedelta(days=CYCLE_DAYS),
             visit_counter=0,
         )
         session.add(pv)
@@ -873,6 +877,7 @@ async def add_custom_dish_to_plan(
                 )
             new_food_v2 = FoodItem(
                 recipe_name=body.recipe_name,
+                name_normalized=normalize_dish_name(body.recipe_name),
                 slot_type=body.slot_type,
                 cal_per_serving=body.calories,
                 protein_per_serving=body.protein,
@@ -942,6 +947,7 @@ async def add_custom_dish_to_plan(
             )
         new_food = FoodItem(
             recipe_name=body.recipe_name,
+            name_normalized=normalize_dish_name(body.recipe_name),
             slot_type=body.slot_type,
             cal_per_serving=body.calories,
             protein_per_serving=body.protein,
@@ -1071,11 +1077,12 @@ async def patch_dish(
         effective_slot_type = body.slot_type or "main_dish"
 
         if body.replacement_food_id is not None:
-            # Use existing food_items record
-            fi_result = await session.execute(
-                select(FoodItem).where(FoodItem.id == body.replacement_food_id)
+            # Use existing food_items record. Must match the pool the generator
+            # serves from -- a bare id lookup would let a soft-deleted (merged-away)
+            # or unreviewed dish be swapped straight into the patient's plan.
+            fi = await get_assignable_dish(
+                session, food_id=body.replacement_food_id, doctor_id=did
             )
-            fi = fi_result.scalars().first()
             if fi is None:
                 raise HTTPException(status_code=404, detail="replacement_food_id not found")
             # Session 22E (decision b): doctor-swapped dishes are not rescaled.
@@ -1100,6 +1107,7 @@ async def patch_dish(
             if body.flag_for_database:
                 new_food = FoodItem(
                     recipe_name=cd.recipe_name,
+                    name_normalized=normalize_dish_name(cd.recipe_name),
                     slot_type=effective_slot_type,
                     cal_per_serving=cd.calories,
                     protein_per_serving=cd.protein,
@@ -1713,18 +1721,19 @@ async def add_recipe(
     approves (PATCH /admin/food/{id}/approve), is_verified becomes True and the recipe
     joins the global dataset available to all doctors and the AI meal generator.
     """
-    # Dedup: return existing record if name already matches (case-insensitive, trimmed)
-    existing_result = await session.execute(
-        select(FoodItem).where(
-            func.lower(func.trim(FoodItem.recipe_name)) == body.recipe_name.strip().lower()
-        ).limit(1)
+    # Dedup on the canonical key (name+slot+diet): reuse the shared verified canonical, or
+    # this doctor's own live row, instead of creating a duplicate. deleted_at-aware, so a
+    # merged-away row never short-circuits a fresh insert.
+    existing = await find_reusable_dish(
+        session, name=body.recipe_name, slot_type=body.slot_type,
+        diet_type=body.diet_type, doctor_id=doctor.id,
     )
-    existing = existing_result.scalars().first()
     if existing:
         return existing
 
     food = FoodItem(
         recipe_name=body.recipe_name,
+        name_normalized=normalize_dish_name(body.recipe_name),
         slot_type=body.slot_type,
         cal_per_serving=body.cal_per_serving,
         protein_per_serving=body.protein_per_serving,
@@ -1735,6 +1744,8 @@ async def add_recipe(
         sodium_per_serving=body.sodium_per_serving,
         diet_type=body.diet_type,
         meal_time_tags=body.meal_time_tags,
+        # DEPRECATED (Stage 2): legacy JSONB kept during migration; recipe_ingredients
+        # (dual-written below) is the authoritative ingredient source.
         ingredients=[i.model_dump() for i in body.ingredients],  # IngredientItem → plain dict for JSONB
         region_tags=body.region_tags,
         doctor_id=doctor.id,
@@ -1743,6 +1754,38 @@ async def add_recipe(
         is_verified=False,  # admin must approve before entering global pool
     )
     session.add(food)
+    await session.flush()
+
+    # Stage 2 dual-write: mirror ingredients into recipe_ingredients (authoritative).
+    # quantity is a free-text string; only numeric values become quantity_g (same
+    # grams assumption the JSONB backfill used) — non-numeric entries stay JSONB-only.
+    # Original "quantity unit" preserved in notes.
+    seen_names: set[str] = set()
+    for item in body.ingredients:
+        norm_name = " ".join(item.name.split()).lower()
+        if not norm_name or norm_name in seen_names:
+            continue
+        try:
+            grams = float(item.quantity)
+        except ValueError:
+            continue
+        if grams <= 0:
+            continue
+        seen_names.add(norm_name)
+        ing_id = (await session.execute(
+            select(Ingredient.id).where(Ingredient.name_normalized == norm_name).limit(1)
+        )).scalar()
+        if ing_id is None:
+            ing = Ingredient(name=item.name.strip(), name_normalized=norm_name, source="doctor")
+            session.add(ing)
+            await session.flush()
+            ing_id = ing.id
+        session.add(RecipeIngredient(
+            food_item_id=food.id,
+            ingredient_id=ing_id,
+            quantity_g=grams,
+            notes=f"{item.quantity} {item.unit}",
+        ))
     await session.flush()
     return food
 
@@ -1887,10 +1930,23 @@ async def patch_recipe_tags(
     food = result.scalars().first()
     if food is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
+
+    # Multi-doctor guard: a doctor may edit tags only on their OWN unverified/private dish.
+    # Shared master data (verified/global, or another doctor's row) is flag-only — route
+    # through the Data Review flag endpoint so an admin reviews the change. This also removes
+    # the old hole where editing tags force-verified any row into the global pool.
+    if food.is_verified or (food.doctor_id != doctor.id):
+        raise HTTPException(
+            status_code=403,
+            detail="This is shared/verified master data — you can't edit its tags directly. "
+                   "Use Data Review to flag a change for admin review.",
+        )
+
     await session.execute(
         update(FoodItem)
         .where(FoodItem.id == food_item_id)
-        .values(avoid_tags=body.avoid_tags, prefer_tags=body.prefer_tags, is_verified=True)
+        .values(avoid_tags=body.avoid_tags, prefer_tags=body.prefer_tags,
+                tags_locked=True)  # lock: derive_medical_tags.py skips locked rows. is_verified unchanged.
     )
     await session.commit()
     return RecipeTagsResponse(
@@ -1898,7 +1954,7 @@ async def patch_recipe_tags(
         recipe_name=food.recipe_name,
         avoid_tags=body.avoid_tags,
         prefer_tags=body.prefer_tags,
-        is_verified=True,
+        is_verified=food.is_verified,
     )
 
 
@@ -2209,8 +2265,8 @@ async def record_patient_visit(
 
     Charging rules (see token_service.is_chargeable_visit):
       - First visit within 15 days of Token 1 activation → FREE (included in ₹800/mo)
-      - First visit after 15-day grace period → ₹1,500
-      - Subsequent visits > 15 days since last charge → ₹1,500
+      - First visit after the grace period → charged (VISIT_CHARGE_INR)
+      - Subsequent visits beyond the grace window → charged (VISIT_CHARGE_INR)
       - Subsequent visits ≤ 15 days since last charge → FREE (follow-up grace)
     """
     from ..services.audit_service import log_action
@@ -2276,7 +2332,7 @@ async def record_patient_visit(
     )
 
     if charged:
-        msg = f"Visit verified and charged (₹1,500). Total visits this cycle: {pv.visit_counter}"
+        msg = f"Visit verified and charged (₹{VISIT_CHARGE_INR:,}). Total visits this cycle: {pv.visit_counter}"
     elif pv.visit_counter == 0:
         msg = "Visit verified — free initial consultation (within 15-day grace period after subscription)."
     else:
@@ -2334,17 +2390,89 @@ async def flag_visit(
         patient_visit_id=pv.id if pv else None,
         status="pending",
         visit_date=now,
+        reason_code=body.reason_code,
+        # Already forced to None by FlagVisitRequest unless reason is "other".
         doctor_note=body.doctor_note,
     )
     session.add(pending)
     await session.flush()
 
-    notify_visit_flagged(patient, doctor.name)
+    # Best-effort push, matching every other notify call site (patients.py:56,
+    # internal.py:83). If this raised, get_db would roll back the transaction and
+    # discard the approval row above — the doctor would see a 500 and the flag
+    # would be silently lost, which is the one outcome this feature cannot have.
+    try:
+        notify_visit_flagged(patient, doctor.name)
+    except Exception as notif_exc:
+        import logging as _log
+        _log.getLogger(__name__).debug(f"notify_visit_flagged failed silently: {notif_exc}")
 
     return {
         "message": "Visit flagged. The patient will receive a notification to confirm.",
         "pending_visit_id": pending.id,
     }
+
+
+# ─── GET /api/v1/doctor/flagged-visits ────────────────────────────────────
+
+@router.get("/flagged-visits")
+async def list_flagged_visits(
+    request: Request,
+    patient_id: int | None = None,
+    answered_only: bool = False,
+    limit: int = 50,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Visits this doctor flagged, with whatever the patient answered.
+
+    Without this the flag was write-only from the doctor's side: they could
+    raise one but never learn whether the patient confirmed or denied it, even
+    though that answer decides whether the visit is billed.
+
+    Serves two callers, hence the filters rather than two endpoints:
+      * patient_id=N   → the Visits tab list for one patient
+      * answered_only  → recently-answered items for the header bell, which is
+                         the closest thing to a doctor notification (the Doctor
+                         model has no fcm_token; FCM is patient-only).
+    """
+    did = _doctor_id(request)
+
+    stmt = (
+        select(PendingVisitApproval, Patient.name)
+        .join(Patient, Patient.id == PendingVisitApproval.patient_id)
+        .where(PendingVisitApproval.doctor_id == did)
+    )
+    if patient_id is not None:
+        stmt = stmt.where(PendingVisitApproval.patient_id == patient_id)
+    if answered_only:
+        stmt = stmt.where(PendingVisitApproval.status != "pending")
+
+    # Answered items sort by when the patient replied; pending ones have a NULL
+    # responded_at, so fall back to visit_date to keep them in a sane order.
+    stmt = stmt.order_by(
+        func.coalesce(PendingVisitApproval.responded_at, PendingVisitApproval.visit_date).desc()
+    ).limit(min(limit, 200))
+
+    result = await session.execute(stmt)
+    return [
+        {
+            "id": pva.id,
+            "patient_id": pva.patient_id,
+            "patient_name": patient_name,
+            "status": pva.status,
+            "visit_date": pva.visit_date.isoformat(),
+            "reason_code": pva.reason_code,
+            # Label resolved server-side so the doctor dashboard and the patient
+            # app cannot drift into showing different words for the same code.
+            "reason_label": FLAG_VISIT_REASONS.get(pva.reason_code or "", "Not specified"),
+            "doctor_note": pva.doctor_note,
+            "responded_at": pva.responded_at.isoformat() if pva.responded_at else None,
+            "created_at": pva.created_at.isoformat() if pva.created_at else None,
+        }
+        for pva, patient_name in result.all()
+    ]
 
 
 # ─── GET /api/v1/doctor/patients/{patient_id}/visits ─────────────────────
@@ -2444,7 +2572,7 @@ async def approve_renewal(
         doctor_id=did,
         token_2=new_token_2,
         cycle_start=now,
-        cycle_expiry=now + timedelta(days=30),
+        cycle_expiry=now + timedelta(days=CYCLE_DAYS),
         visit_counter=0,
     )
     session.add(pv)
@@ -2512,7 +2640,7 @@ async def approve_all_renewals(
             doctor_id=did,
             token_2=generate_token_2(),
             cycle_start=now,
-            cycle_expiry=now + timedelta(days=30),
+            cycle_expiry=now + timedelta(days=CYCLE_DAYS),
             visit_counter=0,
         )
         session.add(pv)
@@ -2835,9 +2963,10 @@ async def pin_dish(
     did = _doctor_id(request)
     await _get_patient_for_doctor(patient_id, did, session)
 
-    food = (await session.execute(
-        select(FoodItem).where(FoodItem.id == body.food_id)
-    )).scalar_one_or_none()
+    # Pinning forces a dish INTO the plan, so it must pass the same gate as a swap.
+    # (block_dish below stays a bare lookup on purpose: blocking only ever removes an
+    # option, so blocking an already-unservable dish is inert rather than unsafe.)
+    food = await get_assignable_dish(session, food_id=body.food_id, doctor_id=did)
     if not food:
         raise HTTPException(status_code=404, detail="Food item not found")
 
@@ -2942,3 +3071,89 @@ async def unblock_dish(
 
     _, blocked = await _get_prefs_for_patient(patient_id, session)
     return {"blocked_dishes": blocked}
+
+
+# ─── Data Review (multi-doctor shared-data governance) ───────────────────────
+# Read-only dish catalogue + flag-only writes. Doctors never edit or delete shared
+# master data here — flagging creates a DataChangeRequest for admin review.
+
+class DishFlagRequest(BaseModel):
+    food_item_id: int
+    field: str = "general"                       # which field looks wrong (e.g. cal_per_serving)
+    reason: str = Field(min_length=5, max_length=1000)
+    suggested_value: str | None = None           # optional correction the doctor proposes
+
+
+@router.get("/data-review/dishes")
+async def data_review_dishes(
+    request: Request,
+    search: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Read-only dish list for review. Excludes soft-deleted (merged-away) rows."""
+    stmt = select(FoodItem).where(FoodItem.deleted_at.is_(None))
+    if search:
+        stmt = stmt.where(FoodItem.name_normalized.ilike(f"%{normalize_dish_name(search)}%"))
+    stmt = stmt.order_by(FoodItem.recipe_name).offset((page - 1) * page_size).limit(page_size)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [{
+        "id": f.id, "recipe_name": f.recipe_name, "slot_type": f.slot_type,
+        "diet_type": f.diet_type, "cal_per_serving": float(f.cal_per_serving),
+        "is_verified": f.is_verified, "source": f.source,
+    } for f in rows]
+
+
+@router.post("/data-review/flag", status_code=201)
+async def data_review_flag(
+    body: DishFlagRequest,
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """Flag a dish value as wrong (required reason) — creates a pending DataChangeRequest.
+    This is the ONLY write a doctor can make against shared master data."""
+    food = (await session.execute(
+        select(FoodItem).where(FoodItem.id == body.food_item_id, FoodItem.deleted_at.is_(None))
+    )).scalars().first()
+    if food is None:
+        raise HTTPException(status_code=404, detail="Dish not found")
+
+    old_val = {"cal_per_serving": str(food.cal_per_serving), "recipe_name": food.recipe_name}
+    dcr = DataChangeRequest(
+        target_table="food_items", target_id=food.id, field_changed=body.field,
+        old_value=old_val, new_value={"suggested": body.suggested_value},
+        proposed_by=str(doctor.id), proposal_reason=body.reason,
+        tier="tier2_review", status="pending",
+    )
+    session.add(dcr)
+    await session.flush()
+    session.add(DataChangeAuditLog(
+        request_id=dcr.id, target_table="food_items", target_id=food.id, action="proposed",
+        field_changed=body.field, before_value=old_val,
+        after_value={"suggested": body.suggested_value}, actor=str(doctor.id), reason=body.reason,
+    ))
+    await session.commit()
+    return {"message": "Flag submitted for admin review", "request_id": dcr.id}
+
+
+@router.get("/data-review/my-flags")
+async def data_review_my_flags(
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """The doctor's own flags + their current status (not the cross-doctor audit log)."""
+    rows = (await session.execute(
+        select(DataChangeRequest)
+        .where(DataChangeRequest.proposed_by == str(doctor.id))
+        .order_by(DataChangeRequest.created_at.desc())
+    )).scalars().all()
+    return [{
+        "id": r.id, "target_id": r.target_id, "field_changed": r.field_changed,
+        "reason": r.proposal_reason, "status": r.status,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+    } for r in rows]

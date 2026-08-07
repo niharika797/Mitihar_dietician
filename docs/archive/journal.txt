@@ -1,0 +1,189 @@
+================================================================================
+MITYAHAR — PROJECT JOURNAL
+================================================================================
+Project: Mityahar Dietician API
+Stack: FastAPI + PostgreSQL (asyncpg/SQLAlchemy 2.0 async) + Alembic
+Location: C:\Users\Lenovo\Desktop\Code\2026\Nutria\Mitihar_dietician
+Venv: venv\Scripts\activate (Windows)
+DB: postgresql+asyncpg://admin:mityahar_dev@localhost:5432/mityahar_db
+
+================================================================================
+PHASE 0 — Foundation & Cleanup
+Chat: Phase 0 (this chat)
+Status: COMPLETE (Step 5 Redis deferred to pre-prod)
+================================================================================
+
+STEP 1 — Dead code deletion
+  DELETED: app/services/Healthy.py
+  DELETED: app/services/datasets for eyantra/ (folder + zip)
+  KEPT for reference (fields absorbed into DB tables): models/meal_adjustment.py,
+    models/meal_plan.py, models/progress.py, schemas/diet_plan.py
+  NOTE: Those 4 "kept" files were deleted in item-2 cleanup later in this chat.
+
+STEP 2 — 8 missing ORM tables created
+  CREATED in app/models/db_models.py: Doctor, Admin, Patient, Recommendation,
+    MealLog, ProgressLog, PatientRequest, SubscriptionCode
+  MIGRATIONS APPLIED:
+    4e5124b3e103_add_all_user_tables.py
+    cf7a21f007f0_fix_nullable_streak_requestedat.py
+  BUGS FIXED (audit script):
+    - ProgressLog.streak_days: added nullable=False (was nullable despite default=0)
+    - PatientRequest.requested_at: added server_default=func.now()
+  GIN INDEX DRIFT FIXED: 3 GIN indexes (idx_fi_regions, idx_fi_meal_times,
+    idx_fi_plan_types) declared in db_models.py — alembic check: clean.
+  ALL 10 TABLES VERIFIED in PostgreSQL.
+
+STEP 3 — MongoDB → PostgreSQL migration (done by Antigravity)
+  REWRITTEN: database.py, config.py, user_service.py, progress_service.py,
+    diet_plan_service.py, auth.py, progress.py, users.py, diet_plans.py,
+    meal_plan.py, main.py, schemas/user.py
+  DELETED: app/crud/progress.py (never imported)
+  REMOVED from requirements.txt: motor
+  VERIFIED: zero motor/pymongo grep hits across all app/ .py files
+  KEY CHANGES:
+    - user_service.py: module-level async fns (create_patient, authenticate_patient etc.)
+    - progress_service.py: MealLog/ProgressLog ORM with upsert pattern
+    - diet_plan_service.py: Recommendation ORM CRUD
+    - auth.py: IntegrityError → HTTP 409 for duplicate emails
+    - progress.py /today: uses patient.tdee not hardcoded 2000
+
+STEP 4 — Three-role auth + middleware (done by Antigravity)
+  REWRITTEN: app/core/security.py, app/core/middleware.py, app/main.py,
+    app/services/user_service.py, app/routers/auth.py
+  CREATED: app/core/middleware.py (new file)
+  FEATURES:
+    - get_current_patient, get_current_doctor, get_current_admin deps
+    - JWT always embeds: sub, role, user_type, exp, iat, nbf
+    - SubscriptionCheckMiddleware (blocks /meal-plan, /progress, /diet-plans)
+    - DoctorIsolationMiddleware (restricts /doctor/* routes)
+    - get_current_user = get_current_patient alias (5 routers unchanged)
+    - POST /api/v1/auth/doctor/login added
+  BUGS CAUGHT AND FIXED (post-walkthrough audit):
+    - CRITICAL: get_current_patient raised HTTP 402 for all new patients
+      (subscription_status defaults "inactive" → every user locked out)
+      FIX: removed gate from security.py, enforcement stays in middleware only
+    - HIGH: meal_plan.py /adjust hardcoded age=30
+      FIX: derive from patient.date_of_birth
+    - MEDIUM: both middleware classes opened separate DB sessions per request
+      FIX: embed sub_status + doctor_id in JWT claims at login; middleware
+           reads claims only — zero DB queries
+    - LOW: fiber_g never logged (MealLogCreate had no fiber field)
+      FIX: added fiber field to schema, wired to log_meal()
+
+ITEMS 1 & 2 — Pre-Phase-1 cleanup
+  FOUND: calculations.py imported old User model with wrong field names
+    (weight/height instead of weight_kg/height_cm) — silent crash at runtime
+    FIX: rewritten to use Patient ORM + _get_age() helper
+  DELETED:
+    app/models/user.py           (old MongoDB UserInDB/User Pydantic models)
+    app/routers/security.py      (empty file)
+    app/models/meal_adjustment.py
+    app/models/meal_plan.py
+    app/models/progress.py
+    app/schemas/diet_plan.py
+  VERIFIED: 13/13 module imports clean after deletions
+
+STEP 6 — Meal generator upgrades (done by Antigravity)
+  MODIFIED: app/services/meal_generator/meal_generator.py, app/services/user_service.py
+  CREATED: scripts/tag_pantry_staples.py
+  UPGRADES:
+    U1 — Non-veg weekly budget: pre-allocates 3-4 non-veg slots at Lunch/Dinner
+         only, no two same day; all other slots Vegetarian
+    U2 — Diet fallback chain: Non-Veg→Eggetarian→Veg; breakfast uses
+         user's original diet for egg exception
+    U3 — Pantry staple tagging: tag_pantry_staples.py tags JSONB ingredients;
+         generator skips is_pantry_staple=True from shopping list
+    U4 — Slot quality blocklist: chutney/pickle/powder blocked from
+         grain/dal_protein/main_dish/sabzi slots; LIMIT 5 + _pick()
+    U5 — Ingredient name normalization: .strip().title() before grouping
+    U6 — Age → DOB: create_patient derives date_of_birth from age on register
+  BUGS CAUGHT AND FIXED (post-walkthrough audit):
+    - CRITICAL: /diet-plans/generate KeyError: 'age' — diet_plans.py never
+      put 'age' in user_data dict; test passed --age directly so it was hidden
+      FIX: added age derivation from date_of_birth in diet_plans.py user_data
+    - WARNING: _diet_fallback_chain received query_diet (always "Vegetarian"
+      for breakfast) not original user diet — breakfast egg exception never fired
+      FIX: _find_food_item now accepts user_diet= kwarg; chain uses that
+  MIGRATION RUN: scripts/tag_pantry_staples.py → 3,956 staples across 2,114 recipes
+  TEST RESULT (Non-Veg/North/Gym-Friendly/M/25/80kg/180cm/VA):
+    35/35 meals, 3114 kcal, 79 unique dishes, 6 reasonable repeats
+
+STEP 5 — Redis rate limiting
+  STATUS: DEFERRED (in-memory slowapi works fine for dev/single-worker)
+  DO BEFORE: multi-worker production deployment
+
+STEP 7 — Dataset final pass
+  STATUS: DEFERRED (~20 dirty rows, condiment reclassification)
+  DO BEFORE: Phase 1 beta testing
+
+================================================================================
+CURRENT STATE (end of Phase 0)
+================================================================================
+
+DB TABLES (10): admins, doctors, food_items, meal_logs, meal_templates,
+  patient_requests, patients, progress_logs, recommendations, subscription_codes
+
+APP STRUCTURE (clean):
+  app/
+    core/       config.py, database.py, exceptions.py, limiter.py,
+                middleware.py, security.py
+    models/     db_models.py, diet_plan.py   ← diet_plan.py still needed
+                                                (imported by diet_plan_service.py)
+    routers/    auth.py, calculations.py, diet_plans.py, meal_plan.py,
+                progress.py, users.py
+    schemas/    progress.py, user.py
+    services/   diet_plan_service.py, progress_service.py, user_service.py
+                meal_generator/ (meal_generator.py, calculations.py, ...)
+
+KNOWN TECH DEBT:
+  - models/diet_plan.py: old Pydantic DietPlan class still used as return type
+    in diet_plan_service.py. Will be replaced in Phase 1 when recommendations
+    layer gets proper API schemas.
+  - /progress/today: falls back to target=2000 when patient.tdee=None
+    (all new patients until onboarding stores TDEE)
+  - slowapi in-memory (not Redis-backed)
+  - ~20 dirty food_items rows pending Ollama clean pass
+
+================================================================================
+PHASE 1 — PLANNED (not started)
+================================================================================
+
+Phase 1 builds on the clean Phase 0 foundation. Key features:
+
+1. Patient onboarding flow
+   - POST /api/v1/patients/onboarding
+   - Calculates + stores BMR, TDEE, BMI on Patient record
+   - Accepts full profile (dob, goals, medical conditions etc.)
+   - Returns complete profile with calculated values
+
+2. Doctor dashboard
+   - GET /api/v1/doctor/patients — list doctor's patients
+   - GET /api/v1/doctor/patients/{id}/plan — view patient plan
+   - PUT /api/v1/doctor/patients/{id}/plan — edit/override plan
+   - POST /api/v1/doctor/subscription-codes — generate codes
+   - All routes use request.state.doctor_id from DoctorIsolationMiddleware
+
+3. Patient-Doctor connection flow
+   - POST /api/v1/patients/request-doctor — patient sends request
+   - POST /api/v1/doctor/requests/{id}/accept|reject
+   - Uses PatientRequest table
+
+4. Subscription activation
+   - POST /api/v1/patients/activate — patient enters subscription code
+   - Validates SubscriptionCode, sets subscription_status="active"
+   - Updates JWT sub_status claim on next login
+
+5. Day N+1 calorie adjustment
+   - After each logged day, compare actual vs target
+   - Redistribute surplus/deficit across next day's meals
+   - Uses meal_logs table (already exists)
+
+6. Admin panel (basic)
+   - POST /api/v1/admin/doctors — create doctor accounts
+   - GET /api/v1/admin/stats — user counts, plan counts
+
+7. Delete models/diet_plan.py
+   - Replace with proper Recommendation-based schemas
+   - diet_plan_service.py returns Recommendation ORM directly
+
+================================================================================

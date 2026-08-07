@@ -1,0 +1,33 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://10.0.2.2:8001/api/v1"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://STAGING-URL-NOT-DEPLOYED-YET.example.com/api/v1",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "PLACEHOLDER-SET-BEFORE-BUILD.apps.googleusercontent.com"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://PLACEHOLDER-CLOUD-RUN-URL-NOT-DEPLOYED-YET.example.com/api/v1",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "PLACEHOLDER-SET-BEFORE-BUILD.apps.googleusercontent.com",
+        "EXPO_PUBLIC_SENTRY_DSN": ""
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

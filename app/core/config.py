@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional, Union
-import os
 from pydantic import ConfigDict, field_validator
 from dotenv import load_dotenv
 
@@ -15,6 +14,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15       # Short-lived — Axios interceptor handles silent refresh
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080   # 7 days — lives in HttpOnly cookie only
     RESET_TOKEN_EXPIRE_MINUTES: int = 30        # Password-reset link valid for 30 minutes only
+
+    # ── Deployment environment ────────────────────────────────────────────
+    # Must be set explicitly in all environments. Cloud Run MUST set "production"
+    # or the COOKIE_SECURE fail-closed guard will not trigger.
+    ENVIRONMENT: str = "development"
 
     # ── Cookie security ───────────────────────────────────────────────────
     # Set COOKIE_SECURE=True in production (.env). False only for local HTTP dev.
@@ -44,7 +48,11 @@ class Settings(BaseSettings):
     GEMINI_API_KEY_4: Optional[str] = None
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: Optional[str] = None
+
+    # ── Internal cron secret ──────────────────────────────────────────────
+    # Shared secret for /internal/cron/* endpoints called by Cloud Scheduler.
+    # Must be set in production. Requests with a missing/wrong header get 401.
+    CRON_SECRET: Optional[str] = None
 
     # ── Dev-only flags ────────────────────────────────────────────────────
     # ALLOW_HARD_DELETE=True enables DELETE /admin/patients/{id}/hard-delete
@@ -73,6 +81,17 @@ class Settings(BaseSettings):
         if len(v) < 32:
             raise ValueError(
                 "SECRET_KEY must be at least 32 characters long for HS256 security."
+            )
+        return v
+
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
+        allowed = {"development", "staging", "production"}
+        if v not in allowed:
+            raise ValueError(
+                f"ENVIRONMENT={v!r} is not valid. Must be one of: {sorted(allowed)}. "
+                "Check for typos — 'prod', 'dev', 'Production' are not accepted."
             )
         return v
 
