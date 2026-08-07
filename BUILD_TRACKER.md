@@ -194,12 +194,13 @@ All of the following have been built and verified across Sessions 1–8:
 | recommendation_id backfilled on new dish ops — existing meal slots still null until next PATCH operation or plan regeneration | Low | Resolves gradually via use |
 | full_backend_test.py crashed before reaching admin login (port 8000 vs 8001, no error handling) | ~~P1~~ FIXED | 2026-06-30 — port corrected, health check try/except added, sys.exit(1) on backend-down; gdpr_consent added to Section 8 registration payload; hdr() guarded against empty token; serving_weight_g added + plan_type_tags removed from Section 12 recipe payload. 94/94 passing across 16 sections. |
 | confirm-choice accepts any food_item_id regardless of whether its meal_time_tags match the requested meal_type — a Breakfast dish can be confirmed into a Lunch slot via direct API call. Fix: add `meal_time_tags @> ARRAY[meal_type_lower]` validation in the endpoint before the upsert. Deferred — low risk since the suggestions endpoint only surfaces slot-appropriate dishes to patients. | P2 | Session 20 |
+| `/meal-plan/week`'s `selectinload` combo-materialization is ~77% of top-5 DB query time under load (confirmed via `pg_stat_statements`, not yet a blocker at 1000-user scale). See `docs/reference/PERFORMANCE_NOTES.md`. | P2 | 2026-08-07 — [PR #7](https://github.com/niharika797/Mitihar_dietician/pull/7) |
 
 ---
 
 ## CURRENT STATUS
 
-> _Updated 2026-08-07 (later same day). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-08-07 (later same day, no code changes this session). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Committed (`0a2cfbe`):** Quantity-aware pantry backend + grams input UI — `patient_pantry.quantity_g` three-state, migration `e4f5a6b7c8d9`, `_PANTRY_IN_STOCK` predicate, live-computed `/shopping-list`, `confirm-choice` pantry deltas, debounced grams input in `PantrySection`.
 
@@ -239,9 +240,9 @@ All of the following have been built and verified across Sessions 1–8:
 
 **Blockers / pending:**
 - Known coverage gap: pre-minted tokens skip `POST /auth/token` and `POST /auth/refresh` entirely, unlike real client traffic.
-- `/meal-plan/week` selectinload cost concentration confirmed but not addressed this session.
+- `/meal-plan/week`'s selectinload cost concentration is confirmed but not yet addressed — no fix applied.
 
 **Next action:**
-Review/merge decision on the open PR. If merged, consider addressing the `/meal-plan/week` selectinload cost concentration as a follow-up.
+Review/merge decision on the open PR `feature/api-remediation-v0.2` → `main`. If merged, consider addressing the `/meal-plan/week` selectinload cost concentration as a follow-up.
 
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).
