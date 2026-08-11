@@ -1,3 +1,4 @@
+import os
 import requests
 import time
 import urllib3
@@ -5,6 +6,8 @@ import urllib3
 urllib3.disable_warnings()
 
 BASE_URL = "http://localhost:8000/api/v1"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@mityahar.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "admin1234")
 
 def print_result(step, desc, is_pass, res=None):
     status = "PASS" if is_pass else "FAIL"
@@ -23,7 +26,7 @@ def run_tests():
     print("================ MITYAHAR API INTEGRATION TEST ================")
     
     # --- Phase 1 ---
-    res = requests.post(f"{BASE_URL}/auth/admin/login", data={"username": "admin@mityahar.com", "password": "admin1234"})
+    res = requests.post(f"{BASE_URL}/auth/admin/login", data={"username": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     is_pass = False
     try:
         is_pass = res.status_code == 200 and "access_token" in res.json()

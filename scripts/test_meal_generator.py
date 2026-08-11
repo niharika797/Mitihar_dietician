@@ -32,15 +32,15 @@ from collections import defaultdict
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from app.services.meal_generator.meal_generator import MealGenerator
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://admin:mityahar_dev@localhost:5432/mityahar_db"
-)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 # ── Activity level labels ────────────────────────────────────────────────────
 ACTIVITY_LABELS = {

@@ -5,6 +5,7 @@ Outputs to docs/PILOT_TAGGING_RESULTS.md. Does NOT write to the database.
 """
 import asyncio
 import json
+import os
 import re
 import sys
 import time
@@ -12,9 +13,12 @@ from pathlib import Path
 
 import asyncpg
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DSN = "postgresql://admin:mityahar_dev@localhost:5432/mityahar_db"
+DSN = os.environ["DATABASE_URL"].replace("+asyncpg", "")
 LLAMA_URL = "http://localhost:11434/v1/chat/completions"
 LLAMA_MODEL = "gemma"  # llama-server ignores the model field; any string works
 KB_PATH = Path(__file__).parent.parent / "docs" / "MEDICAL_TAGGING_KB_COMPACT.md"

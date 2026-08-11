@@ -16,12 +16,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://admin:mityahar_dev@localhost:5432/mityahar_db",
-).replace("+asyncpg", "+psycopg2")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+DATABASE_URL = os.environ["DATABASE_URL"].replace("+asyncpg", "+psycopg2")
 
 # ── Pantry-staple names (case-insensitive match) ─────────────────────────────
 PANTRY_STAPLES = {
