@@ -174,6 +174,19 @@ def main() -> None:
                                           **{f: str(lo[f]) for f in NUTRITION_FIELDS}}),
                     "after": json.dumps({"merged_into": wid, "rows_repointed": res.rowcount}),
                     "reason": f"duplicate of #{wid} ({name}) -- {reason}"})
+
+                # patient_pantry.ingredient_id has ondelete="CASCADE" -- repoint it before
+                # deleting the loser, or a patient's pantry row silently vanishes with no
+                # audit trail. Avoid uq_patient_pantry collision, then repoint.
+                conn.execute(text(
+                    "DELETE FROM patient_pantry p WHERE p.ingredient_id = :lid "
+                    "AND EXISTS (SELECT 1 FROM patient_pantry q "
+                    "WHERE q.patient_id = p.patient_id AND q.ingredient_id = :wid)"
+                ), {"lid": lid, "wid": wid})
+                conn.execute(text(
+                    "UPDATE patient_pantry SET ingredient_id = :wid WHERE ingredient_id = :lid"
+                ), {"lid": lid, "wid": wid})
+
                 conn.execute(text("DELETE FROM ingredients WHERE id = :lid"), {"lid": lid})
 
         print(f"\nRepointed {repointed:,} recipe_ingredients rows; deleted {total_losers} ingredients.")
