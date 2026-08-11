@@ -1528,10 +1528,10 @@ async def patch_weekly_combo_dish(
     elif body.action in (DishAction.swap, DishAction.add):
         if body.food_item_id is None:
             raise HTTPException(status_code=422, detail="food_item_id required for swap/add")
-        fi_result = await session.execute(
-            select(FoodItem).where(FoodItem.id == body.food_item_id)
-        )
-        fi = fi_result.scalars().first()
+        # Use existing food_items record. Must match the pool the generator
+        # serves from -- a bare id lookup would let a soft-deleted (merged-away)
+        # or unreviewed dish be swapped straight into the patient's plan.
+        fi = await get_assignable_dish(session, food_id=body.food_item_id, doctor_id=did)
         if fi is None:
             raise HTTPException(status_code=404, detail="food_item_id not found")
         new_dish = {
