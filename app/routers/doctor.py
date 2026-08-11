@@ -1388,7 +1388,6 @@ async def swap_weekly_combo(
     ]
 
     query_diet = meal_generator._derive_diet_label(old_dishes)
-    user_diet = meal_generator._normalize_diet_label(pat.diet_type)
 
     conditions = list(pat.medical_conditions or [])
     patient_avoid_tags = frozenset(get_avoid_tags(conditions))
@@ -1410,7 +1409,6 @@ async def swap_weekly_combo(
         session, slots, query_diet, pat.region, combo.meal_type, pat.health_condition or "Healthy",
         meal_target,
         set(), set(), excluded_ids,
-        user_diet=user_diet,
         allergies=allergies,
         blocked_food_ids=frozenset(blocked_food_ids),
         patient_avoid_tags=patient_avoid_tags,
