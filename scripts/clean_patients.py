@@ -3,10 +3,18 @@ One-off admin utility: wipe all patient data for a clean start.
 Keeps doctors, admins, food items, and meal templates intact.
 Resets all subscription codes back to available.
 
+Refuses to run unless ENVIRONMENT=development, or --i-am-sure is passed.
+Default is a dry run (prints row counts, deletes nothing); pass --write
+to actually delete.
+
 Usage:
-  python -m scripts.clean_patients
+  python -m scripts.clean_patients                     (dry run)
+  python -m scripts.clean_patients --write              (apply, dev only)
+  python -m scripts.clean_patients --write --i-am-sure  (apply, any ENVIRONMENT)
 """
+import argparse
 import asyncio
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -14,9 +22,37 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from sqlalchemy import text
 from app.core.database import AsyncSessionLocal
 
+# Tables this script deletes unconditionally (used for the dry-run preview).
+PREVIEW_TABLES = [
+    "meal_logs", "progress_logs", "recommendations", "patient_visits",
+    "patient_requests", "patients",
+]
 
-async def clean() -> None:
+
+def _guard_environment(i_am_sure: bool) -> None:
+    env = os.getenv("ENVIRONMENT", "development")
+    if env != "development" and not i_am_sure:
+        raise SystemExit(
+            f"Refusing to run: ENVIRONMENT={env!r}, not 'development'. "
+            "Pass --i-am-sure to override."
+        )
+
+
+async def clean(write: bool) -> None:
     async with AsyncSessionLocal() as session:
+        if not write:
+            print("DRY RUN — no rows will be deleted. Re-run with --write to apply.\n")
+            for table in PREVIEW_TABLES:
+                count = (await session.execute(text(f"SELECT COUNT(*) FROM {table}"))).scalar()
+                print(f"  {table}: {count} row(s) would be deleted")
+            print(
+                "\n(plus any rows in meal_ratings, patient_meal_choices, patient_meal_config, "
+                "patient_dish_preferences, doctor_meal_overrides, pending_visit_approvals, "
+                "password_reset_tokens, email_verification_tokens, clinical_notes, and "
+                "audit_logs, if those tables exist)"
+            )
+            return
+
         print("Starting clean...")
 
         # Delete child tables first (FK order)
@@ -100,4 +136,9 @@ async def clean() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(clean())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--write", action="store_true", help="apply the deletes (default is dry-run preview)")
+    ap.add_argument("--i-am-sure", action="store_true", help="override the ENVIRONMENT != 'development' guard")
+    args = ap.parse_args()
+    _guard_environment(args.i_am_sure)
+    asyncio.run(clean(args.write))
