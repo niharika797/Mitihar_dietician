@@ -11,7 +11,8 @@ PASS 1 — Bulk clean all dirty rows in batches of 20
 PASS 2 — Edge cases one by one with thinking
 
 Usage:
-    venv\Scripts\python scripts\ai_clean_recipe_names.py
+    venv\Scripts\python scripts\ai_clean_recipe_names.py            (dry run — preview only)
+    venv\Scripts\python scripts\ai_clean_recipe_names.py --confirm  (apply writes)
 
 Env vars:
     GEMINI_API_KEY_1   — First Google AI Studio key
@@ -24,6 +25,7 @@ Ollama must be running:
     ollama serve
 """
 
+import argparse
 import os
 import re
 import sys
@@ -232,7 +234,7 @@ def call_ai(prompt: str, km: KeyManager, model: str,
 
 
 # ── Pass 1: Bulk clean ────────────────────────────────────────────────────────
-def pass1_clean(rows: list, session, km: KeyManager) -> tuple[int, int, int]:
+def pass1_clean(rows: list, session, km: KeyManager, dry_run: bool) -> tuple[int, int, int]:
     needs_clean = [r for r in rows if not already_clean(r.recipe_name)]
     pre_clean   = len(rows) - len(needs_clean)
 
@@ -326,8 +328,10 @@ Input:
             updated += 1
 
         try:
-            session.commit()
-            log.info(f"  Batch {batch_start//PASS1_BATCH_SIZE+1} ✅ [{km.key_label()}] | updated={updated}")
+            if not dry_run:
+                session.commit()
+            tag = "[DRY RUN] " if dry_run else ""
+            log.info(f"  {tag}Batch {batch_start//PASS1_BATCH_SIZE+1} ✅ [{km.key_label()}] | updated={updated}")
         except Exception as e:
             session.rollback()
             log.error(f"  Commit failed: {e}")
@@ -348,7 +352,7 @@ Input:
 
 
 # ── Pass 2: Edge cases ────────────────────────────────────────────────────────
-def pass2_clean(rows: list, session, km: KeyManager) -> tuple[int, int]:
+def pass2_clean(rows: list, session, km: KeyManager, dry_run: bool) -> tuple[int, int]:
     edge_cases = [item for item in rows if looks_weird(item.recipe_name)]
 
     log.info(f"\n{'='*65}")
@@ -405,8 +409,10 @@ Return ONLY the cleaned name, maximum 5 words, nothing else."""
         updated += 1
 
         try:
-            session.commit()
-            log.info(f"  [{i+1}/{len(edge_cases)}] [{km.key_label()}] '{original[:30]}' → '{cleaned}'")
+            if not dry_run:
+                session.commit()
+            tag = "[DRY RUN] " if dry_run else ""
+            log.info(f"  {tag}[{i+1}/{len(edge_cases)}] [{km.key_label()}] '{original[:30]}' → '{cleaned}'")
         except Exception as e:
             session.rollback()
             skipped += 1
@@ -424,36 +430,53 @@ Return ONLY the cleaned name, maximum 5 words, nothing else."""
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--confirm", action="store_true",
+        help="apply the writes for real (default is a dry-run preview, no commits)",
+    )
+    args = ap.parse_args()
+    dry_run = not args.confirm
+
     km = KeyManager(API_KEYS)
 
     engine  = create_engine(DATABASE_URL)
     Session = sessionmaker(bind=engine)
     session = Session()
 
+    if dry_run:
+        log.info("DRY RUN — previewing planned changes, nothing will be committed.")
+        log.info("Re-run with --confirm to apply.")
+
     log.info("Fetching all 6k_dataset rows...")
     rows = session.query(FoodItem).filter(FoodItem.source == "6k_dataset").all()
     log.info(f"Found {len(rows)} rows")
 
     # Pass 1
-    p1_updated, p1_skipped, p1_errors = pass1_clean(rows, session, km)
+    p1_updated, p1_skipped, p1_errors = pass1_clean(rows, session, km, dry_run)
 
     # Re-fetch
     rows = session.query(FoodItem).filter(FoodItem.source == "6k_dataset").all()
 
     # Pass 2
-    p2_updated, p2_skipped = pass2_clean(rows, session, km)
+    p2_updated, p2_skipped = pass2_clean(rows, session, km, dry_run)
 
+    if dry_run:
+        session.rollback()
     session.close()
 
     print("\n" + "=" * 65)
-    print("  FINAL SUMMARY")
+    print("  FINAL SUMMARY" + ("  [DRY RUN — nothing was committed]" if dry_run else ""))
     print(f"  Pass 1 — Updated: {p1_updated} | Skipped: {p1_skipped} | Errors: {p1_errors}")
     print(f"  Pass 2 — Updated: {p2_updated} | Skipped: {p2_skipped}")
     print(f"  Total cleaned   : {p1_updated + p2_updated}")
     if km.is_ollama():
         print("  ✅ Ollama fallback was used successfully")
     print("=" * 65)
-    print("  Next: verify in pgAdmin, then mark trusted rows is_verified=True")
+    if dry_run:
+        print("  This was a dry run. Re-run with --confirm to apply these changes.")
+    else:
+        print("  Next: verify in pgAdmin, then mark trusted rows is_verified=True")
     print("=" * 65)
 
 
