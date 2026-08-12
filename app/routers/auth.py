@@ -30,7 +30,7 @@ from ..core.config import settings
 from ..core.database import get_db
 from ..core.limiter import limiter
 from ..core.security import create_access_token, create_refresh_token, get_current_patient, get_current_doctor, get_current_admin, verify_password, get_password_hash
-from ..models.db_models import Doctor, Patient
+from ..models.db_models import Doctor, Patient, Admin
 from ..schemas.user import UserCreate
 from ..services.audit_service import log_action
 from ..services.mfa_service import generate_mfa_secret, get_totp_uri, verify_totp
@@ -141,7 +141,7 @@ async def register(
 ):
     """
     Register a new patient.
-    Rate-limited to 10/minute per IP — prevents account-creation floods.
+    Rate-limited to 3/hour per IP — prevents account-creation floods.
     If doctor_code is provided: validates, consumes it, links patient to doctor immediately.
     If no doctor_code: standalone patient with inactive subscription.
     """
@@ -188,41 +188,53 @@ async def register(
 
     if doctor_code:
         now = datetime.now(_tz.utc)
-        code_result = await session.execute(
-            select(SubscriptionCode).where(
+
+        # Atomic reserve: the UPDATE's WHERE clause re-checks availability at
+        # the DB level (not_used, not_reserved, not_expired), so two concurrent
+        # registrations racing on the same code can't both pass a read-then-write
+        # check and double-reserve a single-use code -- only one UPDATE can match.
+        reserve_result = await session.execute(
+            sa_update(SubscriptionCode)
+            .where(
                 SubscriptionCode.code == doctor_code,
                 SubscriptionCode.expires_at > now,
+                SubscriptionCode.is_used == False,
+                SubscriptionCode.reserved_by.is_(None),
             )
+            .values(reserved_by=patient_id, reserved_at=now)
+            .returning(SubscriptionCode.doctor_id)
         )
-        code_row = code_result.scalars().first()
+        reserved_doctor_id = reserve_result.scalar_one_or_none()
 
-        if code_row is None:
-            return {
-                "message": "Registered successfully. Doctor code was invalid or expired — enter it manually in Profile → Activate.",
-                "doctor_connected": False,
-            }
+        if reserved_doctor_id is None:
+            # Reservation didn't happen -- look up why for an accurate message.
+            code_result = await session.execute(
+                select(SubscriptionCode).where(SubscriptionCode.code == doctor_code)
+            )
+            code_row = code_result.scalars().first()
 
-        if code_row.is_used:
-            return {
-                "message": "This code has already been used by another account. Ask your doctor for a new code.",
-                "doctor_connected": False,
-            }
-
-        if code_row.reserved_by is not None:
+            if code_row is None or code_row.expires_at is None or code_row.expires_at <= now:
+                return {
+                    "message": "Registered successfully. Doctor code was invalid or expired — enter it manually in Profile → Activate.",
+                    "doctor_connected": False,
+                }
+            if code_row.is_used:
+                return {
+                    "message": "This code has already been used by another account. Ask your doctor for a new code.",
+                    "doctor_connected": False,
+                }
             return {
                 "message": "This code has already been reserved by another account. Ask your doctor for a new code.",
                 "doctor_connected": False,
             }
 
-        # Code is AVAILABLE — reserve it for this patient (AVAILABLE → RESERVED).
-        # Consumption (→ CONSUMED) happens at /patients/activate after onboarding.
-        code_row.reserved_by = patient_id
-        code_row.reserved_at = now
+        # Code is now RESERVED for this patient. Consumption (→ CONSUMED)
+        # happens at /patients/activate after onboarding.
         await session.execute(
             sa_update(PatientModel)
             .where(PatientModel.id == patient_id)
             .values(
-                doctor_id=code_row.doctor_id,
+                doctor_id=reserved_doctor_id,
                 user_type="doctor_assigned",
             )
         )
@@ -256,7 +268,7 @@ async def login(
         result = await rs.execute(select(Patient).where(Patient.email == form_data.username))
         raw_patient = result.scalars().first()
 
-    if raw_patient and raw_patient.locked_until:
+    if raw_patient is not None and raw_patient.locked_until:
         locked = raw_patient.locked_until.replace(tzinfo=timezone.utc) \
             if raw_patient.locked_until.tzinfo is None else raw_patient.locked_until
         if datetime.now(timezone.utc) < locked:
@@ -266,14 +278,15 @@ async def login(
             )
 
     # Phase 2: bcrypt in threadpool — event loop unblocked, no DB connection held
+    # (short-circuits, skipping the thread hop entirely, when raw_patient is None)
     is_valid = raw_patient is not None and await asyncio.to_thread(
         verify_password, form_data.password, raw_patient.hashed_password
     )
 
-    # Phase 3: Write — minimal session for counter update only
-    async with AsyncSessionLocal() as ws:
-        if not is_valid:
-            if raw_patient:
+    if raw_patient is None or not is_valid:
+        # Phase 3 (failure): Write — minimal session for counter update only
+        async with AsyncSessionLocal() as ws:
+            if raw_patient is not None:
                 attempts = (raw_patient.failed_login_attempts or 0) + 1
                 lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
                 await ws.execute(
@@ -282,16 +295,21 @@ async def login(
                     .values(failed_login_attempts=attempts, locked_until=lock_until)
                 )
                 await ws.commit()
-            logger.warning(
-                "login_failed role=patient email=%s ip=%s",
-                form_data.username,
-                request.client.host if request.client else "unknown",
-            )
-            raise HTTPException(
-                status_code=401,
-                detail="Incorrect username or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        logger.warning(
+            "login_failed role=patient email=%s ip=%s",
+            form_data.username,
+            request.client.host if request.client else "unknown",
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Phase 3 (success): Write — minimal session for counter update only
+    async with AsyncSessionLocal() as ws:
+        if not raw_patient.is_active:
+            raise HTTPException(status_code=403, detail="Account deactivated")
         await ws.execute(
             _sa_update(Patient)
             .where(Patient.id == raw_patient.id)
@@ -428,13 +446,18 @@ async def admin_mfa_login(
     from ..models.db_models import Admin as AdminModel
 
     payload = _decode_partial_token(body.partial_token, "mfa_pending_admin")
-    admin_id: int = payload.get("pending_id")
+    admin_id = payload.get("pending_id")
+    if admin_id is None:
+        raise HTTPException(status_code=401, detail="Invalid partial token")
 
     result = await session.execute(select(AdminModel).where(AdminModel.id == admin_id))
     admin = result.scalars().first()
 
     if admin is None or not admin.is_active:
         raise HTTPException(status_code=401, detail="Admin account not found or deactivated")
+
+    if admin.mfa_secret is None:
+        raise HTTPException(status_code=401, detail="MFA not configured for this account")
 
     if not verify_totp(admin.mfa_secret, body.totp_code):
         raise HTTPException(status_code=401, detail="Invalid or expired TOTP code")
@@ -448,7 +471,7 @@ async def admin_mfa_login(
 
 @router.post("/admin/mfa-setup")
 async def admin_mfa_setup(
-    admin=Depends(get_current_admin),
+    admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
     """
@@ -456,14 +479,12 @@ async def admin_mfa_setup(
     Returns an otpauth:// URI — client renders it as a QR code.
     MFA is NOT enabled yet; call /admin/mfa-confirm after scanning.
     """
-    from ..models.db_models import Admin as AdminModel
-
     secret = generate_mfa_secret()
     uri = get_totp_uri(secret, admin.email)
 
-    result = await session.execute(select(AdminModel).where(AdminModel.id == admin.id))
-    admin_row = result.scalars().first()
-    admin_row.mfa_secret = secret
+    # Mutate the already-loaded, already-validated object from get_current_admin
+    # directly -- no need to re-SELECT by id just to set one field.
+    admin.mfa_secret = secret
     await session.flush()
 
     return {
@@ -479,25 +500,20 @@ class MFAConfirmRequest(BaseModel):
 @router.post("/admin/mfa-confirm")
 async def admin_mfa_confirm(
     body: MFAConfirmRequest,
-    admin=Depends(get_current_admin),
+    admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
     """
     Confirm MFA setup by verifying a live TOTP code.
     Sets mfa_enabled=True on the admin account.
     """
-    from ..models.db_models import Admin as AdminModel
-
-    result = await session.execute(select(AdminModel).where(AdminModel.id == admin.id))
-    admin_row = result.scalars().first()
-
-    if not admin_row.mfa_secret:
+    if not admin.mfa_secret:
         raise HTTPException(status_code=400, detail="Run /admin/mfa-setup first")
 
-    if not verify_totp(admin_row.mfa_secret, body.totp_code):
+    if not verify_totp(admin.mfa_secret, body.totp_code):
         raise HTTPException(status_code=400, detail="Invalid TOTP code — try again")
 
-    admin_row.mfa_enabled = True
+    admin.mfa_enabled = True
     await session.flush()
     return {"message": "MFA enabled successfully for admin account"}
 
@@ -505,23 +521,18 @@ async def admin_mfa_confirm(
 @router.post("/admin/mfa-disable")
 async def admin_mfa_disable(
     body: MFAConfirmRequest,
-    admin=Depends(get_current_admin),
+    admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
     """Disable MFA on admin account. Requires a valid TOTP code to confirm identity."""
-    from ..models.db_models import Admin as AdminModel
-
-    result = await session.execute(select(AdminModel).where(AdminModel.id == admin.id))
-    admin_row = result.scalars().first()
-
-    if not admin_row.mfa_enabled:
+    if not admin.mfa_enabled:
         raise HTTPException(status_code=400, detail="MFA is not enabled")
 
-    if not verify_totp(admin_row.mfa_secret, body.totp_code):
+    if admin.mfa_secret is None or not verify_totp(admin.mfa_secret, body.totp_code):
         raise HTTPException(status_code=401, detail="Invalid TOTP code")
 
-    admin_row.mfa_enabled = False
-    admin_row.mfa_secret = None
+    admin.mfa_enabled = False
+    admin.mfa_secret = None
     await session.flush()
     return {"message": "MFA disabled"}
 
@@ -704,6 +715,8 @@ async def google_verify(
         )
         result = await session.execute(select(Patient).where(Patient.id == new_patient_id))
         patient = result.scalars().first()
+        if patient is None:
+            raise HTTPException(status_code=500, detail="Patient row not found after creation")
         patient.google_id = google_sub
         patient.is_email_verified = True  # Google already verified this email
         await session.flush()
@@ -739,7 +752,7 @@ async def doctor_login(
         result = await rs.execute(select(Doctor).where(Doctor.email == form_data.username))
         doctor = result.scalars().first()
 
-    if doctor and doctor.locked_until:
+    if doctor is not None and doctor.locked_until:
         locked = doctor.locked_until if doctor.locked_until.tzinfo else \
             doctor.locked_until.replace(tzinfo=timezone.utc)
         if datetime.now(timezone.utc) < locked:
@@ -749,14 +762,15 @@ async def doctor_login(
             )
 
     # Phase 2: bcrypt in threadpool — event loop unblocked, no DB connection held
+    # (short-circuits, skipping the thread hop entirely, when doctor is None)
     is_valid = doctor is not None and await asyncio.to_thread(
         verify_password, form_data.password, doctor.hashed_password
     )
 
-    # Phase 3: Write — minimal session for counter update only
-    async with AsyncSessionLocal() as ws:
-        if not is_valid:
-            if doctor:
+    if doctor is None or not is_valid:
+        # Phase 3 (failure): Write — minimal session for counter update only
+        async with AsyncSessionLocal() as ws:
+            if doctor is not None:
                 attempts = (doctor.failed_login_attempts or 0) + 1
                 lock_until = datetime.now(timezone.utc) + timedelta(minutes=15) if attempts >= 10 else None
                 await ws.execute(
@@ -765,16 +779,19 @@ async def doctor_login(
                     .values(failed_login_attempts=attempts, locked_until=lock_until)
                 )
                 await ws.commit()
-            logger.warning(
-                "login_failed role=doctor email=%s ip=%s",
-                form_data.username,
-                request.client.host if request.client else "unknown",
-            )
-            raise HTTPException(
-                status_code=401,
-                detail="Incorrect email or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        logger.warning(
+            "login_failed role=doctor email=%s ip=%s",
+            form_data.username,
+            request.client.host if request.client else "unknown",
+        )
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Phase 3 (success): Write — minimal session for counter update only
+    async with AsyncSessionLocal() as ws:
         if not doctor.is_active:
             raise HTTPException(status_code=403, detail="Account deactivated")
         await ws.execute(
@@ -825,13 +842,18 @@ async def doctor_mfa_login(
     Returns full JWT on success.
     """
     payload = _decode_partial_token(body.partial_token, "mfa_pending_doctor")
-    doctor_id: int = payload.get("pending_id")
+    doctor_id = payload.get("pending_id")
+    if doctor_id is None:
+        raise HTTPException(status_code=401, detail="Invalid partial token")
 
     result = await session.execute(select(Doctor).where(Doctor.id == doctor_id))
     doctor = result.scalars().first()
 
     if doctor is None or not doctor.is_active:
         raise HTTPException(status_code=401, detail="Doctor account not found or deactivated")
+
+    if doctor.mfa_secret is None:
+        raise HTTPException(status_code=401, detail="MFA not configured for this account")
 
     if not verify_totp(doctor.mfa_secret, body.totp_code):
         raise HTTPException(status_code=401, detail="Invalid or expired TOTP code")
@@ -845,7 +867,7 @@ async def doctor_mfa_login(
 
 @router.post("/doctor/mfa-setup")
 async def doctor_mfa_setup(
-    doctor=Depends(get_current_doctor),
+    doctor: Doctor = Depends(get_current_doctor),
     session: AsyncSession = Depends(get_db),
 ):
     """
@@ -856,9 +878,9 @@ async def doctor_mfa_setup(
     secret = generate_mfa_secret()
     uri = get_totp_uri(secret, doctor.email)
 
-    result = await session.execute(select(Doctor).where(Doctor.id == doctor.id))
-    doctor_row = result.scalars().first()
-    doctor_row.mfa_secret = secret
+    # Mutate the already-loaded, already-validated object from get_current_doctor
+    # directly -- no need to re-SELECT by id just to set one field.
+    doctor.mfa_secret = secret
     await session.flush()
 
     return {
@@ -870,23 +892,20 @@ async def doctor_mfa_setup(
 @router.post("/doctor/mfa-confirm")
 async def doctor_mfa_confirm(
     body: MFAConfirmRequest,
-    doctor=Depends(get_current_doctor),
+    doctor: Doctor = Depends(get_current_doctor),
     session: AsyncSession = Depends(get_db),
 ):
     """
     Confirm MFA setup by verifying a live TOTP code.
     Sets mfa_enabled=True on the doctor account.
     """
-    result = await session.execute(select(Doctor).where(Doctor.id == doctor.id))
-    doctor_row = result.scalars().first()
-
-    if not doctor_row.mfa_secret:
+    if not doctor.mfa_secret:
         raise HTTPException(status_code=400, detail="Run /doctor/mfa-setup first")
 
-    if not verify_totp(doctor_row.mfa_secret, body.totp_code):
+    if not verify_totp(doctor.mfa_secret, body.totp_code):
         raise HTTPException(status_code=400, detail="Invalid TOTP code — try again")
 
-    doctor_row.mfa_enabled = True
+    doctor.mfa_enabled = True
     await session.flush()
     return {"message": "MFA enabled successfully for doctor account"}
 
@@ -894,21 +913,18 @@ async def doctor_mfa_confirm(
 @router.post("/doctor/mfa-disable")
 async def doctor_mfa_disable(
     body: MFAConfirmRequest,
-    doctor=Depends(get_current_doctor),
+    doctor: Doctor = Depends(get_current_doctor),
     session: AsyncSession = Depends(get_db),
 ):
     """Disable MFA on doctor account. Requires a valid TOTP code to confirm identity."""
-    result = await session.execute(select(Doctor).where(Doctor.id == doctor.id))
-    doctor_row = result.scalars().first()
-
-    if not doctor_row.mfa_enabled:
+    if not doctor.mfa_enabled:
         raise HTTPException(status_code=400, detail="MFA is not enabled")
 
-    if not verify_totp(doctor_row.mfa_secret, body.totp_code):
+    if doctor.mfa_secret is None or not verify_totp(doctor.mfa_secret, body.totp_code):
         raise HTTPException(status_code=401, detail="Invalid TOTP code")
 
-    doctor_row.mfa_enabled = False
-    doctor_row.mfa_secret = None
+    doctor.mfa_enabled = False
+    doctor.mfa_secret = None
     await session.flush()
     return {"message": "MFA disabled"}
 
