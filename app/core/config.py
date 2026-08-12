@@ -1,6 +1,8 @@
-from pydantic_settings import BaseSettings
+import json
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional, Union
-from pydantic import ConfigDict, field_validator
+from pydantic import field_validator
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -98,15 +100,15 @@ class Settings(BaseSettings):
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        if isinstance(v, str) and not v.startswith("["):
+        if isinstance(v, str):
+            if v.startswith("["):
+                return json.loads(v)
             return [i.strip() for i in v.split(",")]
-        elif isinstance(v, list):
-            return v
-        return v # Pydantic will handle it if it's already a list or other valid type
+        return v
 
-    model_config = ConfigDict(
-        case_sensitive=True, 
-        env_file=".env", 
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        env_file=".env",
         extra="ignore"
     )
 

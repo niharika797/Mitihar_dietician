@@ -122,31 +122,31 @@ async def get_stats(
 ):
     total_patients = (await session.execute(
         select(func.count(Patient.id))
-    )).scalar()
+    )).scalar() or 0
 
     active_subs = (await session.execute(
         select(func.count(Patient.id)).where(
             Patient.subscription_status == "active"
         )
-    )).scalar()
+    )).scalar() or 0
 
     total_doctors = (await session.execute(
         select(func.count(Doctor.id))
-    )).scalar()
+    )).scalar() or 0
 
     total_plans = (await session.execute(
         select(func.count(Recommendation.id)).where(
             Recommendation.is_active == True
         )
-    )).scalar()
+    )).scalar() or 0
 
     expiring_soon_count = (await session.execute(
         select(func.count(Patient.id)).where(Patient.expiring_soon == True)
-    )).scalar()
+    )).scalar() or 0
 
     pending_renewals_count = (await session.execute(
         select(func.count(Patient.id)).where(Patient.renewal_requested == True)
-    )).scalar()
+    )).scalar() or 0
 
     from datetime import datetime, timezone
     month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -191,8 +191,10 @@ async def list_patients(
     result = await session.execute(
         stmt.order_by(Patient.created_at.desc()).offset(offset).limit(page_size)
     )
-    patients = result.scalars().all()
-    return PaginatedAdminPatients(patients=patients, total=total, page=page, page_size=page_size)
+    patients = list(result.scalars().all())
+    # Patient ORM objects, not AdminPatientView -- Pydantic coerces via
+    # from_attributes=True during response serialization; mypy can't see that.
+    return PaginatedAdminPatients(patients=patients, total=total, page=page, page_size=page_size)  # type: ignore[arg-type]
 
 
 # ─── PATCH /api/v1/admin/doctors/{id}/deactivate ──────────────────────────
@@ -321,8 +323,9 @@ async def get_audit_logs(
     total = (await session.execute(count_stmt)).scalar() or 0
     offset = (page - 1) * page_size
     result = await session.execute(stmt.offset(offset).limit(page_size))
-    logs = result.scalars().all()
-    return PaginatedAuditLogs(logs=logs, total=total, page=page, page_size=page_size)
+    logs = list(result.scalars().all())
+    # AuditLog ORM objects, not AuditLogEntry -- same from_attributes=True coercion as above.
+    return PaginatedAuditLogs(logs=logs, total=total, page=page, page_size=page_size)  # type: ignore[arg-type]
 
 
 import secrets, string
@@ -403,9 +406,9 @@ async def list_all_codes(
 @router.patch("/patients/{patient_id}/subscription/override")
 async def override_subscription(
     patient_id: int,
+    request: Request,
     status: str = Query(..., description="active | inactive"),
     days: int = Query(default=30, ge=1, le=365),
-    request: Request = None,
     admin: Admin = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ):
@@ -433,7 +436,8 @@ async def override_subscription(
 
     await log_action(session, actor_id=admin.id, actor_role="admin",
                      action="override_subscription", entity_type="patient",
-                     entity_id=patient_id, detail={"status": status, "days": days})
+                     entity_id=patient_id, detail={"status": status, "days": days},
+                     ip_address=request.client.host if request.client else None)
     return {"patient_id": patient_id, "subscription_status": status, "end_date": new_end.isoformat() if new_end else None}
 
 
@@ -477,10 +481,13 @@ async def approve_food_item(
         raise HTTPException(status_code=400, detail="Already verified")
 
     # Ensure the canonical key exists, then block creating a SECOND canonical for it.
-    nn = food.name_normalized or normalize_dish_name(food.recipe_name)
+    # food_item's legacy Column() style (DO NOT MODIFY, see CLAUDE.md) types these as
+    # Column[T] instead of T; instance attribute access returns the plain value at
+    # runtime regardless.
+    nn = food.name_normalized or normalize_dish_name(food.recipe_name)  # type: ignore[arg-type]
     clash = await canonical_collision(
-        session, name_normalized=nn, slot_type=food.slot_type,
-        diet_type=food.diet_type, exclude_id=food.id,
+        session, name_normalized=nn, slot_type=food.slot_type,  # type: ignore[arg-type]
+        diet_type=food.diet_type, exclude_id=food.id,  # type: ignore[arg-type]
     )
     if clash is not None:
         raise HTTPException(

@@ -7,35 +7,10 @@ from datetime import datetime, date
 
 from sqlalchemy import select, insert as sa_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from enum import Enum
 
 from ..schemas.diet_plan import DietPlanResponse as DietPlan
 from ..models.db_models import Recommendation, WeeklyCombo, WeeklyPatientSummary
 from .meal_generator.meal_generator import meal_generator
-
-
-class ActivityLevel(str, Enum):
-    SEDENTARY = "S"
-    LIGHTLY_ACTIVE = "LA"
-    MODERATELY_ACTIVE = "MA"
-    VERY_ACTIVE = "VA"
-    SUPER_ACTIVE = "SA"
-
-class DietType(str, Enum):
-    VEGETARIAN = "Vegetarian"
-    NON_VEGETARIAN = "Non-Vegetarian"
-
-class HealthCondition(str, Enum):
-    HEALTHY = "Healthy"
-    DIABETIC = "Diabetic-Friendly"
-    GYM = "Gym-Friendly"
-
-class region(str, Enum):
-    East = "East"
-    South = "South"
-    West = "West"
-    North = "North"
-    none = "none"
 
 
 class DietPlanService:
@@ -102,11 +77,15 @@ class DietPlanService:
         New plan version = previous version + 1 (so version history is trackable).
         Returns the new recommendation id.
         """
+        if diet_plan.user_id is None:
+            raise ValueError("store_diet_plan: diet_plan.user_id is required")
+        patient_id = int(diet_plan.user_id)
+
         # Find current active plan to read its version before soft-deleting
         existing_result = await session.execute(
             select(Recommendation)
             .where(
-                Recommendation.patient_id == int(diet_plan.user_id),
+                Recommendation.patient_id == patient_id,
                 Recommendation.is_active == True,
             )
             .order_by(Recommendation.created_at.desc())
@@ -122,7 +101,7 @@ class DietPlanService:
 
         is_v2 = diet_plan.generation_version == 2
         rec = Recommendation(
-            patient_id=int(diet_plan.user_id),
+            patient_id=patient_id,
             week_start_date=date.today(),
             meals=diet_plan.meals,            # [] for v2 — kept for backward compat
             ingredient_checklist=diet_plan.ingredient_checklist,

@@ -26,7 +26,14 @@ _log = logging.getLogger(__name__)
 # ─── X-Request-ID middleware ─────────────────────────────────────────────────
 class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        client_request_id = request.headers.get("X-Request-ID")
+        try:
+            # Only accept a well-formed UUID from the client -- an unvalidated
+            # echoed header lets an unauthenticated caller poison log/trace
+            # correlation with arbitrary strings.
+            request_id = str(uuid.UUID(client_request_id)) if client_request_id else str(uuid.uuid4())
+        except ValueError:
+            request_id = str(uuid.uuid4())
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
@@ -37,11 +44,11 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     # ── COOKIE_SECURE startup guard ───────────────────────────────────────────────
     if not settings.COOKIE_SECURE:
-        if settings.ENVIRONMENT == "production":
+        if settings.ENVIRONMENT != "development":
             raise RuntimeError(
-                "COOKIE_SECURE=False in a production environment. "
+                f"COOKIE_SECURE=False in ENVIRONMENT={settings.ENVIRONMENT!r}. "
                 "Refresh tokens would be sent over plain HTTP and can be intercepted. "
-                "Set COOKIE_SECURE=True before deploying."
+                "Set COOKIE_SECURE=True for any non-development environment."
             )
         else:
             _log.warning(
@@ -78,13 +85,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+# slowapi's handler is typed for RateLimitExceeded; Starlette's stub wants a
+# generic Exception handler. No runtime effect -- Starlette dispatches by the
+# exception's actual type via MRO, not by the handler's declared parameter type.
 
 # --- Middleware ---
 # Starlette processes add_middleware() in LIFO order:
 # last registered = outermost (first to see requests, last to see responses).
 #
 # Stack (outermost → innermost):
+#   RequestIDMiddleware         — stamps/propagates X-Request-ID for log correlation
 #   SecurityHeadersMiddleware   — adds security headers to every response
 #   CORSMiddleware              — handles preflight + CORS headers
 #   SubscriptionCheckMiddleware — blocks inactive patients (zero-DB, JWT claims)
