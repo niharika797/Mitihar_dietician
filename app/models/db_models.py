@@ -40,9 +40,11 @@ class FoodItem(Base):
     tags_locked         = Column(Boolean, nullable=False, server_default='false')
     serving_weight_g    = Column(Numeric(6, 1))
     diet_type           = Column(String(30), nullable=False)   # see diet values below
-    region_tags         = Column(ARRAY(Text), nullable=False, default=[])
-    meal_time_tags      = Column(ARRAY(Text), nullable=False, default=[])
-    ingredients         = Column(JSONB, nullable=False, default=[])  # [{"name": str, "amount_g": float}]
+    region_tags         = Column(ARRAY(Text), nullable=False, default=list)  # type: ignore[var-annotated]
+    meal_time_tags      = Column(ARRAY(Text), nullable=False, default=list)  # type: ignore[var-annotated]
+    # legacy Column() style on this class only (DO NOT MODIFY, see CLAUDE.md) gives
+    # mypy no type info to infer from; Mapped[]/mapped_column() is off-limits here.
+    ingredients         = Column(JSONB, nullable=False, default=list)  # [{"name": str, "amount_g": float}]
     # ^ DEPRECATED (Stage 2, 2026-07-15): recipe_ingredients is the authoritative
     #   ingredient source — all app readers repointed (meal_generator, meal_plan combo
     #   detail); doctor add-recipe dual-writes. Do not add new readers. Column drop is
@@ -171,7 +173,7 @@ class Admin(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     mfa_secret: Mapped[str | None] = mapped_column(String, nullable=True)
     mfa_enabled: Mapped[bool | None] = mapped_column(Boolean, default=False)
-    allowed_ips: Mapped[list | None] = mapped_column(JSONB, default=[])
+    allowed_ips: Mapped[list | None] = mapped_column(JSONB, default=list)
     # ── Login lockout (T1-6) ──────────────────────────────────────────────
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -205,12 +207,12 @@ class Patient(Base):
     bmr: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
     tdee: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
     target_weight_kg: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
-    health_goals: Mapped[list | None] = mapped_column(JSONB, default=[])
-    medical_conditions: Mapped[list | None] = mapped_column(JSONB, default=[])
-    food_allergies: Mapped[list | None] = mapped_column(JSONB, default=[])
-    dietary_preferences: Mapped[list | None] = mapped_column(JSONB, default=[])
+    health_goals: Mapped[list | None] = mapped_column(JSONB, default=list)
+    medical_conditions: Mapped[list | None] = mapped_column(JSONB, default=list)
+    food_allergies: Mapped[list | None] = mapped_column(JSONB, default=list)
+    dietary_preferences: Mapped[list | None] = mapped_column(JSONB, default=list)
     meals_per_day: Mapped[int | None] = mapped_column(Integer, default=3)
-    fasting_days: Mapped[list | None] = mapped_column(JSONB, default=[])
+    fasting_days: Mapped[list | None] = mapped_column(JSONB, default=list)
     sleep_hours: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     water_glasses: Mapped[int | None] = mapped_column(Integer, default=8)
     occupation: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -224,14 +226,19 @@ class Patient(Base):
     nonveg_meals_per_week: Mapped[int | None] = mapped_column(Integer, default=3)
     role: Mapped[str | None] = mapped_column(String(10), default="patient")
     is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
-    google_id: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
+    google_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Uniqueness enforced by the partial index idx_patients_google_id (WHERE google_id
+    # IS NOT NULL), declared as a module-level Index() below — a plain unique=True
+    # here would redeclare a constraint that was never actually live; Postgres
+    # already allows multiple NULLs under a plain UNIQUE and the partial index is
+    # the real guard.
     # Stable Google 'sub' claim — set on first Google Sign-In, never changes
     is_email_verified: Mapped[bool | None] = mapped_column(Boolean, default=False)
     # True once the patient clicks the verification link in their welcome email.
     # Google-authenticated patients are auto-verified (Google already confirmed the email).
     pace_preference: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # valid values: "slow" | "moderate" | "fast" — patient's preferred weight-loss pace
-    eating_habits: Mapped[list | None] = mapped_column(JSONB, default=[])
+    eating_habits: Mapped[list | None] = mapped_column(JSONB, default=list)
     # e.g. ["skips_breakfast", "late_night_eating", "irregular_meals"]
 
     # ── Token 1 — permanent meal plan identity ────────────────────────────
@@ -250,7 +257,7 @@ class Patient(Base):
 
     # ── FCM push notifications ──────────────────────────────────────────────
     fcm_token: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    notification_preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default={})
+    notification_preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
     # Device FCM token — updated on every login, cleared on logout.
     # NULL means patient has not granted notification permission or is logged out.
 
@@ -296,9 +303,9 @@ class Recommendation(Base):
     patient_id: Mapped[int] = mapped_column(Integer, ForeignKey("patients.id"), nullable=False)
     week_start_date: Mapped[date | None] = mapped_column(Date)
     week_number: Mapped[int | None] = mapped_column(Integer)
-    meals: Mapped[list] = mapped_column(JSONB, nullable=False, default=[])
-    ingredient_checklist: Mapped[list | None] = mapped_column(JSONB, default=[])
-    used_food_ids: Mapped[list | None] = mapped_column(JSONB, default=[])
+    meals: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    ingredient_checklist: Mapped[list | None] = mapped_column(JSONB, default=list)
+    used_food_ids: Mapped[list | None] = mapped_column(JSONB, default=list)
     # List of food_item IDs used in this plan — enables cross-week variety
     is_active: Mapped[bool | None] = mapped_column(Boolean, default=True)
     generated_by: Mapped[str | None] = mapped_column(String(20), default="system")   # system | doctor
@@ -335,7 +342,7 @@ class WeeklyCombo(Base):
     combo_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)   # 0-3, hard cap 4 per slot
     slot_composition: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)   # e.g. ['grain','dal_protein','sabzi']
     total_calories: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False)   # unscaled SUM(cal_per_serving)
-    dishes: Mapped[list] = mapped_column(JSONB, nullable=False, default=[])   # same shape as meals[].dishes[]
+    dishes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)   # same shape as meals[].dishes[]
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # relationships
@@ -362,7 +369,7 @@ class WeeklyPatientSummary(Base):
     recommendation_id: Mapped[int] = mapped_column(Integer, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False)
     week_start_date: Mapped[date] = mapped_column(Date, nullable=False)
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    summary_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default={})
+    summary_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     # relationships
     patient: Mapped["Patient"] = relationship("Patient")
@@ -529,7 +536,7 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g. "accept_request", "deactivate_doctor"
     entity_type: Mapped[str | None] = mapped_column(String(50), nullable=True)   # e.g. "patient", "doctor", "recipe"
     entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)      # ID of the affected record
-    detail: Mapped[dict | None] = mapped_column(JSONB, default={})           # any extra context
+    detail: Mapped[dict | None] = mapped_column(JSONB, default=dict)           # any extra context
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)   # IPv4 or IPv6
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -658,7 +665,7 @@ class DoctorMealOverride(Base):
     # NULL if doctor replaced with a free-text custom meal
     # ── Patient context snapshot at time of override ──────────────────────
     patient_health_condition: Mapped[str | None] = mapped_column(String(30), nullable=True)   # "Healthy" / "Diabetic-Friendly" etc.
-    patient_medical_conditions: Mapped[list | None] = mapped_column(JSONB, default=[])         # ["PCOS/PCOD"] etc.
+    patient_medical_conditions: Mapped[list | None] = mapped_column(JSONB, default=list)         # ["PCOS/PCOD"] etc.
     patient_region: Mapped[str | None] = mapped_column(String(10), nullable=True)   # "North" / "South" etc.
     patient_diet_type: Mapped[str | None] = mapped_column(String(30), nullable=True)   # "Vegetarian" etc.
     patient_age_bucket: Mapped[str | None] = mapped_column(String(10), nullable=True)   # "18-25" / "26-35" etc.
@@ -810,6 +817,11 @@ class PendingVisitApproval(Base):
     __table_args__ = (
         Index("idx_pva_patient", "patient_id"),
         Index("idx_pva_status",  "status"),
+        CheckConstraint(
+            "reason_code IS NULL OR reason_code IN "
+            "('phone_not_present', 'battery_dead', 'app_issue', 'signed_out', 'other')",
+            name="ck_pva_reason_code",
+        ),
     )
 
 
@@ -1032,4 +1044,5 @@ class RecipeIngredient(Base):
         UniqueConstraint("food_item_id", "ingredient_id", name="uq_recipe_ingredient"),
         Index("idx_ri_food_item",  "food_item_id"),
         Index("idx_ri_ingredient", "ingredient_id"),
+        CheckConstraint("quantity_g > 0", name="ck_ri_quantity_positive"),
     )

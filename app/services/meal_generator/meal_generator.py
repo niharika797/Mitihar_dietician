@@ -1,7 +1,7 @@
 import logging
 import random
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 import pandas as pd
 import numpy as np
 from pydantic import BaseModel
@@ -17,11 +17,11 @@ from .calculations import calculate_bmi, calculate_bmr, calculate_tdee, calculat
 logger = logging.getLogger(__name__)
 
 # NOTE: meal_templates DB table (180 rows, schema: id/meal_time/region/diet_type/plan_type/slots)
-# is NOT used in the live generation path. Slot composition is handled by
-# in-code constants (BREAKFAST_SLOTS, LUNCH_SLOTS, DINNER_SLOTS etc.) established in R-2.
-# meal_templates was only referenced in _find_food_item_single_diet() which was
-# removed in R-9. The table is retained for historical reference only.
-# Do not query meal_templates in new code without product owner approval.
+# is only partially superseded by in-code constants. Breakfast slot composition
+# uses BREAKFAST_SLOTS (shadows template.slots, see Session 22E comment below);
+# Lunch and Dinner still read slot structure from the DB MealTemplate row every
+# time (template.slots) -- do not drop this table without confirming that read
+# path is gone first.
 
 # ── Upgrade 4: Slot-quality blocklist ─────────────────────────────────────────
 BLOCKLIST_PATTERNS = [
@@ -110,30 +110,12 @@ class MealPlanTargets(BaseModel):
     targets: Dict
     meal_targets: Dict
     user_data: Dict
-    meal_history: Dict[str, set] = {}
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        if not self.meal_history:
-            self.meal_history = {
-                "Breakfast": set(),
-                "Lunch": set(),
-                "Dinner": set()
-            }
 
 
 class MealGenerator:
     """
     Generates personalized meal plans based on user data and dietary requirements.
     """
-    def __init__(self):
-        # Initialize meal history tracking template
-        self._default_history = {
-            "Breakfast": set(),
-            "Lunch": set(),
-            "Dinner": set()
-        }
-
     def _normalize_diet_label(self, raw_diet: str) -> str:
         if not isinstance(raw_diet, str):
             return "Vegetarian"  # Safe default
@@ -225,7 +207,7 @@ class MealGenerator:
         )
 
         meal_types = ["Breakfast", "Lunch", "Dinner"]
-        organized_meals = []
+        organized_meals: list[dict] = []
         organized_combos = []          # R-2: 84 weekly_combos rows (4 per slot)
         combo0_ingredient_sources = [] # ingredient checklist built from combo-0 only
         
@@ -242,7 +224,7 @@ class MealGenerator:
             "Dinner":    "Dinner",
         }
 
-        daily_used_ids  = set()   # HARD block — cleared every day, no same dish twice per day
+        daily_used_ids: set[int]  = set()   # HARD block — cleared every day, no same dish twice per day
         prior_seed      = frozenset(user_data.get("prior_used_food_ids") or [])
         weekly_used_ids = set(prior_seed)
         # Acts as SOFT preference — dropped at Level 2 if pool is exhausted.
@@ -274,6 +256,51 @@ class MealGenerator:
         if allergies:
             logger.info(f"Allergy filter active for patient {user_data.get('id')}: {allergies}")
 
+        # Template defines the slot STRUCTURE (grain/dal_protein/sabzi/accompaniment)
+        # for the patient's own diet. region/diet_type/plan_type are invariant across
+        # the 7-day loop below and only 3 meal_time values exist, so look each one up
+        # once here instead of re-querying per day (was 21 queries/plan, now 3).
+        templates_by_meal_type: dict = {}
+        for meal_type in meal_types:
+            db_meal_time = meal_time_mapping.get(meal_type)
+            if not db_meal_time:
+                continue
+
+            stmt = select(MealTemplate).where(
+                MealTemplate.meal_time == db_meal_time,
+                MealTemplate.region == region,
+                MealTemplate.diet_type == diet_type,
+                MealTemplate.plan_type == plan_type
+            )
+            result = await session.execute(stmt)
+            template = result.scalars().first()
+
+            if not template:
+                stmt_fallback = select(MealTemplate).where(
+                    MealTemplate.meal_time == db_meal_time,
+                    MealTemplate.diet_type == diet_type,
+                    MealTemplate.plan_type == plan_type
+                )
+                result = await session.execute(stmt_fallback)
+                template = result.scalars().first()
+
+            # If still no template for the patient's diet, try Vegetarian
+            if not template and diet_type != "Vegetarian":
+                stmt_veg = select(MealTemplate).where(
+                    MealTemplate.meal_time == db_meal_time,
+                    MealTemplate.region == region,
+                    MealTemplate.diet_type == "Vegetarian",
+                    MealTemplate.plan_type == plan_type
+                )
+                result = await session.execute(stmt_veg)
+                template = result.scalars().first()
+
+            if not template:
+                logger.warning(f"No template found for {db_meal_time}, {diet_type}, {plan_type}")
+                continue
+
+            templates_by_meal_type[meal_type] = template
+
         for day_offset in range(7):
             current_date = start_date + timedelta(days=day_offset)
             date_str = current_date.strftime("%Y-%m-%d")
@@ -282,46 +309,13 @@ class MealGenerator:
             for meal_type in meal_types:
                 if meal_type not in ctx.meal_targets:
                     continue
-                
+
                 db_meal_time = meal_time_mapping.get(meal_type)
                 if not db_meal_time:
                     continue
-                
-                # Template defines the slot STRUCTURE (grain/dal_protein/sabzi/
-                # accompaniment), so it's looked up once per slot on the
-                # patient's own diet. Which pool each of the 4 combos draws
-                # from is decided per combo, below.
-                stmt = select(MealTemplate).where(
-                    MealTemplate.meal_time == db_meal_time,
-                    MealTemplate.region == region,
-                    MealTemplate.diet_type == diet_type,
-                    MealTemplate.plan_type == plan_type
-                )
-                result = await session.execute(stmt)
-                template = result.scalars().first()
 
+                template = templates_by_meal_type.get(meal_type)
                 if not template:
-                    stmt_fallback = select(MealTemplate).where(
-                        MealTemplate.meal_time == db_meal_time,
-                        MealTemplate.diet_type == diet_type,
-                        MealTemplate.plan_type == plan_type
-                    )
-                    result = await session.execute(stmt_fallback)
-                    template = result.scalars().first()
-
-                # If still no template for the patient's diet, try Vegetarian
-                if not template and diet_type != "Vegetarian":
-                    stmt_veg = select(MealTemplate).where(
-                        MealTemplate.meal_time == db_meal_time,
-                        MealTemplate.region == region,
-                        MealTemplate.diet_type == "Vegetarian",
-                        MealTemplate.plan_type == plan_type
-                    )
-                    result = await session.execute(stmt_veg)
-                    template = result.scalars().first()
-
-                if not template:
-                    logger.warning(f"No template found for {db_meal_time}, {diet_type}, {plan_type}")
                     continue
 
                 # One-pot roll: Lunch/Dinner only, per slot per day. Standard
@@ -365,7 +359,7 @@ class MealGenerator:
                             blocked_food_ids=frozenset(blocked_food_ids),
                             patient_avoid_tags=patient_avoid_tags,
                             patient_prefer_tags=patient_prefer_tags,
-                            pinned_food_ids=pinned_food_ids,
+                            pinned_food_ids=frozenset(pinned_food_ids),
                             preferred_food_ids=preferred_food_ids,
                             avoided_food_ids=avoided_food_ids,
                             combo0_lookup=combo0_lookup,
@@ -464,21 +458,6 @@ class MealGenerator:
         if "Eggetarian" in diet_types:
             return "Eggetarian"
         return "Vegetarian"
-
-    # ── Upgrade 2: Diet-type fallback chain ────────────────────────────────────
-    @staticmethod
-    def _diet_fallback_chain(user_diet: str, meal_time: str) -> list[str]:
-        """Return ordered list of diet_types to try for a given slot."""
-        if meal_time == "Breakfast":
-            if user_diet in ("Non-Vegetarian", "Eggetarian"):
-                return ["Eggetarian", "Vegetarian"]
-            return ["Vegetarian"]
-        # Lunch / Dinner
-        if user_diet == "Non-Vegetarian":
-            return ["Non-Vegetarian", "Eggetarian", "Vegetarian"]
-        if user_diet == "Eggetarian":
-            return ["Eggetarian", "Vegetarian"]
-        return ["Vegetarian"]
 
     @staticmethod
     def _assemble_dish(food_item: FoodItem, target_cal: float) -> dict:
@@ -583,7 +562,7 @@ class MealGenerator:
                     return True
             return False
 
-        def _pick(items: list) -> Optional[FoodItem]:
+        def _pick(items: Sequence[FoodItem]) -> Optional[FoodItem]:
             for item in items:
                 if slot_type in PROTECTED_SLOTS:
                     name_lower = item.recipe_name.lower()
@@ -594,7 +573,7 @@ class MealGenerator:
                 return item
             return None
 
-        async def fetch(s) -> list:
+        async def fetch(s) -> Sequence[FoodItem]:
             return (await session.execute(s)).scalars().all()
 
         primary_chain = DIET_TYPE_HIERARCHY.get(diet_type, [diet_type])
@@ -711,7 +690,7 @@ class MealGenerator:
         return dishes, True
 
     def generate_ingredient_checklist(self, meals):
-        all_ingredients = {}
+        all_ingredients: dict[str, float] = {}
         for meal in meals:
             ingredients_scaled = meal.get("Ingredients Scaling", {})
             for ingredient, amount in ingredients_scaled.items():

@@ -75,6 +75,11 @@ async def _compute(db: AsyncSession, patient_id: int, week_start: "date | None")
 
         if rec:
             week_start = rec.week_start_date
+            if week_start is None:
+                # Legacy/incomplete row with no week_start_date — fall back to
+                # today's Monday, same as the no-rec branch below.
+                today = date.today()
+                week_start = today - timedelta(days=today.weekday())
             week_end   = week_start + timedelta(days=6)
             recommendation_id = rec.id
         else:
@@ -308,14 +313,14 @@ async def _compute(db: AsyncSession, patient_id: int, week_start: "date | None")
                 WeeklyPatientSummary.week_start_date == week_start,
             )
         )
-        row = existing.scalar_one_or_none()
-        if row:
-            row.summary_data = summary_data
+        summary_row = existing.scalar_one_or_none()
+        if summary_row:
+            summary_row.summary_data = summary_data
             # generated_at updates via server_default on next read; force it via func.now()
             from sqlalchemy import update as sa_update
             await db.execute(
                 sa_update(WeeklyPatientSummary)
-                .where(WeeklyPatientSummary.id == row.id)
+                .where(WeeklyPatientSummary.id == summary_row.id)
                 .values(summary_data=summary_data, generated_at=func.now())
             )
         else:
