@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 async def run():
-    conn = await asyncpg.connect(os.getenv('DATABASE_URL'))
+    conn = await asyncpg.connect(os.environ['DATABASE_URL'].replace('+asyncpg', ''))
     
     rows = await conn.fetch("SELECT email, is_active FROM doctors")
     print("Doctors:")

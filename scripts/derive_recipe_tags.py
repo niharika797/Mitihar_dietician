@@ -245,4 +245,5 @@ async def main() -> None:
     print("\nLayer 3 complete.")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

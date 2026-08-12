@@ -31,6 +31,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse, unquote
 
 from dotenv import load_dotenv
 
@@ -52,11 +53,20 @@ def take_backup() -> Path:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = BACKUP_DIR / f"recipe_ingredients_pre_import_{ts}.sql"
 
-    # postgresql+psycopg2://user:pass@host:port/db -> postgresql://user:pass@host:port/db
-    pg_url = DATABASE_URL.replace("+psycopg2", "")
-
-    cmd = ["pg_dump", pg_url, "--table=recipe_ingredients", "-f", str(out_path)]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # Pass the password via PGPASSWORD, not embedded in the pg_dump argv --
+    # an argv containing a password is visible to any other process on the
+    # host for the subprocess's lifetime (e.g. via `ps`/Task Manager).
+    parsed = urlparse(DATABASE_URL.replace("+psycopg2", ""))
+    env = {**os.environ, "PGPASSWORD": unquote(parsed.password or "")}
+    cmd = [
+        "pg_dump",
+        "-h", parsed.hostname or "localhost",
+        "-p", str(parsed.port or 5432),
+        "-U", parsed.username or "",
+        "-d", parsed.path.lstrip("/"),
+        "--table=recipe_ingredients", "-f", str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if result.returncode != 0 or not out_path.exists():
         raise RuntimeError(
             f"pg_dump failed (is it on PATH?):\n{result.stderr}\n"

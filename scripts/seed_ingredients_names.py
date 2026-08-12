@@ -33,6 +33,19 @@ async def main() -> None:
         names = [row[0] for row in result.fetchall()]
         print(f"Unique ingredient names extracted: {len(names)}")
 
+        # ON CONFLICT (name, source) dedups on exact name only -- no unique
+        # constraint exists on name_normalized, so case/whitespace variants
+        # (e.g. "Onion" vs "onion") would otherwise insert as separate rows.
+        # Pre-dedupe by normalized form here instead (first-seen wins).
+        by_norm: dict[str, str] = {}
+        for name in names:
+            norm = normalize(name)
+            by_norm.setdefault(norm, name)
+        deduped_names = list(by_norm.values())
+        if len(deduped_names) != len(names):
+            print(f"Deduped by name_normalized: {len(names)} -> {len(deduped_names)}")
+        names = deduped_names
+
         inserted = 0
         skipped = 0
         for name in names:
