@@ -26,6 +26,10 @@ from ..services.token_service import (
 
 router = APIRouter()
 
+# Background plan-generation tasks keep a strong reference here so the event
+# loop can't GC them mid-run (asyncio only holds a weak reference otherwise).
+_background_tasks: set = set()
+
 
 def _derive_age(dob: date) -> int:
     today = date.today()
@@ -66,7 +70,9 @@ async def _generate_plan_background(patient_id: int, user_data: dict, age: int) 
 
 async def _launch_plan_background(patient_id: int, user_data: dict, age: int) -> None:
     import asyncio as _asyncio
-    _asyncio.create_task(_generate_plan_background(patient_id, user_data, age))
+    task = _asyncio.create_task(_generate_plan_background(patient_id, user_data, age))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @router.post("/onboarding", response_model=PatientProfileResponse)
@@ -132,6 +138,8 @@ async def onboard_patient(
     # Return the refreshed row
     result = await session.execute(select(Patient).where(Patient.id == patient.id))
     updated = result.scalars().first()
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Patient row not found after update")
 
     # ── Create initial PatientVisit row (Token 2) if doctor is assigned ──
     # Guard: only insert when no row exists for this (patient, doctor) pair.
@@ -146,8 +154,7 @@ async def onboard_patient(
             )
         )
         if existing_pv.scalars().first() is None:
-            from datetime import timezone as _tz
-            now = datetime.now(_tz.utc)
+            now = datetime.now(timezone.utc)
             pv = PatientVisit(
                 patient_id=updated.id,
                 doctor_id=updated.doctor_id,
@@ -289,6 +296,8 @@ async def activate_subscription(
 
     result2 = await session.execute(select(Patient).where(Patient.id == patient.id))
     updated = result2.scalars().first()
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Patient row not found after update")
 
     from ..routers.auth import _patient_token_data, _issue_tokens
     token_data = _patient_token_data(updated)
