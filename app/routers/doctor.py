@@ -64,13 +64,19 @@ def _generate_code(length: int = 12) -> str:
 
 # ── Phase 8 Tier 0: override-logging helpers ──────────────────────────────────
 
+def _calculate_age(dob, default: int = 30) -> int:
+    """Age in whole years from date_of_birth, or `default` if dob is None."""
+    if dob is None:
+        return default
+    today = date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+
 def _bucket_age(dob) -> str:
     """Map date_of_birth → age bracket string for RL context bucketing."""
     if dob is None:
         return "unknown"
-    from datetime import date as _date
-    today = _date.today()
-    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    age = _calculate_age(dob)
     if age < 26:   return "18-25"
     if age < 36:   return "26-35"
     if age < 51:   return "36-50"
@@ -437,34 +443,10 @@ async def accept_request(
         import logging as _log
         _logger = _log.getLogger(__name__)
         try:
-            from datetime import date as _date
             from ..services.diet_plan_service import DietPlanService
             diet_service = DietPlanService()
 
-            dob = patient.date_of_birth
-            if dob:
-                today = _date.today()
-                age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-            else:
-                age = 30
-
-            user_data = {
-                "id": str(patient.id),
-                "email": patient.email,
-                "name": patient.name,
-                "gender": patient.gender or "Other",
-                "height": float(patient.height_cm),
-                "weight": float(patient.weight_kg),
-                "activity_level": patient.activity_level or "LA",
-                "diet": patient.diet_type or "Vegetarian",
-                "health_condition": patient.health_condition or "Healthy",
-                "region": patient.region or "North",
-                "nonveg_meals_per_week": patient.nonveg_meals_per_week or 3,
-                "health_goals": list(patient.health_goals or []),
-                "medical_conditions": list(patient.medical_conditions or []),
-                "food_allergies": list(patient.food_allergies or []),
-                "age": age,
-            }
+            user_data = _build_meal_config_user_data(patient)
             existing_plan = await diet_service.get_diet_plan(str(patient.id), session=session)
             if existing_plan is None:
                 diet_plan = await diet_service.generate_diet_plan(user_data, session)
@@ -1689,6 +1671,10 @@ async def browse_recipes(
     else:
         stmt = select(FoodItem)
 
+    # Exclude soft-deleted (merged-away) dishes from the browsable pool --
+    # data_review_dishes already filters this; this endpoint didn't.
+    stmt = stmt.where(FoodItem.deleted_at.is_(None))
+
     if is_verified is not None:
         stmt = stmt.where(FoodItem.is_verified == is_verified)
     if diet_type:
@@ -1812,15 +1798,12 @@ async def assign_recipe(
     """
     did = _doctor_id(request)
 
-    # Verify food item exists and is accessible to this doctor:
-    # - Global verified items (is_verified=True) are accessible to all doctors
-    # - Unverified items are only accessible to the doctor who created them
-    food_result = await session.execute(select(FoodItem).where(FoodItem.id == recipe_id))
-    food = food_result.scalars().first()
+    # Verify food item exists and is accessible to this doctor. Must match the
+    # pool the generator serves from -- a bare id lookup would let a
+    # soft-deleted (merged-away) dish id still be assigned into a patient's plan.
+    food = await get_assignable_dish(session, food_id=recipe_id, doctor_id=did)
     if food is None:
-        raise HTTPException(status_code=404, detail="Recipe not found")
-    if not food.is_verified and food.doctor_id != did:
-        raise HTTPException(status_code=403, detail="Recipe not accessible")
+        raise HTTPException(status_code=404, detail="Recipe not found or not accessible")
 
     # Build the meal object to inject
     # Session 22E (W6): write a 1-dish dishes[] so this path produces the same
@@ -2138,7 +2121,7 @@ Required format:
     import json as _json
     try:
         raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-        clean = raw_text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        clean = raw_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         nutrition = _json.loads(clean)
     except (KeyError, _json.JSONDecodeError) as e:
         raise HTTPException(status_code=502, detail=f"Failed to parse AI response: {e}")
@@ -2789,12 +2772,7 @@ _BUFFER_PCT = 15
 
 
 def _build_meal_config_user_data(patient: Patient) -> dict:
-    dob = patient.date_of_birth
-    if dob:
-        today = date.today()
-        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    else:
-        age = 30
+    age = _calculate_age(patient.date_of_birth)
     return {
         "id": str(patient.id),
         "email": patient.email,
