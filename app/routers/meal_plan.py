@@ -156,7 +156,7 @@ async def get_week_plan(
     if rec is None:
         raise HTTPException(status_code=404, detail="No active meal plan found")
 
-    active_rec = rec
+    active_rec: Recommendation | None = rec
     if rec.approval_status == "draft":
         approved_result = await session.execute(
             select(Recommendation)
@@ -176,6 +176,12 @@ async def get_week_plan(
                 "message": "Plan awaiting doctor approval",
                 "days": [],
             }
+
+    if active_rec is None:
+        # Unreachable in practice: the draft branch above returns early on
+        # None, and the non-draft branch never reassigns active_rec away
+        # from the already-checked-non-None `rec`. Explicit for mypy.
+        raise HTTPException(status_code=404, detail="No active meal plan found")
 
     combos_result = await session.execute(
         select(WeeklyCombo)
@@ -865,7 +871,7 @@ async def confirm_meal_choice(
             PatientMealChoice.date == body.date,
         )
     )
-    calories_remaining = float(current_user.tdee or 2000) - float(consumed_result.scalar())
+    calories_remaining = float(current_user.tdee or 2000) - float(consumed_result.scalar() or 0)
 
     return {
         "food_item_ids": body.food_item_ids,
@@ -984,7 +990,9 @@ async def get_combo_dishes(
     enriched = []
     for dish in dishes_jsonb:
         fid = dish.get("food_item_id")
-        fi = fi_map.get(fid)
+        fi = fi_map.get(fid)  # type: ignore[arg-type]
+        # fi_map keys off FoodItem.id, typed Column[int] on this legacy-style
+        # class (DO NOT MODIFY, see CLAUDE.md); dict.get() works fine at runtime.
         enriched.append({
             "food_item_id": fid,
             "recipe_name": fi.recipe_name if fi else dish.get("recipe_name", ""),

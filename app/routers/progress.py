@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -23,6 +24,11 @@ from ..core.database import get_db
 from ..models.db_models import Patient
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Background diet-plan-regen tasks keep a strong reference here so the event
+# loop can't GC them mid-run (asyncio only holds a weak reference otherwise).
+_background_tasks: set = set()
 
 
 @router.post("/log/meal")
@@ -88,9 +94,9 @@ async def _regen_diet_plan_background(user_data: dict) -> None:
             new_plan = await diet_service.generate_diet_plan(user_data, session)
             await diet_service.store_diet_plan(new_plan, session=session)
             await session.commit()
-            print("Auto-regenerated diet plan upon weight update")
-        except Exception as e:
-            print(f"Failed to auto-generate diet plan: {e}")
+            logger.info("Auto-regenerated diet plan upon weight update for patient %s", user_data.get("id"))
+        except Exception:
+            logger.exception("Failed to auto-generate diet plan for patient %s", user_data.get("id"))
 
 
 async def _handle_weight_change(session: AsyncSession, current_user: Patient, new_weight: float):
@@ -134,11 +140,13 @@ async def _handle_weight_change(session: AsyncSession, current_user: Patient, ne
         "diet": current_user.diet_type or "Anything",
         "health_state": current_user.health_condition or "Healthy",
         "region": current_user.region or "none",
-        "target_weight": float(current_user.target_weight_kg) if getattr(current_user, "target_weight_kg", None) else None,
+        "target_weight": float(tw) if (tw := current_user.target_weight_kg) else None,
         "activity_level": activity,
         "tdee": round(new_tdee, 2),
     }
-    asyncio.create_task(_regen_diet_plan_background(user_data))
+    task = asyncio.create_task(_regen_diet_plan_background(user_data))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @router.post("/log/weight")
