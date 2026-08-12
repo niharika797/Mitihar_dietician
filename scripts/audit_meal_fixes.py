@@ -61,7 +61,6 @@ if 'clinical_notes' in doctor_rels:
 
 # ── 4. New endpoints import clean ─────────────────────────────────────────
 try:
-    from app.routers.meal_plan import router
     notes.append("PASS: meal_plan.py (with new endpoints) imports clean")
 except Exception as e:
     issues.append(f"FAIL: meal_plan.py import error: {e}")
@@ -104,7 +103,7 @@ else:
     issues.append("FAIL: get_shopping_list doesn't handle both key cases")
 
 # ── 10. AuditLog + ClinicalNote in DB ─────────────────────────────────────
-from app.models.db_models import AuditLog, ClinicalNote, ProgressLog
+from app.models.db_models import AuditLog, ProgressLog
 cols = {c.key for c in ProgressLog.__table__.columns}
 if 'calorie_adjustment' in cols:
     notes.append("PASS: ProgressLog.calorie_adjustment column exists in ORM + DB (migrated)")

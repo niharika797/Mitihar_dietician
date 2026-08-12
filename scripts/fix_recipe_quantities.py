@@ -17,7 +17,6 @@ Run: python -m scripts.fix_recipe_quantities
 """
 
 import asyncio
-import os
 from dotenv import load_dotenv
 load_dotenv()
 

@@ -228,7 +228,7 @@ def call_ai(prompt: str, km: KeyManager, model: str,
         response = call_gemini(prompt, model, km, thinking)
         # If key just switched to Ollama mid-call, retry with Ollama
         if response is None and km.is_ollama():
-            log.info(f"  Retrying with Ollama...")
+            log.info("  Retrying with Ollama...")
             return call_ollama(prompt)
         return response
 
@@ -245,7 +245,7 @@ def pass1_clean(rows: list, session, km: KeyManager, dry_run: bool) -> tuple[int
     examples = []
 
     log.info(f"\n{'='*65}")
-    log.info(f"  PASS 1 — Bulk clean")
+    log.info("  PASS 1 — Bulk clean")
     log.info(f"  {len(rows)} total | {pre_clean} already clean | {total} to process")
     log.info(f"  Starting with: {km.key_label()}")
     log.info(f"{'='*65}")
@@ -317,7 +317,7 @@ Input:
                 time.sleep(PASS1_SLEEP)
                 continue
 
-        for item, original, cleaned in zip(batch, names, cleaned_names):
+        for item, original, cleaned in zip(batch, names, cleaned_names, strict=True):
             cleaned = str(cleaned).strip()
             if not cleaned or len(cleaned) < 3:
                 skipped += 1
@@ -356,7 +356,7 @@ def pass2_clean(rows: list, session, km: KeyManager, dry_run: bool) -> tuple[int
     edge_cases = [item for item in rows if looks_weird(item.recipe_name)]
 
     log.info(f"\n{'='*65}")
-    log.info(f"  PASS 2 — Edge cases deep clean")
+    log.info("  PASS 2 — Edge cases deep clean")
     log.info(f"  {len(edge_cases)} rows flagged")
     log.info(f"  Using: {km.key_label()}")
     log.info(f"{'='*65}")

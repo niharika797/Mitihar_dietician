@@ -143,7 +143,7 @@ def main():
                   f"stored {r['cal_per_serving']}kcal -> recomputed {new_cal}  (kept canonical #{cid})")
 
         if not args.write:
-            print(f"\nDRY-RUN. Re-run with --write to apply.")
+            print("\nDRY-RUN. Re-run with --write to apply.")
             return
         if input(f"\nApply: rewrite {len(writes)}, merge {len(merges)}, park {len(parks)}? Type Y: ").strip() != "Y":
             print("Aborted.")

@@ -171,7 +171,7 @@ Dishes to process:
 
 async def call_claude_cli(prompt: str) -> dict:
     """Call Claude Code CLI in non-interactive mode and return parsed JSON."""
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: ASYNC221 -- one-shot script, blocking subprocess is fine
         ["claude", "-p", prompt, "--output-format", "text"],
         capture_output=True,
         text=True,
@@ -199,8 +199,8 @@ async def pass_c_llm_rename(db):
 
     # Load checkpoint
     done_ids = set()
-    if os.path.exists(LLM_CHECKPOINT_FILE):
-        with open(LLM_CHECKPOINT_FILE) as f:
+    if os.path.exists(LLM_CHECKPOINT_FILE):  # noqa: ASYNC240 -- one-shot script, blocking I/O is fine
+        with open(LLM_CHECKPOINT_FILE) as f:  # noqa: ASYNC230
             done_ids = set(json.load(f).get("done_ids", []))
         print(f"  Checkpoint: {len(done_ids)} already processed")
 
@@ -259,14 +259,14 @@ async def pass_c_llm_rename(db):
             all_done_ids.extend(batch_ids)
 
             # Save checkpoint after every batch
-            with open(LLM_CHECKPOINT_FILE, "w") as f:
+            with open(LLM_CHECKPOINT_FILE, "w") as f:  # noqa: ASYNC230 -- one-shot script, blocking I/O is fine
                 json.dump({"done_ids": all_done_ids, "last_run": datetime.now().isoformat()}, f)
 
             print(f"    Changed: {changed_in_batch}/{len(batch)}")
 
             if i + LLM_BATCH_SIZE < len(candidates):
                 print(f"    Sleeping {LLM_BATCH_SLEEP}s...")
-                time.sleep(LLM_BATCH_SLEEP)
+                time.sleep(LLM_BATCH_SLEEP)  # noqa: ASYNC251 -- deliberate inter-batch pacing
 
         except Exception as e:
             print(f"  ERROR on batch starting {batch_ids[0]}: {e}")

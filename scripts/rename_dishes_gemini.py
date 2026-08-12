@@ -39,7 +39,6 @@ import asyncio
 import json
 import os
 import sys
-import time
 from pathlib import Path
 
 import httpx
@@ -204,8 +203,8 @@ async def main() -> None:
     print(f"⏱️   Delay between calls: {DELAY_SECS}s  (~{60/DELAY_SECS:.0f} RPM)\n")
 
     # Backup originals once
-    if not BACKUP.exists():
-        BACKUP.write_text(
+    if not BACKUP.exists():  # noqa: ASYNC240 -- one-shot script, blocking I/O is fine
+        BACKUP.write_text(  # noqa: ASYNC240
             json.dumps(
                 {str(r[0]): r[1] for r in all_rows},
                 ensure_ascii=False, indent=2,

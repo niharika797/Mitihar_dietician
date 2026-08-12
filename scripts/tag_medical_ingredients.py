@@ -207,7 +207,7 @@ async def main() -> None:
 
                 if batch_start + BATCH_SIZE < len(remaining):
                     print(f"  Sleeping {BATCH_SLEEP}s...")
-                    time.sleep(BATCH_SLEEP)
+                    time.sleep(BATCH_SLEEP)  # noqa: ASYNC251 -- deliberate inter-batch pacing
 
             except Exception as e:
                 print(f"  ERROR on batch starting {batch_ids[0]}: {e}")
@@ -216,7 +216,7 @@ async def main() -> None:
 
     # Step 5: propagate to food_items via derive_recipe_tags.py
     print("\nPropagating to food_items via derive_recipe_tags.py...")
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: ASYNC221 -- one-shot script, blocking subprocess is fine
         ["python", "-m", "scripts.derive_recipe_tags"],
         capture_output=True,
         text=True,

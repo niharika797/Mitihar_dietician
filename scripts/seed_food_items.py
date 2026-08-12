@@ -2,7 +2,7 @@ import os
 import sys
 import re
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Add project root to sys path
@@ -84,7 +84,7 @@ def parse_ingredients(ingredient_str, amount_str) -> list[dict]:
         amounts = [float(amount_str)]
     while len(amounts) < len(names):
         amounts.append(0.0)
-    return [{"name": n, "amount_g": a} for n, a in zip(names, amounts) if n]
+    return [{"name": n, "amount_g": a} for n, a in zip(names, amounts, strict=True) if n]
 
 def parse_serving_weight(df_row) -> float:
     # Handle the fact that Morning_Snack has a double space

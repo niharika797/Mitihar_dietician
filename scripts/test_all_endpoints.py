@@ -5,7 +5,7 @@ import urllib3
 
 urllib3.disable_warnings()
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@mityahar.com")
 ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "admin1234")
 
@@ -16,7 +16,7 @@ def print_result(step, desc, is_pass, res=None):
     if not is_pass and res is not None:
         try:
             print(f"      Response: {res.json()}")
-        except:
+        except Exception:
             print(f"      Response: {res.text}")
 
 def run_tests():
@@ -74,6 +74,7 @@ def run_tests():
     res = requests.post(f"{BASE_URL}/auth/doctor/login", data={"username": state["doctor_email"], "password": "Doctor@1234"})
     is_pass = res.status_code == 200
     print_result("Step 6", "Doctor Login", is_pass, res)
+    if not is_pass: return
     state["doctor_token"] = res.json()["access_token"]
     doc_auth = {"Authorization": f"Bearer {state['doctor_token']}"}
 

@@ -166,7 +166,7 @@ def _extract_pages(pidxs, codes, layout="xband") -> list[dict]:
         if layout == "dual" and len(vals) == n:
             slots = vals[:]                          # full plant row → in order
         elif layout == "dual" and len(vals) == len(ANIMAL_SLOTS):
-            for pos, v in zip(ANIMAL_SLOTS, vals):   # animal row → fixed sub-schema
+            for pos, v in zip(ANIMAL_SLOTS, vals, strict=True):   # animal row → fixed sub-schema
                 slots[pos] = v
         else:                                        # xband (default) or dual-oddball
             for x_right, v in values:
@@ -175,7 +175,7 @@ def _extract_pages(pidxs, codes, layout="xband") -> list[dict]:
                 flagged.append(code)                 # more values than columns — review
     # (record assembled below)
         rec = {"Food Code": code, "Food Name": name, "No_of_Regions": regions}
-        rec.update(dict(zip(codes, slots)))
+        rec.update(dict(zip(codes, slots, strict=True)))
         records.append(rec)
     if flagged:
         print(f"  [!] {len(flagged)} rows had MORE values than columns (review): {flagged}")

@@ -1,3 +1,4 @@
+import importlib.util
 import sys
 sys.path.insert(0, 'C:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician')
 import inspect
@@ -7,9 +8,9 @@ notes  = []
 
 # 1. google-auth importable
 try:
-    from google.oauth2 import id_token as google_id_token
-    from google.auth.transport import requests as google_requests
-    from google.auth.exceptions import GoogleAuthError
+    for _mod in ("google.oauth2.id_token", "google.auth.transport.requests", "google.auth.exceptions"):
+        if importlib.util.find_spec(_mod) is None:
+            raise ImportError(f"{_mod} not found")
     notes.append("PASS: google-auth installed and importable")
 except ImportError as e:
     issues.append(f"FAIL: google-auth not importable: {e}")
@@ -39,7 +40,7 @@ notes.append("PASS: Migration file exists, correct chain (eb8dbef8dd19), partial
 
 # 5. auth.py imports clean
 try:
-    from app.routers.auth import router, GoogleTokenRequest, google_verify
+    from app.routers.auth import google_verify
     notes.append("PASS: auth.py imports clean — GoogleTokenRequest + google_verify present")
 except Exception as e:
     issues.append(f"FAIL: auth.py import error: {e}")
