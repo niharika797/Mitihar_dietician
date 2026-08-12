@@ -158,15 +158,17 @@ async def list_patients(
         count_stmt = count_stmt.where(search_filter)
 
     total_result = await session.execute(count_stmt)
-    total = total_result.scalar()
+    total = total_result.scalar() or 0
 
     result = await session.execute(
         stmt.order_by(Patient.created_at.desc())
         .offset(offset)
         .limit(page_size)
     )
-    patients = result.scalars().all()
-    return PaginatedPatients(patients=patients, total=total, page=page, page_size=page_size)
+    patients = list(result.scalars().all())
+    # Patient ORM objects, not PatientSummary -- Pydantic coerces via
+    # from_attributes=True during response serialization; mypy can't see that.
+    return PaginatedPatients(patients=patients, total=total, page=page, page_size=page_size)  # type: ignore[arg-type]
 
 
 # ─── GET /api/v1/doctor/patients/{patient_id} ─────────────────────────────
@@ -259,10 +261,10 @@ async def override_patient_plan(
         diffs = _diff_meals(old_meals, body.meals)
         if diffs:
             # Fetch patient for context snapshot (ownership clause matches outer check)
-            pat_result = await session.execute(
+            pat_ctx_result = await session.execute(
                 select(Patient).where(Patient.id == patient_id, Patient.doctor_id == did)
             )
-            pat = pat_result.scalars().first()
+            pat = pat_ctx_result.scalars().first()
             if pat:
                 age_bucket = _bucket_age(pat.date_of_birth)
                 bmi_bucket = _bucket_bmi(pat.bmi)
@@ -602,8 +604,9 @@ async def get_patient_logs(
         )
         .order_by(MealLog.logged_date.desc(), MealLog.created_at.desc())
     )
-    logs = result.scalars().all()
-    return PatientLogsResponse(patient_id=patient_id, period_days=days, meal_logs=logs)
+    logs = list(result.scalars().all())
+    # MealLog ORM objects, not MealLogEntry -- from_attributes=True coerces at response time.
+    return PatientLogsResponse(patient_id=patient_id, period_days=days, meal_logs=logs)  # type: ignore[arg-type]
 
 
 # ─── GET /api/v1/doctor/patients/{patient_id}/progress ───────────────────
@@ -638,8 +641,9 @@ async def get_patient_progress(
         )
         .order_by(ProgressLog.log_date.asc())
     )
-    progress = result.scalars().all()
-    return PatientProgressResponse(patient_id=patient_id, period_days=days, progress_logs=progress)
+    progress = list(result.scalars().all())
+    # ProgressLog ORM objects, not PatientProgressEntry -- from_attributes=True coerces at response time.
+    return PatientProgressResponse(patient_id=patient_id, period_days=days, progress_logs=progress)  # type: ignore[arg-type]
 
 
 # ─── DELETE /api/v1/doctor/patients/{patient_id} ─────────────────────────
@@ -1099,7 +1103,9 @@ async def patch_dish(
                 "fiber":      float(fi.fiber_per_serving),
                 "is_custom_override": False,
             }
-            new_food_id = fi.id
+            new_food_id = fi.id  # type: ignore[assignment]
+            # FoodItem's legacy Column() style (DO NOT MODIFY, see CLAUDE.md)
+            # types .id as Column[int]; the instance attribute is a plain int.
 
         elif body.custom_dish is not None:
             cd = body.custom_dish
@@ -1126,7 +1132,7 @@ async def patch_dish(
                 )
                 session.add(new_food)
                 await session.flush()
-                new_food_id = new_food.id
+                new_food_id = new_food.id  # type: ignore[assignment]
                 is_custom = False
             else:
                 new_food_id = None
@@ -1413,7 +1419,7 @@ async def swap_weekly_combo(
         blocked_food_ids=frozenset(blocked_food_ids),
         patient_avoid_tags=patient_avoid_tags,
         patient_prefer_tags=patient_prefer_tags,
-        pinned_food_ids=pinned_food_ids,
+        pinned_food_ids=frozenset(pinned_food_ids),
     )
 
     if not ok or not new_dishes:
@@ -1899,12 +1905,14 @@ async def get_recipe_tags(
     food = result.scalars().first()
     if food is None:
         raise HTTPException(status_code=404, detail="Recipe not found")
+    # FoodItem's legacy Column() style (DO NOT MODIFY, see CLAUDE.md) types these
+    # as Column[T]; instance attribute access returns the plain value at runtime.
     return RecipeTagsResponse(
-        food_item_id=food.id,
-        recipe_name=food.recipe_name,
+        food_item_id=food.id,  # type: ignore[arg-type]
+        recipe_name=food.recipe_name,  # type: ignore[arg-type]
         avoid_tags=list(food.avoid_tags or []),
         prefer_tags=list(food.prefer_tags or []),
-        is_verified=food.is_verified,
+        is_verified=food.is_verified,  # type: ignore[arg-type]
     )
 
 
@@ -1949,10 +1957,10 @@ async def patch_recipe_tags(
     await session.commit()
     return RecipeTagsResponse(
         food_item_id=food_item_id,
-        recipe_name=food.recipe_name,
+        recipe_name=food.recipe_name,  # type: ignore[arg-type]
         avoid_tags=body.avoid_tags,
         prefer_tags=body.prefer_tags,
-        is_verified=food.is_verified,
+        is_verified=food.is_verified,  # type: ignore[arg-type]
     )
 
 
