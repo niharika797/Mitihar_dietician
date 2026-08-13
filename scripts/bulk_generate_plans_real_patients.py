@@ -158,7 +158,10 @@ async def _avoid_tag_violations(patient_id: int, conditions: list[str]) -> tuple
         try:
             tags = json.loads(tags_str) if tags_str else []
         except Exception:
-            tags = []
+            # Fail closed: unparseable avoid_tags is medical-safety-relevant --
+            # treat as "can't confirm this dish is safe", not "no restrictions apply".
+            violations.append(f"{name} ({meal_type} combo#{combo_index}): unparseable avoid_tags {tags_str!r}")
+            continue
         bad = [t for t in forbidden if t in tags]
         if bad:
             violations.append(f"{name} ({meal_type} combo#{combo_index}): {bad}")
@@ -211,6 +214,13 @@ async def main() -> None:
         if len(patients) > 20:
             print(f"  ... and {len(patients) - 20} more")
         print("\nDRY RUN -- nothing generated.")
+        return
+
+    print(f"About to regenerate the ACTIVE plan for all {len(patients)} patient(s) above "
+          f"(deactivates their current plan).")
+    confirm = input("Type APPLY to proceed: ")  # noqa: ASYNC250 -- one-shot script, blocking confirm prompt is fine
+    if confirm != "APPLY":
+        print("Aborted -- nothing generated.")
         return
 
     svc = DietPlanService()

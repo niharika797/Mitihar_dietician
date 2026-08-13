@@ -64,6 +64,21 @@ def main() -> None:
         ), {"ids": TEST_ARTIFACT_IDS}).scalar()
         print(f"\nrecipe_ingredients rows that will CASCADE-delete: {ri_count}")
 
+        # recommendations.meals is a JSONB blob, not a FK -- deleting food_items
+        # rows referenced there won't fail on a constraint, it'll just leave a
+        # stale food_id embedded in an active plan. Not a delete-blocker, but
+        # the docstring's FK trace claims this table was checked, so surface it.
+        # Text-search rather than assume a nested path shape (v1 "meals" layout
+        # is legacy and not exercised by current generation code).
+        id_pattern = "|".join(str(i) for i in TEST_ARTIFACT_IDS)
+        meals_count = conn.execute(text(
+            r"""SELECT count(*) FROM recommendations
+                WHERE meals::text ~ ('"food_id":\s*(' || :id_pattern || ')\D')"""
+        ), {"id_pattern": id_pattern}).scalar()
+        if meals_count:
+            print(f"  WARNING: {meals_count} recommendations.meals JSONB rows may reference these ids "
+                  f"(not FK-enforced, will NOT block the delete, but will go stale)")
+
         blocked = False
         for table, col in BLOCKING_CHECKS:
             n = conn.execute(text(

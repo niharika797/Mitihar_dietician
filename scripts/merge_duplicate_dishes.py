@@ -77,35 +77,41 @@ def main():
     ap.add_argument("--write", action="store_true", help="apply the merges (else dry-run)")
     args = ap.parse_args()
 
-    with engine.begin() as conn:
+    # Read-only pass: no write transaction is open while we print the preview
+    # and block on stdin for confirmation (an idle open transaction holds
+    # locks/resources for however long the user takes to respond).
+    with engine.connect() as conn:
         dup_groups, ing = load_groups(conn)
-        tier1 = {k: g for k, g in dup_groups.items() if classify(g, ing) == "tier1"}
-        tier2 = {k: g for k, g in dup_groups.items() if classify(g, ing) == "tier2"}
 
-        merges = []  # (canonical_id, loser_row)
-        for key, g in sorted(tier1.items()):
-            g_sorted = sorted(g, key=lambda r: r["id"])
-            canonical = g_sorted[0]
-            for loser in g_sorted[1:]:
-                merges.append((canonical["id"], loser, key))
+    tier1 = {k: g for k, g in dup_groups.items() if classify(g, ing) == "tier1"}
+    tier2 = {k: g for k, g in dup_groups.items() if classify(g, ing) == "tier2"}
 
-        print(f"Canonical-key duplicate groups (verified+live): {len(dup_groups)}")
-        print(f"  Tier-1 exact (auto-merge):  {len(tier1)} groups -> {len(merges)} rows to soft-delete")
-        print(f"  Tier-2 conflict (skipped):  {len(tier2)} groups (for resolve_dish_conflicts.py)")
-        print()
-        for cid, loser, key in merges:
-            print(f"  merge #{loser['id']:>5} '{loser['recipe_name']}' -> canonical #{cid}  "
-                  f"[{key[1]}/{key[2]}]  {loser['cal_per_serving']}kcal")
+    merges = []  # (canonical_id, loser_row)
+    for key, g in sorted(tier1.items()):
+        g_sorted = sorted(g, key=lambda r: r["id"])
+        canonical = g_sorted[0]
+        for loser in g_sorted[1:]:
+            merges.append((canonical["id"], loser, key))
 
-        if not args.write:
-            print(f"\nDRY-RUN. {len(merges)} rows would be soft-deleted. Re-run with --write to apply.")
-            return
+    print(f"Canonical-key duplicate groups (verified+live): {len(dup_groups)}")
+    print(f"  Tier-1 exact (auto-merge):  {len(tier1)} groups -> {len(merges)} rows to soft-delete")
+    print(f"  Tier-2 conflict (skipped):  {len(tier2)} groups (for resolve_dish_conflicts.py)")
+    print()
+    for cid, loser, key in merges:
+        print(f"  merge #{loser['id']:>5} '{loser['recipe_name']}' -> canonical #{cid}  "
+              f"[{key[1]}/{key[2]}]  {loser['cal_per_serving']}kcal")
 
-        confirm = input(f"\nApply {len(merges)} merges (soft-delete + repoint prefs + audit)? Type Y: ").strip()
-        if confirm != "Y":
-            print("Aborted.")
-            return
+    if not args.write:
+        print(f"\nDRY-RUN. {len(merges)} rows would be soft-deleted. Re-run with --write to apply.")
+        return
 
+    confirm = input(f"\nApply {len(merges)} merges (soft-delete + repoint prefs + audit)? Type Y: ").strip()
+    if confirm != "Y":
+        print("Aborted.")
+        return
+
+    # Write transaction opens only now, after confirmation.
+    with engine.begin() as conn:
         for cid, loser, key in merges:
             lid = loser["id"]
             # 1. avoid uq_patient_dish_preference collision, then repoint

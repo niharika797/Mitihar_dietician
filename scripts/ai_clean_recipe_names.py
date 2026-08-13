@@ -209,6 +209,7 @@ def call_gemini(prompt: str, model: str, km: KeyManager,
         return None
     except Exception as e:
         log.warning(f"  Gemini error: {e}")
+        km.switch_key()
         return None
 
 
@@ -317,6 +318,7 @@ Input:
                 time.sleep(PASS1_SLEEP)
                 continue
 
+        batch_updated = 0
         for item, original, cleaned in zip(batch, names, cleaned_names, strict=True):
             cleaned = str(cleaned).strip()
             if not cleaned or len(cleaned) < 3:
@@ -325,11 +327,15 @@ Input:
             if len(examples) < 20 and original.lower() != cleaned.lower():
                 examples.append((original, cleaned))
             item.recipe_name = cleaned
-            updated += 1
+            batch_updated += 1
 
         try:
             if not dry_run:
                 session.commit()
+            # Only count as updated once the commit actually succeeded --
+            # counting before commit double-counts on rollback (both here
+            # and in the errors branch below).
+            updated += batch_updated
             tag = "[DRY RUN] " if dry_run else ""
             log.info(f"  {tag}Batch {batch_start//PASS1_BATCH_SIZE+1} ✅ [{km.key_label()}] | updated={updated}")
         except Exception as e:
@@ -406,11 +412,12 @@ Return ONLY the cleaned name, maximum 5 words, nothing else."""
             examples.append((original, cleaned))
 
         item.recipe_name = cleaned
-        updated += 1
 
         try:
             if not dry_run:
                 session.commit()
+            # Only count as updated once the commit actually succeeded.
+            updated += 1
             tag = "[DRY RUN] " if dry_run else ""
             log.info(f"  {tag}[{i+1}/{len(edge_cases)}] [{km.key_label()}] '{original[:30]}' → '{cleaned}'")
         except Exception as e:

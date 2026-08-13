@@ -131,7 +131,9 @@ def main():
             updated += 1
 
         except Exception as e:
-            session.rollback()
+            # No session.rollback() here: that would discard every OTHER row's
+            # already-staged edit in this loop, not just this row's (rollback
+            # is session-scoped, not per-object). Just skip this row.
             log.debug(f"Error on '{item.recipe_name}': {e}")
             errors += 1
             continue

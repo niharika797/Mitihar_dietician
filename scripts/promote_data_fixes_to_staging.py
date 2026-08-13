@@ -84,17 +84,22 @@ NOT run automatically (needs a human to confirm bucket + target):
   1. Upload the dump somewhere the Cloud Run job can read it, e.g.:
        gcloud storage cp "{out}" gs://<staging-artifacts-bucket>/data_fixes_{stamp}.sql
 
-  2. Execute the migrate job with a command override that pulls the file and
+  2. FIRST back up staging's current rows for these 3 tables, so this is
+     reversible -- this dump overwrites them, it does not merge:
+       gcloud run jobs execute mityahar-migrate --region asia-south1 \\
+         --command bash --args -c,"pg_dump \\$DATABASE_URL --data-only --column-inserts --table=ingredients --table=recipe_ingredients --table=food_items -f /tmp/staging_pre_promote_{stamp}.sql && gcloud storage cp /tmp/staging_pre_promote_{stamp}.sql gs://<staging-artifacts-bucket>/"
+
+  3. Execute the migrate job with a command override that pulls the file and
      restores it against staging's DATABASE_URL (private-IP Cloud SQL, only
      reachable from inside mityahar-vpc):
        gcloud run jobs execute mityahar-migrate --region asia-south1 \\
          --command bash --args -c,"gcloud storage cp gs://<bucket>/data_fixes_{stamp}.sql /tmp/f.sql && psql \\$DATABASE_URL -f /tmp/f.sql"
 
-  3. Re-run scripts/audit_dangling_weekly_combos.py and
+  4. Re-run scripts/audit_dangling_weekly_combos.py and
      scripts/find_dropped_recipe_ingredients.py against staging's
      DATABASE_URL afterwards to confirm the numbers moved.
 
-Before step 2: confirm with the user this is really meant to run against
+Before step 3: confirm with the user this is really meant to run against
 staging (not local dev again) -- this overwrites staging's ingredients/
 recipe_ingredients/food_items rows with the local dev versions.
 """.format(out=out_path, stamp=stamp))

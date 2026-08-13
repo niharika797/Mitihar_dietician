@@ -1,13 +1,8 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Annotated, Optional, Literal
+from typing import Optional, Literal
 from datetime import date, datetime
 from .user import ActivityLevel, DietType, HealthCondition
-
-# Bounded list type: max 20 items, each item max 100 chars.
-# Prevents DoS via oversized payloads and prompt-injection via unbounded strings.
-# Uses explicit Annotated constraints; enforced by field_validator below as defence-in-depth.
-_BoundedStr = Annotated[str, Field(max_length=100)]
-BoundedStrList = Annotated[list[_BoundedStr], Field(max_length=20)]
+from . import BoundedStrList
 
 class OnboardingRequest(BaseModel):
     date_of_birth:        date

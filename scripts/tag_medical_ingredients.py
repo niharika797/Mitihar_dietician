@@ -170,9 +170,20 @@ async def main() -> None:
                 prompt = build_tag_prompt(batch)
                 tag_result = call_claude_cli(prompt)
 
+                # A missing key means the LLM's response didn't cover this
+                # ingredient (truncation, malformed JSON, etc.) -- that's NOT
+                # the same as "no tags apply" and must not be checkpointed as
+                # done, or a medical-safety tag silently never gets applied.
+                missing_ids = [i["id"] for i in batch if str(i["id"]) not in tag_result]
+                if missing_ids:
+                    print(f"  WARNING: LLM response missing {len(missing_ids)} id(s): {missing_ids} "
+                          f"-- will retry these next run, not marking as done")
+                covered_batch = [i for i in batch if i["id"] not in missing_ids]
+                covered_ids = [i["id"] for i in covered_batch]
+
                 # Step 4: apply tags — union with existing, write only if changed
                 changed_in_batch = 0
-                for ing in batch:
+                for ing in covered_batch:
                     ing_id = str(ing["id"])
                     new_tags = set(tag_result.get(ing_id, []))
                     if not new_tags:
@@ -201,9 +212,9 @@ async def main() -> None:
                             sample_tagged.append((ing["id"], ing["name"], sorted(new_tags)))
 
                 await db.commit()
-                done_ids.update(batch_ids)
+                done_ids.update(covered_ids)
                 save_checkpoint(done_ids)
-                print(f"  Tagged {changed_in_batch}/{len(batch)} ingredients in this batch")
+                print(f"  Tagged {changed_in_batch}/{len(covered_batch)} ingredients in this batch")
 
                 if batch_start + BATCH_SIZE < len(remaining):
                     print(f"  Sleeping {BATCH_SLEEP}s...")

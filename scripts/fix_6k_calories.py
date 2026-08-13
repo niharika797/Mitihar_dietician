@@ -34,6 +34,7 @@ import json
 import urllib.request
 import urllib.parse
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -310,7 +311,9 @@ def main():
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    rows = session.query(FoodItem).filter(FoodItem.source == "6k_dataset").all()
+    rows = session.query(FoodItem).filter(
+        FoodItem.source == "6k_dataset", FoodItem.deleted_at.is_(None)
+    ).all()
     log.info(f"DB rows to fix: {len(rows)}")
 
     # ── Step 3: PRE-WARM USDA CACHE ───────────────────────────────────────────
@@ -361,14 +364,14 @@ def main():
             new_nutrition = recompute_from_string(ing_str, servings)
 
             if new_nutrition is None:
-                session.delete(item)
+                item.deleted_at = datetime.now(timezone.utc)
                 low_conf += 1
                 continue
 
             new_cal = new_nutrition["cal_per_serving"]
 
             if new_cal > CAL_CAP:
-                session.delete(item)
+                item.deleted_at = datetime.now(timezone.utc)
                 deleted += 1
                 continue
 
@@ -388,7 +391,8 @@ def main():
             updated += 1
 
         except Exception as e:
-            session.rollback()
+            # No session.rollback() here: that would discard every OTHER row's
+            # already-staged edit in this batch, not just this row's.
             log.warning(f"Error on '{item.recipe_name}': {e}")
             errors += 1
             continue

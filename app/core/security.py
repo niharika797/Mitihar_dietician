@@ -29,7 +29,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/token
 # ---------------------------------------------------------------------------
 
 def _to_bytes(password: str) -> bytes:
-    """Encode to UTF-8 and hard-clamp to 72 bytes at a safe character boundary."""
+    """Encode to UTF-8 and hard-clamp to 72 bytes (bcrypt's own limit).
+
+    This is a raw byte slice, not a character-boundary-aware truncation --
+    it can split a multi-byte UTF-8 character in two. Not a correctness bug
+    (hashing and verification both truncate the same way), just worth knowing
+    if this is ever reused somewhere truncation must preserve valid UTF-8.
+    """
     encoded = password.encode("utf-8")
     return encoded[:72] if len(encoded) > 72 else encoded
 

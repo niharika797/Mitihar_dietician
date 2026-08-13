@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Annotated, Literal, Optional
 from datetime import date, datetime
 
+from . import BoundedTagList
+
 class PatientSummary(BaseModel):
     id: int
     name: str
@@ -184,10 +186,6 @@ class IngredientItem(BaseModel):
     quantity: str = Field(..., min_length=1, max_length=50)
     unit:     str = Field(..., min_length=1, max_length=20)
 
-
-# Bounded tag list: max 10 tags, each max 50 chars
-_BoundedTag = Annotated[str, Field(max_length=50)]
-BoundedTagList = Annotated[list[_BoundedTag], Field(max_length=10)]
 
 
 # Canonical slot_type values -- matches every value actually present in

@@ -82,7 +82,9 @@ def main() -> None:
     engine = create_engine(DATABASE_URL)
     cols = "id, name, source, " + ", ".join(NUTRITION_FIELDS)
 
-    with engine.begin() as conn:
+    # Read-only pass: no write transaction is open while we print the plan and
+    # block on stdin for confirmation.
+    with engine.connect() as conn:
         rows = [dict(r._mapping) for r in conn.execute(text(
             f"SELECT {cols} FROM ingredients ORDER BY id"
         ))]
@@ -90,54 +92,56 @@ def main() -> None:
             "SELECT ingredient_id, count(*) FROM recipe_ingredients GROUP BY 1"
         )).all())
 
-        groups: dict[str, list[dict]] = defaultdict(list)
-        for r in rows:
-            groups[(r["name"] or "").strip().lower()].append(r)
-        dupes = {k: v for k, v in groups.items() if len(v) > 1}
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        groups[(r["name"] or "").strip().lower()].append(r)
+    dupes = {k: v for k, v in groups.items() if len(v) > 1}
 
-        print(f"{len(rows):,} ingredients, {len(dupes)} duplicated names\n")
+    print(f"{len(rows):,} ingredients, {len(dupes)} duplicated names\n")
 
-        plan, patches, total_moved, total_losers = [], [], 0, 0
-        for name, members in sorted(dupes.items()):
-            winner, reason = pick_winner(members)
-            losers = [m for m in members if m["id"] != winner["id"]]
-            moved = sum(usage.get(m["id"], 0) for m in losers)
-            total_moved += moved
-            total_losers += len(losers)
-            plan.append((name, winner, losers, reason, moved))
-            if name in IFCT_PATCH:
-                patches.append((name, winner))
+    plan, patches, total_moved, total_losers = [], [], 0, 0
+    for name, members in sorted(dupes.items()):
+        winner, reason = pick_winner(members)
+        losers = [m for m in members if m["id"] != winner["id"]]
+        moved = sum(usage.get(m["id"], 0) for m in losers)
+        total_moved += moved
+        total_losers += len(losers)
+        plan.append((name, winner, losers, reason, moved))
+        if name in IFCT_PATCH:
+            patches.append((name, winner))
 
-        print(f"{'ingredient':<20}{'winner':<9}{'losers':<12}{'rows moved':<12}reason")
-        for name, w, losers, reason, moved in plan:
-            w_cal = w["calories_per_100g"]
-            l_ids = ",".join(str(x["id"]) for x in losers)
-            print(f"  {name[:18]:<18}{w['id']:<9}{l_ids:<12}{moved:<12}{reason}")
-            if reason.startswith("IFCT2017"):
-                for lo in losers:
-                    if str(lo["calories_per_100g"]) != str(w_cal):
-                        print(f"      cal/100g {lo['calories_per_100g']} -> {w_cal}"
-                              f"   ({usage.get(lo['id'], 0)} recipe rows)")
+    print(f"{'ingredient':<20}{'winner':<9}{'losers':<12}{'rows moved':<12}reason")
+    for name, w, losers, reason, moved in plan:
+        w_cal = w["calories_per_100g"]
+        l_ids = ",".join(str(x["id"]) for x in losers)
+        print(f"  {name[:18]:<18}{w['id']:<9}{l_ids:<12}{moved:<12}{reason}")
+        if reason.startswith("IFCT2017"):
+            for lo in losers:
+                if str(lo["calories_per_100g"]) != str(w_cal):
+                    print(f"      cal/100g {lo['calories_per_100g']} -> {w_cal}"
+                          f"   ({usage.get(lo['id'], 0)} recipe rows)")
 
-        if patches:
-            print("\nIFCT value patches applied to the surviving row:")
-            for name, w in patches:
-                p = IFCT_PATCH[name]
-                print(f"  id={w['id']} {name}: cal {w['calories_per_100g']} -> "
-                      f"{p['calories_per_100g']}  [{p['_src']}]")
+    if patches:
+        print("\nIFCT value patches applied to the surviving row:")
+        for name, w in patches:
+            p = IFCT_PATCH[name]
+            print(f"  id={w['id']} {name}: cal {w['calories_per_100g']} -> "
+                  f"{p['calories_per_100g']}  [{p['_src']}]")
 
-        print(f"\n  loser rows to delete   : {total_losers}")
-        print(f"  recipe rows to repoint : {total_moved:,}")
+    print(f"\n  loser rows to delete   : {total_losers}")
+    print(f"  recipe rows to repoint : {total_moved:,}")
 
-        if not args.write:
-            print("\nDRY RUN. Re-run with --write to apply.")
-            return
+    if not args.write:
+        print("\nDRY RUN. Re-run with --write to apply.")
+        return
 
-        confirm = input(f"\nApply {total_losers} merges? Type Y: ").strip()
-        if confirm != "Y":
-            print("Aborted -- nothing written.")
-            return
+    confirm = input(f"\nApply {total_losers} merges? Type Y: ").strip()
+    if confirm != "Y":
+        print("Aborted -- nothing written.")
+        return
 
+    # Write transaction opens only now, after confirmation.
+    with engine.begin() as conn:
         repointed = 0
         for name, winner, losers, reason, _ in plan:
             wid = winner["id"]
