@@ -17,6 +17,7 @@ import PantrySection from "../../components/PantrySection";
 import ShoppingListSection from "../../components/ShoppingListSection";
 import PendingVisitSection from "../../components/PendingVisitSection";
 import type { Meal, WeeklyPlan } from "../../types";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
 
 function greeting() {
   const h = new Date().getHours();
@@ -69,6 +70,7 @@ function HomeHeader({ firstName, streak, hasUnread, onBellPress }: HomeHeaderPro
     </View>
   );
 }
+const CopilotHomeHeader = walkthroughable(HomeHeader);
 
 // ── DoctorStatusBanner ─────────────────────────────────────────────────────────
 interface DoctorStatusBannerProps {
@@ -352,12 +354,14 @@ export default function HomeScreen() {
     <View style={s.root}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
-        <HomeHeader
-          firstName={firstName}
-          streak={streak}
-          hasUnread={hasUnread}
-          onBellPress={() => router.push("/home/notifications")}
-        />
+        <CopilotStep text="This is your home — your daily meal plan and progress at a glance." order={1} name="home">
+          <CopilotHomeHeader
+            firstName={firstName}
+            streak={streak}
+            hasUnread={hasUnread}
+            onBellPress={() => router.push("/home/notifications")}
+          />
+        </CopilotStep>
 
                 <View style={s.body}>
           {/* ── Calories ring ── */}

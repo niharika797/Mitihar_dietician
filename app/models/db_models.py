@@ -270,6 +270,11 @@ class Patient(Base):
     # are rejected, providing stateless session invalidation without a blacklist.
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # ── Product tour (Phase 1) ──────────────────────────────────────────────
+    # Distinct from disclaimer_accepted_at (the medical-onboarding wizard gate).
+    # NULL = tour not yet shown/skipped. Set identically on finish or skip.
+    product_tour_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

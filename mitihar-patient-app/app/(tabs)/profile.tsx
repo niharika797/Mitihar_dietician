@@ -8,6 +8,11 @@ import { useToast } from "../../components/shared";
 import { logoutPatient } from "../../services/auth";
 import { requestRenewal, getMyProfile } from "../../services/profile";
 import { computeHealthStats } from "../../utils/calculations";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+const ProfileHeader = walkthroughable(
+  () => <View style={s.header}><Text style={s.headerTitle}>Profile</Text></View>
+);
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -84,7 +89,9 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={s.root} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
       {/* Header */}
-      <View style={s.header}><Text style={s.headerTitle}>Profile</Text></View>
+      <CopilotStep text="Manage your details, subscription, and settings here." order={4} name="profile">
+        <ProfileHeader />
+      </CopilotStep>
 
       <View style={s.body}>
         {/* Avatar card */}

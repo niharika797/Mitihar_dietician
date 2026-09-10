@@ -12,6 +12,11 @@ import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore } from "../../store/useProgressStore";
 import { BottomSheet, useToast } from "../../components/shared";
 import type { WeightEntry } from "../../types";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+const ProgressHeader = walkthroughable(
+  () => <View style={s.header}><Text style={s.headerTitle}>My Progress</Text></View>
+);
 
 type BarData = { value: number; label?: string; frontColor?: string };
 
@@ -86,8 +91,9 @@ export default function ProgressScreen() {
   return (
     <View style={s.root}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
-        {/* Header */}
-        <View style={s.header}><Text style={s.headerTitle}>My Progress</Text></View>
+        <CopilotStep text="Track your weight, streaks, and macros over time." order={3} name="progress">
+          <ProgressHeader />
+        </CopilotStep>
 
         <View style={s.body}>
           <Text style={s.sectionLabel}>TODAY</Text>

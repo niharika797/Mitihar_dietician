@@ -12,6 +12,16 @@ import { useToast } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { MacroRow } from "../../components/shared";
 import type { Meal, WeeklyComboV2, WeekResponseV2 } from "../../types";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+function MealsHeader() {
+  return (
+    <View style={s.header}>
+      <Text style={s.headerTitle}>Meal Plan</Text>
+    </View>
+  );
+}
+const CopilotMealsHeader = walkthroughable(MealsHeader);
 
 const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner"];
 const MEAL_CALORIE_LABELS: Record<string, string> = {
@@ -376,9 +386,9 @@ export default function MealsScreen() {
 
   return (
     <ScrollView style={s.root} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-      <View style={s.header}>
-        <Text style={s.headerTitle}>Meal Plan</Text>
-      </View>
+      <CopilotStep text="Your weekly meal plan lives here — browse days and confirm your choices." order={2} name="meals">
+        <CopilotMealsHeader />
+      </CopilotStep>
 
       {/* Week strip */}
       <WeekStrip days={weekDays} selected={selectedDate} today={today} onSelect={setSelectedDate} />
