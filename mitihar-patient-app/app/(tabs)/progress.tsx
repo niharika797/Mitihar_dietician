@@ -14,9 +14,13 @@ import { BottomSheet, useToast } from "../../components/shared";
 import type { WeightEntry } from "../../types";
 import { CopilotStep, walkthroughable } from "react-native-copilot";
 
-const ProgressHeader = walkthroughable(
-  () => <View style={s.header}><Text style={s.headerTitle}>My Progress</Text></View>
-);
+// forwardRef: react-native-copilot's walkthroughable() attaches a ref to
+// measure this component's position. A plain function component silently
+// drops an incoming ref, leaving CopilotStep's measure() polling forever.
+const ProgressHeaderBase = React.forwardRef<View>(function ProgressHeader(_props, ref) {
+  return <View ref={ref} style={s.header}><Text style={s.headerTitle}>My Progress</Text></View>;
+});
+const ProgressHeader = walkthroughable(ProgressHeaderBase);
 
 type BarData = { value: number; label?: string; frontColor?: string };
 

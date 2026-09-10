@@ -46,9 +46,16 @@ interface HomeHeaderProps {
   onBellPress: () => void;
 }
 
-function HomeHeader({ firstName, streak, hasUnread, onBellPress }: HomeHeaderProps) {
+// forwardRef: react-native-copilot's walkthroughable() attaches a ref to
+// measure this component's position on screen. A plain function component
+// silently drops an incoming ref (nothing forwards it to a real View), which
+// left CopilotStep's measure() polling forever and the tour never appearing.
+const HomeHeader = React.forwardRef<View, HomeHeaderProps>(function HomeHeader(
+  { firstName, streak, hasUnread, onBellPress },
+  ref,
+) {
   return (
-    <View style={s.headerCard}>
+    <View ref={ref} style={s.headerCard}>
       <View style={s.headerRow}>
         <View>
           <Text style={s.greetingText}>{greeting()}, {firstName} ☀️</Text>
@@ -69,7 +76,7 @@ function HomeHeader({ firstName, streak, hasUnread, onBellPress }: HomeHeaderPro
       </View>
     </View>
   );
-}
+});
 const CopilotHomeHeader = walkthroughable(HomeHeader);
 
 // ── DoctorStatusBanner ─────────────────────────────────────────────────────────
@@ -226,6 +233,11 @@ export default function HomeScreen() {
     queryKey: QUERY_KEYS.TODAY,
     queryFn: getTodaySummary,
     refetchInterval: 60_000,
+    // 402 (no active subscription) isn't transient — retrying it is pure
+    // noise. Without this, refetchOnWindowFocus re-fires the query on every
+    // focus event, and since it never succeeds for an unsubscribed patient,
+    // isLoading never settles either.
+    retry: (failureCount, error) => (error as any)?.response?.status !== 402 && failureCount < 1,
   });
 
   // Audit C-6: streak lives on its own endpoint — it is NOT part of TodaySummary.
@@ -340,20 +352,19 @@ export default function HomeScreen() {
 
   const firstName = profile?.name?.split(" ")[0] ?? "there";
 
-  if (todayLoading) {
-    return (
-      <View style={s.loader}>
-        <ActivityIndicator size="large" color="#1E7C45" />
-      </View>
-    );
-  }
-
   const selectedMeal = todayMeals.find(m => m["Meal Type"].toLowerCase() === logSheet?.toLowerCase());
 
   return (
     <View style={s.root}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
+        {/* Header renders unconditionally — it must never be gated behind
+            getTodaySummary's loading state. That query 402s for any patient
+            without an active subscription (every fresh signup), and since it
+            never succeeds, refetchOnWindowFocus re-triggers isLoading=true
+            on every focus event indefinitely — gating the header behind it
+            hid it (and everything after it, incl. the product tour) forever
+            for exactly the accounts the tour is meant to greet. */}
         <CopilotStep text="This is your home — your daily meal plan and progress at a glance." order={1} name="home">
           <CopilotHomeHeader
             firstName={firstName}
@@ -363,7 +374,12 @@ export default function HomeScreen() {
           />
         </CopilotStep>
 
-                <View style={s.body}>
+        {todayLoading ? (
+          <View style={s.loader}>
+            <ActivityIndicator size="large" color="#1E7C45" />
+          </View>
+        ) : (
+        <View style={s.body}>
           {/* ── Calories ring ── */}
           <Text style={s.sectionLabel}>TODAY'S CALORIES</Text>
           <View style={s.card}>
@@ -471,7 +487,8 @@ export default function HomeScreen() {
           {visitData?.has_visit && visitData.cycle_start && (
             <NextVisitCard cycleStart={visitData.cycle_start} />
           )}
-                </View>
+        </View>
+        )}
       </ScrollView>
 
       {/* ── Log Meal Sheet ── */}

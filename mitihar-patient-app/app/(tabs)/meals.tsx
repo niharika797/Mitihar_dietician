@@ -14,13 +14,16 @@ import { MacroRow } from "../../components/shared";
 import type { Meal, WeeklyComboV2, WeekResponseV2 } from "../../types";
 import { CopilotStep, walkthroughable } from "react-native-copilot";
 
-function MealsHeader() {
+// forwardRef: react-native-copilot's walkthroughable() attaches a ref to
+// measure this component's position. A plain function component silently
+// drops an incoming ref, leaving CopilotStep's measure() polling forever.
+const MealsHeader = React.forwardRef<View>(function MealsHeader(_props, ref) {
   return (
-    <View style={s.header}>
+    <View ref={ref} style={s.header}>
       <Text style={s.headerTitle}>Meal Plan</Text>
     </View>
   );
-}
+});
 const CopilotMealsHeader = walkthroughable(MealsHeader);
 
 const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner"];

@@ -10,9 +10,13 @@ import { requestRenewal, getMyProfile } from "../../services/profile";
 import { computeHealthStats } from "../../utils/calculations";
 import { CopilotStep, walkthroughable } from "react-native-copilot";
 
-const ProfileHeader = walkthroughable(
-  () => <View style={s.header}><Text style={s.headerTitle}>Profile</Text></View>
-);
+// forwardRef: react-native-copilot's walkthroughable() attaches a ref to
+// measure this component's position. A plain function component silently
+// drops an incoming ref, leaving CopilotStep's measure() polling forever.
+const ProfileHeaderBase = React.forwardRef<View>(function ProfileHeader(_props, ref) {
+  return <View ref={ref} style={s.header}><Text style={s.headerTitle}>Profile</Text></View>;
+});
+const ProfileHeader = walkthroughable(ProfileHeaderBase);
 
 export default function ProfileScreen() {
   const router = useRouter();
