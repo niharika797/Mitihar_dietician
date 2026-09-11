@@ -74,7 +74,7 @@ export function Requests() {
     <div className="p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">Patient Requests</h1>
+          <h1 data-tour="tour-requests" className="text-2xl font-semibold text-[#111827] tracking-tight">Patient Requests</h1>
           <p className="text-sm text-[#6B7280] mt-0.5">
             {isLoading ? 'Loading…' : `${requests.length} pending`}
           </p>

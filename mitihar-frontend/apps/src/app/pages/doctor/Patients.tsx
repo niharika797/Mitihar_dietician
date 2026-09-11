@@ -110,7 +110,7 @@ export function Patients() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">Patients</h1>
+          <h1 data-tour="tour-patients" className="text-2xl font-semibold text-[#111827] tracking-tight">Patients</h1>
           <p className="text-sm text-[#6B7280] mt-0.5">
             {data ? `${data.total} total patients` : 'Loading…'}
           </p>

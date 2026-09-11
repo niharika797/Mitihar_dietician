@@ -253,7 +253,7 @@ export function DoctorSettings() {
   return (
     <div className="p-6 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">Settings</h1>
+        <h1 data-tour="tour-settings" className="text-2xl font-semibold text-[#111827] tracking-tight">Settings</h1>
         <p className="text-sm text-[#6B7280] mt-0.5">Manage your profile, codes, and security</p>
       </div>
 

@@ -642,7 +642,7 @@ export function Recipes() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">Recipes</h1>
+          <h1 data-tour="tour-recipes" className="text-2xl font-semibold text-[#111827] tracking-tight">Recipes</h1>
           <p className="text-sm text-[#6B7280] mt-0.5">
             {isLoading ? 'Loading…' : `${recipes.length} recipes`}
             {isFetching && !isLoading && (
