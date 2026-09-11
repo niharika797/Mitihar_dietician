@@ -55,6 +55,7 @@ export interface PatientProfile {
   subscription_status: SubscriptionStatus;
   subscription_end_date?: string;
   disclaimer_accepted_at?: string;
+  profile_picture_url?: string | null;
   nonveg_meals_per_week: number;
   pace_preference?: PacePreference;
   eating_habits: string[];

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { ChevronRight, Edit2, Bell, Info, LogOut, User, RefreshCw, Settings } from "lucide-react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -95,7 +96,11 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.duration(400).easing(EASE_OUT)}>
           <Card style={s.avatarCard}>
             <View style={s.avatar}>
-              <User size={32} color="#fff" />
+              {profile?.profile_picture_url ? (
+                <Image source={{ uri: profile.profile_picture_url }} style={s.avatarImage} contentFit="cover" />
+              ) : (
+                <User size={32} color="#fff" />
+              )}
             </View>
             <View style={s.avatarInfo}>
               <Text style={s.name}>{profile?.name ?? "—"}</Text>
@@ -206,7 +211,8 @@ const s = StyleSheet.create({
   scroll:        { paddingBottom: 40 },
   body:          { paddingHorizontal: 20, paddingTop: 20, gap: 16 },
   avatarCard:    { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", padding: 20, flexDirection: "row", alignItems: "center", gap: 16 },
-  avatar:        { width: 72, height: 72, borderRadius: 36, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
+  avatar:        { width: 72, height: 72, borderRadius: 36, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  avatarImage:   { width: 72, height: 72 },
   avatarInfo:    { flex: 1 },
   name:          { fontSize: 18, fontWeight: "700", color: "#111827" },
   email:         { fontSize: 13, color: "#6B7280", marginTop: 2 },

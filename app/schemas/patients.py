@@ -104,6 +104,8 @@ class PatientProfileResponse(BaseModel):
     is_active: bool
     # Onboarding completion gate — used by login to skip re-onboarding
     disclaimer_accepted_at: Optional[datetime] = None
+    # From Google's OIDC 'picture' claim — set on Google Sign-In, null otherwise
+    profile_picture_url: Optional[str] = None
     # Subscription expiry date
     subscription_end_date: Optional[datetime] = None
     # Token 1 — subscription identifier shown to doctor

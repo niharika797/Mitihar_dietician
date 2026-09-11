@@ -672,6 +672,7 @@ async def google_verify(
     email: Optional[str] = id_info.get("email")
     name: str = id_info.get("name") or (email.split("@")[0] if email else "Google User")
     email_verified: bool = id_info.get("email_verified", False)
+    picture: Optional[str] = id_info.get("picture")
 
     if not email or not email_verified:
         raise HTTPException(
@@ -684,6 +685,12 @@ async def google_verify(
     result = await session.execute(select(Patient).where(Patient.google_id == google_sub))
     patient = result.scalars().first()
 
+    if patient is not None:
+        # Refresh on every Google login so a changed Google photo actually shows up
+        # (rather than only ever being set once, at account creation/linking).
+        patient.profile_picture_url = picture
+        await session.flush()
+
     if patient is None:
         result = await session.execute(select(Patient).where(Patient.email == email))
         patient = result.scalars().first()
@@ -691,6 +698,7 @@ async def google_verify(
             # Existing email-password account being linked to Google for the first time
             patient.google_id = google_sub
             patient.is_email_verified = True  # Google already verified this email
+            patient.profile_picture_url = picture
             await session.flush()
 
     if patient is None:
@@ -719,6 +727,7 @@ async def google_verify(
             raise HTTPException(status_code=500, detail="Patient row not found after creation")
         patient.google_id = google_sub
         patient.is_email_verified = True  # Google already verified this email
+        patient.profile_picture_url = picture
         await session.flush()
 
     tokens = _issue_tokens(_patient_token_data(patient))

@@ -233,6 +233,9 @@ class Patient(Base):
     # already allows multiple NULLs under a plain UNIQUE and the partial index is
     # the real guard.
     # Stable Google 'sub' claim — set on first Google Sign-In, never changes
+    # From Google's OIDC 'picture' claim — set/refreshed on every Google
+    # Sign-In (see auth.py:google_verify). NULL for password-only accounts.
+    profile_picture_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_email_verified: Mapped[bool | None] = mapped_column(Boolean, default=False)
     # True once the patient clicks the verification link in their welcome email.
     # Google-authenticated patients are auto-verified (Google already confirmed the email).
