@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, CalendarClock, ChevronRight, Utensils, Coffee } from "lucide-react-native";
+import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, Easing } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getTodaySummary, logMeal, rateMeal, getMyRatings, getStreak, MealRating } from "../../services/progress"; // Audit C-6: added getStreak
 import { getWeeklyPlan } from "../../services/meals";
@@ -12,12 +14,14 @@ import { getRequestStatus, getMyProfile, getMyVisit } from "../../services/profi
 import { getDailyChoices, getBeverages, type Beverage } from "../../services/meals";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore } from "../../store/useProgressStore";
-import { ProgressRing, MacroRow, BottomSheet, useToast, ErrorState, Card, Button } from "../../components/shared";
+import { ProgressRing, MacroRow, BottomSheet, useToast, ErrorState, Card, Button, AnimatedPressable } from "../../components/shared";
 import PantrySection from "../../components/PantrySection";
 import ShoppingListSection from "../../components/ShoppingListSection";
 import PendingVisitSection from "../../components/PendingVisitSection";
-import { colors } from "../../constants/theme";
+import { colors, iconSize, typography } from "../../constants/theme";
 import type { Meal, WeeklyPlan } from "../../types";
+
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 function greeting() {
   const h = new Date().getHours();
@@ -46,9 +50,19 @@ interface HomeHeaderProps {
   onBellPress: () => void;
 }
 
+// Subtle, restrained pulse — the one "delight tier" animation in this pass.
+function StreakFlame() {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    scale.set(withRepeat(withSequence(withTiming(1.08, { duration: 900 }), withTiming(1, { duration: 900 })), -1, true));
+  }, []);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+  return <Animated.Text style={[s.streakEmoji, animatedStyle]}>🔥</Animated.Text>;
+}
+
 function HomeHeader({ firstName, streak, hasUnread, onBellPress }: HomeHeaderProps) {
   return (
-    <View style={s.headerCard}>
+    <Animated.View entering={FadeInDown.duration(400).easing(EASE_OUT)} style={s.headerCard}>
       <View style={s.headerRow}>
         <View>
           <Text style={s.greetingText}>{greeting()}, {firstName} ☀️</Text>
@@ -56,18 +70,18 @@ function HomeHeader({ firstName, streak, hasUnread, onBellPress }: HomeHeaderPro
             {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
           </Text>
         </View>
-        <Pressable onPress={onBellPress} style={s.bellBtn}>
-          <Bell size={20} color="#374151" />
+        <AnimatedPressable onPress={onBellPress} style={s.bellBtn}>
+          <Bell size={iconSize.md} color="#374151" />
           {hasUnread && <View style={s.bellDot} />}
-        </Pressable>
+        </AnimatedPressable>
       </View>
       <View style={s.pillRow}>
         <View style={s.streakPill}>
-          <Text style={s.streakEmoji}>🔥</Text>
+          <StreakFlame />
           <Text style={s.streakText}>{streak} Day Streak</Text>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -159,7 +173,7 @@ function NextVisitCard({ cycleStart }: { cycleStart: string }) {
   return (
     <View style={[nv.card, { backgroundColor: bgColor, borderColor }]}>
       <View style={nv.iconRow}>
-        <CalendarClock size={18} color={statusColor} />
+        <CalendarClock size={iconSize.sm} color={statusColor} />
         <Text style={[nv.title, { color: statusColor }]}>NEXT FOLLOW-UP</Text>
       </View>
       <Text style={nv.date}>{dateStr}</Text>
@@ -367,88 +381,98 @@ export default function HomeScreen() {
                 <View style={s.body}>
           {/* ── Calories ring ── */}
           <Text style={s.sectionLabel}>TODAY'S CALORIES</Text>
-          <Card style={{ marginBottom: 20 }}>
-            <View style={s.calorieRow}>
-              <ProgressRing size={100} percentage={calPercent} color={colors.brand[600]} />
-              <View style={s.calorieInfo}>
-                <Text style={s.calBig}>{cals.toLocaleString()}</Text>
-                <Text style={s.calSub}>of {dailyTarget.toLocaleString()} target</Text>
-                {plannedKcal > 0 && (
-                  <Text style={s.calPlanned}>Planned: {plannedKcal.toLocaleString()} kcal</Text>
-                )}
-                <View style={{ marginTop: 8 }}>
-                  <MacroRow
-                    protein={today?.macros?.protein ?? 0}
-                    carbs={today?.macros?.carbs ?? 0}
-                    fat={today?.macros?.fat ?? 0}
-                  />
+          <Animated.View entering={FadeInDown.delay(80).duration(400).easing(EASE_OUT)}>
+            <Card style={{ marginBottom: 20 }}>
+              <View style={s.calorieRow}>
+                <ProgressRing size={100} percentage={calPercent} color={colors.brand[600]} />
+                <View style={s.calorieInfo}>
+                  <Text style={s.calBig}>{cals.toLocaleString()}</Text>
+                  <Text style={s.calSub}>of {dailyTarget.toLocaleString()} target</Text>
+                  {plannedKcal > 0 && (
+                    <Text style={s.calPlanned}>Planned: {plannedKcal.toLocaleString()} kcal</Text>
+                  )}
+                  <View style={{ marginTop: 8 }}>
+                    <MacroRow
+                      protein={today?.macros?.protein ?? 0}
+                      carbs={today?.macros?.carbs ?? 0}
+                      fat={today?.macros?.fat ?? 0}
+                    />
+                  </View>
                 </View>
               </View>
-            </View>
-          </Card>
+            </Card>
+          </Animated.View>
 
           {/* ── Today's meals ── */}
           <View style={s.sectionHeader}>
             <Text style={s.sectionLabel}>TODAY'S MEALS</Text>
-            <Pressable onPress={() => router.push("/(tabs)/meals")} style={s.seeAllBtn}>
+            <AnimatedPressable onPress={() => router.push("/(tabs)/meals")} style={s.seeAllBtn}>
               <Text style={s.seeAllText}>See All</Text>
-              <ChevronRight size={14} color={colors.brand[600]} />
-            </Pressable>
+              <ChevronRight size={iconSize.sm} color={colors.brand[600]} />
+            </AnimatedPressable>
           </View>
-          <Card padded={false} style={{ overflow: "hidden", marginBottom: 20 }}>
-            {MEAL_ORDER
-              .map(t => todayMeals.find(m => m["Meal Type"] === t))
-              .filter((m): m is Meal => !!m)
-              .map((meal, i, arr) => {
-                const mealType = meal["Meal Type"];
-                const { emoji, time } = MEAL_META[mealType] ?? { emoji: "🍽️", time: "" };
-                const logged = loggedMeals[mealType] ?? false;
-                return (
-                  <View key={mealType} style={[s.mealRow, i < arr.length - 1 && s.mealBorder, logged && s.mealLogged]}>
-                    <View style={s.mealLeft}>
-                      <Text style={s.mealCheck}>{logged ? "✓" : "○"}</Text>
-                      <View>
-                        <Text style={s.mealSlot}>{emoji} {mealType} · {time}</Text>
-                        <Text style={s.mealName} numberOfLines={1}>{meal["Menu Names"]}</Text>
+          <Animated.View entering={FadeInDown.delay(160).duration(400).easing(EASE_OUT)}>
+            <Card padded={false} style={{ overflow: "hidden", marginBottom: 20 }}>
+              {MEAL_ORDER
+                .map(t => todayMeals.find(m => m["Meal Type"] === t))
+                .filter((m): m is Meal => !!m)
+                .map((meal, i, arr) => {
+                  const mealType = meal["Meal Type"];
+                  const { emoji, time } = MEAL_META[mealType] ?? { emoji: "🍽️", time: "" };
+                  const logged = loggedMeals[mealType] ?? false;
+                  return (
+                    <View key={mealType} style={[s.mealRow, i < arr.length - 1 && s.mealBorder, logged && s.mealLogged]}>
+                      <View style={s.mealLeft}>
+                        <Text style={s.mealCheck}>{logged ? "✓" : "○"}</Text>
+                        <View>
+                          <Text style={s.mealSlot}>{emoji} {mealType} · {time}</Text>
+                          <Text style={s.mealName} numberOfLines={1}>{meal["Menu Names"]}</Text>
+                        </View>
+                      </View>
+                      <View style={s.mealRight}>
+                        <Text style={s.mealCal}>{meal["Total Calories"]} cal</Text>
+                        {!logged && (
+                          <AnimatedPressable onPress={() => setLogSheet(mealType)} style={s.logBtn}>
+                            <Text style={s.logBtnText}>Log</Text>
+                          </AnimatedPressable>
+                        )}
                       </View>
                     </View>
-                    <View style={s.mealRight}>
-                      <Text style={s.mealCal}>{meal["Total Calories"]} cal</Text>
-                      {!logged && (
-                        <Pressable onPress={() => setLogSheet(mealType)} style={s.logBtn}>
-                          <Text style={s.logBtnText}>Log</Text>
-                        </Pressable>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-          </Card>
+                  );
+                })}
+            </Card>
+          </Animated.View>
 
           {/* ── Quick log ── */}
           {/* Water and Steps tracking deferred — pending native health API integration (HealthKit / Health Connect) */}
           <Text style={s.sectionLabel}>QUICK LOG</Text>
-          <Pressable style={s.snackCard} onPress={() => { setSnackCals("0"); setSnackSheet(true); }}>
-            <View style={s.snackCardLeft}>
-              <Utensils size={22} color={colors.warm[600]} />
-              <View style={s.snackCardText}>
-                <Text style={s.snackCardTitle}>Log a Snack</Text>
-                <Text style={s.snackCardSub}>track extras & bites</Text>
+          <Animated.View entering={FadeInDown.delay(240).duration(400).easing(EASE_OUT)}>
+            <AnimatedPressable style={s.snackCard} onPress={() => { setSnackCals("0"); setSnackSheet(true); }}>
+              <View style={s.snackCardLeft}>
+                <View style={[s.iconBadge, { backgroundColor: colors.warm[50] }]}>
+                  <Utensils size={iconSize.md} color={colors.warm[600]} />
+                </View>
+                <View style={s.snackCardText}>
+                  <Text style={s.snackCardTitle}>Log a Snack</Text>
+                  <Text style={s.snackCardSub}>track extras & bites</Text>
+                </View>
               </View>
-            </View>
-            <Text style={s.snackCardArrow}>+</Text>
-          </Pressable>
+              <Text style={s.snackCardArrow}>+</Text>
+            </AnimatedPressable>
 
-          <Pressable style={[s.snackCard, { marginTop: 8 }]} onPress={() => setBeverageSheet(true)}>
-            <View style={s.snackCardLeft}>
-              <Coffee size={22} color="#0E7490" />
-              <View style={s.snackCardText}>
-                <Text style={s.snackCardTitle}>Log a Beverage</Text>
-                <Text style={s.snackCardSub}>tea, coffee, shakes & more</Text>
+            <AnimatedPressable style={[s.snackCard, { marginTop: 8 }]} onPress={() => setBeverageSheet(true)}>
+              <View style={s.snackCardLeft}>
+                <View style={[s.iconBadge, { backgroundColor: "#E0F2FE" }]}>
+                  <Coffee size={iconSize.md} color="#0E7490" />
+                </View>
+                <View style={s.snackCardText}>
+                  <Text style={s.snackCardTitle}>Log a Beverage</Text>
+                  <Text style={s.snackCardSub}>tea, coffee, shakes & more</Text>
+                </View>
               </View>
-            </View>
-            <Text style={s.snackCardArrow}>+</Text>
-          </Pressable>
+              <Text style={s.snackCardArrow}>+</Text>
+            </AnimatedPressable>
+          </Animated.View>
 
           {/* ── Kitchen ── */}
           {/* Moved here from the Meals tab's action row so patients can act on
@@ -489,7 +513,7 @@ export default function HomeScreen() {
             <Text style={{ color: "#6B7280", fontSize: 13 }}>No meal planned for this slot today.</Text>
           )}
           {selectedMeal && (
-            <Button label="✅ Confirm & Log" onPress={() => mealMut.mutate(selectedMeal)} loading={mealMut.isPending} />
+            <Button label="✅ Confirm & Log" onPress={() => mealMut.mutate(selectedMeal)} loading={mealMut.isPending} haptic />
           )}
         </View>
       </BottomSheet>
@@ -514,7 +538,7 @@ export default function HomeScreen() {
               </Pressable>
             ))}
           </View>
-          <Button label="Log Snack" onPress={() => snackMut.mutate(parseInt(snackCals) || 0)} loading={snackMut.isPending} />
+          <Button label="Log Snack" onPress={() => snackMut.mutate(parseInt(snackCals) || 0)} loading={snackMut.isPending} haptic />
         </View>
       </BottomSheet>
 
@@ -527,15 +551,15 @@ export default function HomeScreen() {
           ) : (
             <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
               {beverages.map(b => (
-                <Pressable
+                <AnimatedPressable
                   key={b.food_item_id}
                   style={sh.beverageRow}
-                  onPress={() => beverageMut.mutate(b)}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); beverageMut.mutate(b); }}
                   disabled={beverageMut.isPending}
                 >
                   <Text style={sh.beverageName} numberOfLines={1}>{b.recipe_name}</Text>
                   <Text style={sh.beverageCal}>{Math.round(b.calories)} kcal</Text>
-                </Pressable>
+                </AnimatedPressable>
               ))}
             </ScrollView>
           )}
@@ -566,7 +590,7 @@ const s = StyleSheet.create({
   seeAllText:  { fontSize: 12, fontWeight: "500", color: "#1E7C45" },
   calorieRow:  { flexDirection: "row", alignItems: "center", gap: 20 },
   calorieInfo: { flex: 1 },
-  calBig:      { fontSize: 28, fontWeight: "700", color: "#111827" },
+  calBig:      { ...typography.displayLarge },
   calSub:      { fontSize: 12, color: "#6B7280" },
   calPlanned:  { fontSize: 12, fontWeight: "500", color: "#1E7C45", marginTop: 2 },
   mealRow:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 },
@@ -582,6 +606,7 @@ const s = StyleSheet.create({
   logBtnText:  { fontSize: 12, fontWeight: "500", color: "#1E7C45" },
   snackCard:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#FDE68A", padding: 14, marginBottom: 20 },
   snackCardLeft:  { flexDirection: "row", alignItems: "center", gap: 12 },
+  iconBadge:      { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   snackCardText:  { gap: 2 },
   snackCardTitle: { fontSize: 15, fontWeight: "600", color: "#111827" },
   snackCardSub:   { fontSize: 11, color: "#6B7280" },

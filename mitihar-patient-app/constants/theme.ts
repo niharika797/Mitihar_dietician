@@ -1,3 +1,5 @@
+import type { TextStyle } from "react-native";
+
 // Design tokens for the patient app's core tabs (Home/Meals/Progress/Profile).
 // Ports the palette + type scale that already existed, unused, in
 // tailwind.config.js — every value here was already live somewhere in the
@@ -70,23 +72,43 @@ export const radius = {
   pill: 999,
 } as const;
 
+// Icon sizes were 14-32px with no scale across the app. Three stops covers
+// every existing usage (inline chevrons/dots -> sm, standard row/action icons
+// -> md, quick-log/hero icons -> lg).
+export const iconSize = {
+  sm: 16,
+  md: 20,
+  lg: 24,
+} as const;
+
 const fontFamily = {
   regular: "Inter_400Regular",
   medium: "Inter_500Medium",
   semibold: "Inter_600SemiBold",
   bold: "Inter_700Bold",
+  extrabold: "Inter_800ExtraBold",
 } as const;
 
 // Named presets pairing size + the correct loaded Inter weight, so text
 // actually renders in Inter instead of the OS default font with a
 // `fontWeight` string faking the weight.
+const TABULAR_NUMS = ["tabular-nums"] as NonNullable<TextStyle["fontVariant"]>;
+
+// Not `as const` — RN's TextStyle.fontVariant wants a mutable FontVariant[],
+// and a deep-frozen object here would hand it a readonly tuple instead.
 export const typography = {
+  // Big hero numbers (calorie count, weight, BMI) — heavier weight + tabular
+  // figures so digits don't shift width as they change.
+  displayLarge: { fontSize: 34, fontFamily: fontFamily.extrabold, color: colors.gray[900], fontVariant: TABULAR_NUMS },
   display: { fontSize: 28, fontFamily: fontFamily.bold, color: colors.gray[900] },
   title: { fontSize: 20, fontFamily: fontFamily.semibold, color: colors.gray[900] },
   heading: { fontSize: 16, fontFamily: fontFamily.semibold, color: colors.gray[900] },
   body: { fontSize: 14, fontFamily: fontFamily.regular, color: colors.gray[700] },
   bodyMedium: { fontSize: 14, fontFamily: fontFamily.medium, color: colors.gray[900] },
+  // Stat tile values (BMI, Weight, TDEE, weight-journey numbers) — tabular
+  // figures at body-ish size so grids of numbers line up.
+  statValue: { fontSize: 18, fontFamily: fontFamily.extrabold, color: colors.gray[900], fontVariant: TABULAR_NUMS },
   caption: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.gray[500] },
   captionMedium: { fontSize: 12, fontFamily: fontFamily.medium, color: colors.gray[700] },
   label: { fontSize: 11, fontFamily: fontFamily.semibold, color: colors.gray[700], letterSpacing: 1 },
-} as const;
+};

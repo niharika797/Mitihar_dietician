@@ -9,3 +9,4 @@ export { Button }          from "./Button";
 export { Card }            from "./Card";
 export { ScreenHeader }    from "./ScreenHeader";
 export { ErrorState }      from "./ErrorState";
+export { AnimatedPressable } from "./AnimatedPressable";

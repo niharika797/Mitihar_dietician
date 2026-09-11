@@ -1,5 +1,7 @@
 import React from "react";
-import { Pressable, Text, ActivityIndicator, StyleSheet, PressableProps } from "react-native";
+import { Text, ActivityIndicator, StyleSheet, PressableProps, GestureResponderEvent } from "react-native";
+import * as Haptics from "expo-haptics";
+import { AnimatedPressable } from "./AnimatedPressable";
 import { colors, radius, spacing } from "../../constants/theme";
 
 type Variant = "primary" | "secondary" | "ghost";
@@ -9,16 +11,26 @@ interface ButtonProps extends Omit<PressableProps, "style"> {
   variant?: Variant;
   loading?: boolean;
   disabled?: boolean;
+  /** Fires a light haptic on tap — for actions that commit something (log, save, retry), not plain navigation. */
+  haptic?: boolean;
 }
 
 // Replaces the hand-rolled Pressable + local StyleSheet CTA that every tab
 // screen redefined on its own (same 52px/pill shape as OnboardingShell's
-// footer CTA, formalized here for reuse outside onboarding).
-export function Button({ label, variant = "primary", loading, disabled, ...pressableProps }: ButtonProps) {
+// footer CTA, formalized here for reuse outside onboarding). Press feedback
+// via AnimatedPressable (scale 0.97) — every tap now responds physically.
+export function Button({ label, variant = "primary", loading, disabled, haptic, onPress, ...pressableProps }: ButtonProps) {
   const isDisabled = disabled || loading;
+
+  const handlePress = (e: GestureResponderEvent) => {
+    if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress?.(e);
+  };
+
   return (
-    <Pressable
+    <AnimatedPressable
       {...pressableProps}
+      onPress={handlePress}
       disabled={isDisabled}
       style={[
         s.base,
@@ -43,7 +55,7 @@ export function Button({ label, variant = "primary", loading, disabled, ...press
           {label}
         </Text>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 

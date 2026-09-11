@@ -6,13 +6,17 @@ import { useFocusEffect } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react-native";
 import { LineChart } from "react-native-gifted-charts";
+import Animated, { FadeInDown, Easing } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getTodaySummary, logWeight, getWeightHistory, getStreak } from "../../services/progress";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore } from "../../store/useProgressStore";
-import { BottomSheet, useToast, ScreenHeader, ErrorState, Card, Button } from "../../components/shared";
-import { colors, spacing } from "../../constants/theme";
+import { BottomSheet, useToast, ScreenHeader, ErrorState, Card, Button, AnimatedPressable } from "../../components/shared";
+import { colors, spacing, iconSize, typography } from "../../constants/theme";
 import type { WeightEntry } from "../../types";
+
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 type BarData = { value: number; label?: string; frontColor?: string };
 
@@ -93,70 +97,76 @@ export default function ProgressScreen() {
           <Text style={s.sectionLabel}>TODAY</Text>
 
           {/* Weight card */}
-          <MetricCard
-            icon={<Text style={{ fontSize: 20 }}>⚖️</Text>}
-            label="⚖️ Weight"
-            value={`${currentWeight} kg`}
-            note={targetWeight ? `Goal: ${targetWeight} kg` : undefined}
-            noteColor={colors.brand[600]}
-            onLog={() => { setTempWeight(currentWeight.toString()); setWeightSheet(true); }}
-          />
+          <Animated.View entering={FadeInDown.duration(400).easing(EASE_OUT)}>
+            <MetricCard
+              icon={<Text style={{ fontSize: 20 }}>⚖️</Text>}
+              label="⚖️ Weight"
+              value={`${currentWeight} kg`}
+              note={targetWeight ? `Goal: ${targetWeight} kg` : undefined}
+              noteColor={colors.brand[600]}
+              onLog={() => { setTempWeight(currentWeight.toString()); setWeightSheet(true); }}
+            />
+          </Animated.View>
 
           {/* Weight journey */}
           <Text style={[s.sectionLabel, { marginTop: 8 }]}>WEIGHT JOURNEY</Text>
-          <Card style={{ marginBottom: spacing.lg }}>
-            <View style={s.weightGrid}>
-              <StatPair label="Current" value={`${currentWeight} kg`} highlight />
-              <StatPair label="Goal"    value={targetWeight !== null ? `${targetWeight} kg` : "Not set"} />
-              <StatPair label="Left"    value={targetWeight !== null ? `${Math.abs(currentWeight - targetWeight).toFixed(1)} kg` : "—"} />
-              <StatPair label="Streak"  value={`${streak}d`} />
-            </View>
-            {weightError ? (
-              <ErrorState message="Could not load your weight history" onRetry={() => refetchWeight()} />
-            ) : chartData.length > 1 ? (
-              <View style={s.chartWrap}>
-                <LineChart
-                  data={chartData}
-                  color={colors.brand[600]}
-                  thickness={2.5}
-                  curved
-                  hideDataPoints={false}
-                  dataPointsColor={colors.brand[600]}
-                  dataPointsRadius={4}
-                  startFillColor={colors.brand[100]}
-                  endFillColor={colors.brand[100]}
-                  startOpacity={0.3}
-                  endOpacity={0.05}
-                  areaChart
-                  width={screenWidth - 48}
-                  height={180}
-                  yAxisTextStyle={{ fontSize: 10, color: colors.gray[400] }}
-                  xAxisLabelTextStyle={{ fontSize: 9, color: colors.gray[400] }}
-                  noOfSections={4}
-                  hideRules
-                  xAxisThickness={0}
-                  yAxisThickness={0}
-                />
+          <Animated.View entering={FadeInDown.delay(80).duration(400).easing(EASE_OUT)}>
+            <Card style={{ marginBottom: spacing.lg }}>
+              <View style={s.weightGrid}>
+                <StatPair label="Current" value={`${currentWeight} kg`} highlight />
+                <StatPair label="Goal"    value={targetWeight !== null ? `${targetWeight} kg` : "Not set"} />
+                <StatPair label="Left"    value={targetWeight !== null ? `${Math.abs(currentWeight - targetWeight).toFixed(1)} kg` : "—"} />
+                <StatPair label="Streak"  value={`${streak}d`} />
               </View>
-            ) : (
-              <Text style={s.noData}>Log your weight to see the trend</Text>
-            )}
-          </Card>
+              {weightError ? (
+                <ErrorState message="Could not load your weight history" onRetry={() => refetchWeight()} />
+              ) : chartData.length > 1 ? (
+                <View style={s.chartWrap}>
+                  <LineChart
+                    data={chartData}
+                    color={colors.brand[600]}
+                    thickness={2.5}
+                    curved
+                    hideDataPoints={false}
+                    dataPointsColor={colors.brand[600]}
+                    dataPointsRadius={4}
+                    startFillColor={colors.brand[100]}
+                    endFillColor={colors.brand[100]}
+                    startOpacity={0.3}
+                    endOpacity={0.05}
+                    areaChart
+                    width={screenWidth - 48}
+                    height={180}
+                    yAxisTextStyle={{ fontSize: 10, color: colors.gray[400] }}
+                    xAxisLabelTextStyle={{ fontSize: 9, color: colors.gray[400] }}
+                    noOfSections={4}
+                    hideRules
+                    xAxisThickness={0}
+                    yAxisThickness={0}
+                  />
+                </View>
+              ) : (
+                <Text style={s.noData}>Log your weight to see the trend</Text>
+              )}
+            </Card>
+          </Animated.View>
 
           {/* Streak */}
           <Text style={s.sectionLabel}>STREAK</Text>
-          <Card>
-            <Text style={s.streakBig}>🔥 {streak} Day Streak!</Text>
-            <Text style={s.streakSub}>Keep logging every day</Text>
-            <View style={s.dotRow}>
-              {STREAK_DOTS.map((done, i) => (
-                <View key={i} style={s.dotCol}>
-                  <Text style={s.dotLabel}>{STREAK_LABELS[i]}</Text>
-                  <View style={[s.dot, done && s.dotDone]} />
-                </View>
-              ))}
-            </View>
-          </Card>
+          <Animated.View entering={FadeInDown.delay(160).duration(400).easing(EASE_OUT)}>
+            <Card>
+              <Text style={s.streakBig}>🔥 {streak} Day Streak!</Text>
+              <Text style={s.streakSub}>Keep logging every day</Text>
+              <View style={s.dotRow}>
+                {STREAK_DOTS.map((done, i) => (
+                  <View key={i} style={s.dotCol}>
+                    <Text style={s.dotLabel}>{STREAK_LABELS[i]}</Text>
+                    <View style={[s.dot, done && s.dotDone]} />
+                  </View>
+                ))}
+              </View>
+            </Card>
+          </Animated.View>
         </View>
       </ScrollView>
 
@@ -178,7 +188,7 @@ export default function ProgressScreen() {
           {parseFloat(tempWeight) > 0 && parseFloat(tempWeight) < currentWeight && (
             <Text style={sh.weightGood}>↓ Down {(currentWeight - parseFloat(tempWeight)).toFixed(1)}kg 🎉</Text>
           )}
-          <Button label="Save" onPress={() => weightMut.mutate(parseFloat(tempWeight)||currentWeight)} loading={weightMut.isPending} />
+          <Button label="Save" onPress={() => weightMut.mutate(parseFloat(tempWeight)||currentWeight)} loading={weightMut.isPending} haptic />
         </View>
       </BottomSheet>
     </View>
@@ -208,10 +218,10 @@ function MetricCard({ icon, label, value, pct, barColor, note, noteColor, onLog 
               <Text style={[s.metricNote, noteColor ? { color: noteColor } : {}]}>{note}</Text>
             )}
           </View>
-          <Pressable onPress={onLog} style={s.logBtn}>
-            <Plus size={14} color="#1E7C45" />
+          <AnimatedPressable onPress={onLog} style={s.logBtn}>
+            <Plus size={iconSize.sm} color="#1E7C45" />
             <Text style={s.logBtnText}>Log</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
       </View>
     </View>
@@ -237,7 +247,7 @@ const s = StyleSheet.create({
   metricIcon: { width: 44, height: 44, borderRadius: 10, backgroundColor: "#F9FAFB", alignItems: "center", justifyContent: "center" },
   metricBody: { flex: 1 },
   metricRow:  { flexDirection: "row", alignItems: "flex-start" },
-  metricVal:  { fontSize: 16, fontWeight: "700", color: "#111827" },
+  metricVal:  { ...typography.statValue },
   bar:        { height: 6, backgroundColor: "#E5E7EB", borderRadius: 99, marginTop: 6, overflow: "hidden" },
   barFill:    { height: "100%", borderRadius: 99 },
   metricNote: { fontSize: 11, color: "#9CA3AF", marginTop: 3 },
@@ -245,7 +255,7 @@ const s = StyleSheet.create({
   logBtnText: { fontSize: 13, fontWeight: "500", color: "#1E7C45" },
   weightGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 14 },
   statPair:   { alignItems: "center", minWidth: "40%" },
-  statVal:    { fontSize: 16, fontWeight: "700", color: "#111827" },
+  statVal:    { ...typography.statValue },
   statLabel:  { fontSize: 12, color: "#6B7280", marginTop: 2 },
   chartWrap:  { marginTop: 4, marginLeft: -8 },
   noData:     { fontSize: 12, color: "#9CA3AF", textAlign: "center", paddingVertical: 16 },

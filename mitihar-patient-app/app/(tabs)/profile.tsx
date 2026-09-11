@@ -3,12 +3,16 @@ import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from
 import { useRouter } from "expo-router";
 import { ChevronRight, Edit2, Bell, Info, LogOut, User, RefreshCw, Settings } from "lucide-react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Animated, { FadeInDown, Easing } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { useAuthStore } from "../../store/useAuthStore";
-import { useToast, ScreenHeader, Card, Button } from "../../components/shared";
+import { useToast, ScreenHeader, Card, Button, AnimatedPressable } from "../../components/shared";
 import { logoutPatient } from "../../services/auth";
 import { requestRenewal, getMyProfile } from "../../services/profile";
 import { computeHealthStats } from "../../utils/calculations";
-import { colors } from "../../constants/theme";
+import { colors, iconSize, typography } from "../../constants/theme";
+
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -88,33 +92,38 @@ export default function ProfileScreen() {
 
       <View style={s.body}>
         {/* Avatar card */}
-        <Card style={s.avatarCard}>
-          <View style={s.avatar}>
-            <User size={32} color="#fff" />
-          </View>
-          <View style={s.avatarInfo}>
-            <Text style={s.name}>{profile?.name ?? "—"}</Text>
-            <Text style={s.email}>{profile?.email ?? "—"}</Text>
-            {profile?.phone ? <Text style={s.email}>{profile.phone}</Text> : null}
-          </View>
-          <Pressable onPress={() => router.push("/profile/edit-profile")} style={s.editBtn}>
-            <Edit2 size={16} color={colors.brand[600]} />
-          </Pressable>
-        </Card>
+        <Animated.View entering={FadeInDown.duration(400).easing(EASE_OUT)}>
+          <Card style={s.avatarCard}>
+            <View style={s.avatar}>
+              <User size={32} color="#fff" />
+            </View>
+            <View style={s.avatarInfo}>
+              <Text style={s.name}>{profile?.name ?? "—"}</Text>
+              <Text style={s.email}>{profile?.email ?? "—"}</Text>
+              {profile?.phone ? <Text style={s.email}>{profile.phone}</Text> : null}
+            </View>
+            <AnimatedPressable onPress={() => router.push("/profile/edit-profile")} style={s.editBtn}>
+              <Edit2 size={iconSize.sm} color={colors.brand[600]} />
+            </AnimatedPressable>
+          </Card>
+        </Animated.View>
 
         {/* Stats grid */}
-        <View style={s.statsGrid}>
+        <Animated.View entering={FadeInDown.delay(80).duration(400).easing(EASE_OUT)} style={s.statsGrid}>
           {STATS.map(st => (
             <View key={st.label} style={s.statCard}>
               <Text style={s.statVal}>{st.value}</Text>
               <Text style={s.statLabel}>{st.label}</Text>
             </View>
           ))}
-        </View>
+        </Animated.View>
 
         {/* Subscription & Token 1 */}
         <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
-        <View style={[s.subCard, token1Active ? (expiringSoon ? s.subExpiring : s.subActive) : s.subInactive]}>
+        <Animated.View
+          entering={FadeInDown.delay(160).duration(400).easing(EASE_OUT)}
+          style={[s.subCard, token1Active ? (expiringSoon ? s.subExpiring : s.subActive) : s.subInactive]}
+        >
           <View style={{ flex: 1 }}>
             <Text style={s.subTitle}>
               {renewalRequested
@@ -138,24 +147,24 @@ export default function ProfileScreen() {
             )}
           </View>
           {!token1Active && (
-            <Pressable onPress={() => router.push("/doctor/activate")} style={s.activateBtn}>
+            <AnimatedPressable onPress={() => router.push("/doctor/activate")} style={s.activateBtn}>
               <Text style={s.activateBtnText}>Activate</Text>
-            </Pressable>
+            </AnimatedPressable>
           )}
-        </View>
+        </Animated.View>
 
         {/* Renewal request button */}
         {showRenewalBtn && (
-          <Pressable
-            onPress={() => renewalMut.mutate()}
+          <AnimatedPressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); renewalMut.mutate(); }}
             disabled={renewalMut.isPending}
             style={[s.renewalBtn, renewalMut.isPending && { opacity: 0.6 }]}
           >
             {renewalMut.isPending
               ? <ActivityIndicator size="small" color="#fff" />
-              : <RefreshCw size={16} color="#fff" />}
+              : <RefreshCw size={iconSize.sm} color="#fff" />}
             <Text style={s.renewalBtnText}>Request Renewal</Text>
-          </Pressable>
+          </AnimatedPressable>
         )}
         {renewalRequested && (
           <View style={s.renewalSentBanner}>
@@ -165,26 +174,28 @@ export default function ProfileScreen() {
 
         {/* Settings menu */}
         <Text style={s.sectionLabel}>SETTINGS</Text>
-        <Card padded={false} style={{ overflow: "hidden" }}>
-          {MENU.map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <Pressable key={item.label} onPress={() => router.push(item.path as any)} style={[s.menuRow, i < MENU.length - 1 && s.menuBorder]}>
-                <View style={s.menuIcon}>
-                  <Icon size={18} color="#374151" />
-                </View>
-                <Text style={s.menuLabel}>{item.label}</Text>
-                <ChevronRight size={16} color="#9CA3AF" />
-              </Pressable>
-            );
-          })}
-        </Card>
+        <Animated.View entering={FadeInDown.delay(240).duration(400).easing(EASE_OUT)}>
+          <Card padded={false} style={{ overflow: "hidden" }}>
+            {MENU.map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <AnimatedPressable key={item.label} onPress={() => router.push(item.path as any)} style={[s.menuRow, i < MENU.length - 1 && s.menuBorder]}>
+                  <View style={s.menuIcon}>
+                    <Icon size={iconSize.md} color="#374151" />
+                  </View>
+                  <Text style={s.menuLabel}>{item.label}</Text>
+                  <ChevronRight size={iconSize.sm} color="#9CA3AF" />
+                </AnimatedPressable>
+              );
+            })}
+          </Card>
+        </Animated.View>
 
         {/* Logout */}
-        <Pressable onPress={handleLogout} style={s.logoutBtn}>
-          <LogOut size={18} color="#DC2626" />
+        <AnimatedPressable onPress={handleLogout} style={s.logoutBtn}>
+          <LogOut size={iconSize.md} color="#DC2626" />
           <Text style={s.logoutText}>Log Out</Text>
-        </Pressable>
+        </AnimatedPressable>
       </View>
     </ScrollView>
   );
@@ -202,7 +213,7 @@ const s = StyleSheet.create({
   editBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: "#F0FDF4", alignItems: "center", justifyContent: "center" },
   statsGrid:     { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   statCard:      { flexBasis: "47%", flexGrow: 1, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 14, alignItems: "center" },
-  statVal:       { fontSize: 20, fontWeight: "700", color: "#111827" },
+  statVal:       { ...typography.statValue, fontSize: 20 },
   statLabel:     { fontSize: 12, color: "#6B7280", marginTop: 2 },
   sectionLabel:  { fontSize: 11, fontWeight: "600", color: "#374151", letterSpacing: 1 },
   subCard:       { borderRadius: 12, borderWidth: 1, padding: 14, flexDirection: "row", alignItems: "center" },

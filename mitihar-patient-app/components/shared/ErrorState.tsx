@@ -1,5 +1,8 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+import { AnimatedPressable } from "./AnimatedPressable";
 import { colors, radius, spacing, typography } from "../../constants/theme";
 
 interface ErrorStateProps {
@@ -13,13 +16,19 @@ interface ErrorStateProps {
 // instead of re-invented per screen.
 export function ErrorState({ message, onRetry }: ErrorStateProps) {
   return (
-    <View style={s.center}>
+    <Animated.View entering={FadeIn.duration(250)} style={s.center}>
       <Text style={s.emoji}>⚠️</Text>
       <Text style={s.message}>{message}</Text>
-      <Pressable onPress={onRetry} style={s.retryBtn}>
+      <AnimatedPressable
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onRetry();
+        }}
+        style={s.retryBtn}
+      >
         <Text style={s.retryText}>Retry</Text>
-      </Pressable>
-    </View>
+      </AnimatedPressable>
+    </Animated.View>
   );
 }
 

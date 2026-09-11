@@ -6,10 +6,13 @@ import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Sentry from "@sentry/react-native";
+import { Lock, UtensilsCrossed } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
 import { useAuthStore } from "../../store/useAuthStore";
 import { generatePlan, confirmMealChoice, getDailyChoices, getWeeklyPlan } from "../../services/meals";
-import { useToast, MacroRow, ScreenHeader, ErrorState, Card, Button } from "../../components/shared";
+import { useToast, MacroRow, ScreenHeader, ErrorState, Card, Button, AnimatedPressable } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
+import { colors, iconSize } from "../../constants/theme";
 import type { Meal, WeeklyComboV2, WeekResponseV2 } from "../../types";
 
 const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner"];
@@ -63,10 +66,10 @@ function WeekStrip({ days, selected, today, onSelect }: WeekStripProps) {
         const isPast     = d < today;
         const dayNum     = new Date(d + "T12:00:00").getDate();
         return (
-          <Pressable
+          <AnimatedPressable
             key={d}
             style={[s.dayPill, isSelected && s.dayPillSelected, isToday && !isSelected && s.dayPillToday]}
-            onPress={() => onSelect(d)}
+            onPress={() => { Haptics.selectionAsync(); onSelect(d); }}
           >
             <Text style={[s.dayPillLabel, isSelected && s.dayPillLabelSelected, isPast && !isSelected && s.dayPillLabelPast]}>
               {DAY_LABELS[i]}
@@ -74,7 +77,7 @@ function WeekStrip({ days, selected, today, onSelect }: WeekStripProps) {
             <Text style={[s.dayPillNum, isSelected && s.dayPillNumSelected, isPast && !isSelected && s.dayPillNumPast]}>
               {dayNum}
             </Text>
-          </Pressable>
+          </AnimatedPressable>
         );
       })}
     </ScrollView>
@@ -109,7 +112,10 @@ function PastDayView({ date }: { date: string }) {
         return (
           <Card key={mealType} padded={false} style={{ overflow: "hidden" }}>
             <View style={s.slotHeader}>
-              <Text style={s.slotTitle}>{mealType.toUpperCase()}</Text>
+              <View style={s.slotTitleRow}>
+                <UtensilsCrossed size={iconSize.sm} color={colors.gray[500]} />
+                <Text style={s.slotTitle}>{mealType.toUpperCase()}</Text>
+              </View>
             </View>
             {choice ? (
               <View style={s.pastChoice}>
@@ -144,7 +150,7 @@ interface V2ComboCardProps {
 function V2ComboCard({ combo, onSelect, onCardPress, isPending, isConfirmedThisCombo, isSlotConfirmed }: V2ComboCardProps) {
   const dishNames = combo.dishes.map(d => d.recipe_name).join(" + ");
   return (
-    <Pressable style={[s.suggCard, isConfirmedThisCombo && s.suggCardSelected]} onPress={onCardPress}>
+    <AnimatedPressable style={[s.suggCard, isConfirmedThisCombo && s.suggCardSelected]} onPress={onCardPress}>
       {combo.contains_doctor_pick && (
         <View style={[s.pinBadge, { marginBottom: 6 }]}>
           <Text style={s.pinBadgeText}>🩺 Doctor's pick</Text>
@@ -176,17 +182,17 @@ function V2ComboCard({ combo, onSelect, onCardPress, isPending, isConfirmedThisC
           <Text style={s.selectBtnText}>✓ Chosen</Text>
         </View>
       ) : (
-        <Pressable
+        <AnimatedPressable
           style={[s.selectBtn, (isPending || isSlotConfirmed) && s.selectBtnDisabled]}
-          onPress={e => { e.stopPropagation?.(); onSelect(); }}
+          onPress={e => { e.stopPropagation?.(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onSelect(); }}
           disabled={isPending || isSlotConfirmed}
         >
           {isPending
             ? <ActivityIndicator size="small" color="#fff" />
             : <Text style={s.selectBtnText}>Select</Text>}
-        </Pressable>
+        </AnimatedPressable>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -235,7 +241,9 @@ function TeaserView({ onFindDoctor }: { onFindDoctor: () => void }) {
           />
         </View>
         <View style={s.lockCard}>
-          <Text style={s.lockIcon}>🔒</Text>
+          <View style={s.lockIconBadge}>
+            <Lock size={iconSize.lg} color={colors.brand[600]} />
+          </View>
           <Text style={s.lockTitle}>Your personalised plan is waiting</Text>
           <Text style={s.lockSub}>
             Connect with a dietician to get a meal plan tailored to your health goals, body, and diet.
@@ -444,9 +452,9 @@ export default function MealsScreen() {
         {/* Pantry + Shopping List moved to the home dashboard (components/
             PantrySection, ShoppingListSection) — history stays here. */}
         <View style={s.actionRow}>
-          <Pressable onPress={() => router.push("/meals/plan-history")} style={s.actionBtn}>
+          <AnimatedPressable onPress={() => router.push("/meals/plan-history")} style={s.actionBtn}>
             <Text style={s.actionBtnText}>📋 Plan History</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
       </View>
     </ScrollView>
@@ -466,6 +474,7 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
 
   // Slot
   slotHeader:        { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  slotTitleRow:      { flexDirection: "row", alignItems: "center", gap: 6 },
   slotTitle:         { fontSize: 12, fontWeight: "700", color: "#374151", letterSpacing: 0.8 },
   slotTarget:        { fontSize: 12, fontWeight: "500", color: "#6B7280" },
 
@@ -553,8 +562,8 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   // Teaser styles
   teaserContainer:   { position: "relative", overflow: "hidden", maxHeight: 360 },
   teaserGradient:    { position: "absolute", bottom: 0, left: 0, right: 0, height: 200 },
-  lockCard:          { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1.5, borderColor: "#E5E7EB", padding: 24, alignItems: "center", marginTop: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-  lockIcon:          { fontSize: 32, marginBottom: 10 },
+  lockCard:          { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1.5, borderColor: "#E5E7EB", padding: 24, alignItems: "center", marginTop: 8, boxShadow: "0px 2px 8px rgba(0,0,0,0.06)" },
+  lockIconBadge:     { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brand[50], alignItems: "center", justifyContent: "center", marginBottom: 10 },
   lockTitle:         { fontSize: 17, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 8 },
   lockSub:           { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 20, marginBottom: 20 },
 });
