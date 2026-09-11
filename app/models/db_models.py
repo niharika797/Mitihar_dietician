@@ -111,6 +111,7 @@ class Doctor(Base):
     role                    = Column(String(10), default="doctor")
     created_at              = Column(DateTime(timezone=True), server_default=func.now())
     updated_at              = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    product_tour_completed_at = Column(DateTime(timezone=True), nullable=True)
 
     # relationships
     patients          = relationship("Patient", back_populates="doctor", foreign_keys="Patient.doctor_id")
