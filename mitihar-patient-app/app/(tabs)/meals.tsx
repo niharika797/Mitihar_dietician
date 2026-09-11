@@ -8,9 +8,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Sentry from "@sentry/react-native";
 import { useAuthStore } from "../../store/useAuthStore";
 import { generatePlan, confirmMealChoice, getDailyChoices, getWeeklyPlan } from "../../services/meals";
-import { useToast } from "../../components/shared";
+import { useToast, MacroRow, ScreenHeader, ErrorState, Card, Button } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
-import { MacroRow } from "../../components/shared";
 import type { Meal, WeeklyComboV2, WeekResponseV2 } from "../../types";
 
 const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner"];
@@ -108,7 +107,7 @@ function PastDayView({ date }: { date: string }) {
       {MEAL_ORDER.map((mealType) => {
         const choice = choiceMap[mealType];
         return (
-          <View key={mealType} style={s.pastSlot}>
+          <Card key={mealType} padded={false} style={{ overflow: "hidden" }}>
             <View style={s.slotHeader}>
               <Text style={s.slotTitle}>{mealType.toUpperCase()}</Text>
             </View>
@@ -125,7 +124,7 @@ function PastDayView({ date }: { date: string }) {
                 <Text style={s.pastNoLogText}>— Not logged</Text>
               </View>
             )}
-          </View>
+          </Card>
         );
       })}
     </View>
@@ -241,9 +240,7 @@ function TeaserView({ onFindDoctor }: { onFindDoctor: () => void }) {
           <Text style={s.lockSub}>
             Connect with a dietician to get a meal plan tailored to your health goals, body, and diet.
           </Text>
-          <Pressable onPress={onFindDoctor} style={s.lockCta}>
-            <Text style={s.lockCtaText}>Find a Doctor</Text>
-          </Pressable>
+          <Button label="Find a Doctor" onPress={onFindDoctor} />
         </View>
       </View>
     </ScrollView>
@@ -267,19 +264,13 @@ function EmptyPlan({
         <>
           <Text style={s.emptyTitle}>No meal plan yet</Text>
           <Text style={s.emptySub}>Your plan is being set up. Tap below to generate it now.</Text>
-          <Pressable onPress={handleGenerate} style={s.emptyBtn} disabled={generating}>
-            {generating
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={s.emptyBtnText}>Generate My Plan</Text>}
-          </Pressable>
+          <Button label="Generate My Plan" onPress={handleGenerate} loading={generating} />
         </>
       ) : (
         <>
           <Text style={s.emptyTitle}>No meal plan yet</Text>
           <Text style={s.emptySub}>Connect with a dietician to get a personalised meal plan.</Text>
-          <Pressable onPress={onFindDoctor} style={s.emptyBtn}>
-            <Text style={s.emptyBtnText}>Find a Doctor</Text>
-          </Pressable>
+          <Button label="Find a Doctor" onPress={onFindDoctor} />
         </>
       )}
     </View>
@@ -376,9 +367,7 @@ export default function MealsScreen() {
 
   return (
     <ScrollView style={s.root} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-      <View style={s.header}>
-        <Text style={s.headerTitle}>Meal Plan</Text>
-      </View>
+      <ScreenHeader title="Meal Plan" />
 
       {/* Week strip */}
       <WeekStrip days={weekDays} selected={selectedDate} today={today} onSelect={setSelectedDate} />
@@ -386,7 +375,9 @@ export default function MealsScreen() {
       <View style={s.body}>
         <Text style={s.dateLabel}>{selDateLabel}</Text>
 
-        {isPastDay ? (
+        {weekPlanQuery.isError ? (
+          <ErrorState message="Could not load your meal plan" onRetry={() => weekPlanQuery.refetch()} />
+        ) : isPastDay ? (
           // Past days: read-only confirmed choices
           <>
             <Text style={s.subLabel}>What you planned for this day</Text>
@@ -417,7 +408,7 @@ export default function MealsScreen() {
                     const isSlotAlreadyConfirmed = (dailyChoices?.choices ?? []).some(c => c.meal_type === mealType);
                     const isSlotConfirmed = confirmedComboId !== undefined || isSlotAlreadyConfirmed;
                     return (
-                      <View key={`v2-${selectedDate}-${mealType}`} style={s.slotContainer}>
+                      <Card key={`v2-${selectedDate}-${mealType}`} padded={false} style={{ overflow: "hidden" }}>
                         <View style={s.slotHeader}>
                           <Text style={s.slotTitle}>{mealType.toUpperCase()}</Text>
                         </View>
@@ -441,7 +432,7 @@ export default function MealsScreen() {
                             />
                           ))}
                         </ScrollView>
-                      </View>
+                      </Card>
                     );
                   })
                 )}
@@ -474,7 +465,6 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   subLabel:          { fontSize: 12, color: "#6B7280", marginBottom: 4 },
 
   // Slot
-  slotContainer:     { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden" },
   slotHeader:        { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   slotTitle:         { fontSize: 12, fontWeight: "700", color: "#374151", letterSpacing: 0.8 },
   slotTarget:        { fontSize: 12, fontWeight: "500", color: "#6B7280" },
@@ -536,7 +526,6 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   // Past day view
   pastLoading:       { paddingVertical: 32, alignItems: "center" },
   pastWrapper:       { gap: 12 },
-  pastSlot:          { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden" },
   pastChoice:        { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
   pastCheck:         { fontSize: 18, color: "#1E7C45", marginTop: 1 },
   pastName:          { fontSize: 14, fontWeight: "600", color: "#111827", lineHeight: 18 },
@@ -552,8 +541,6 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   emptyEmoji:        { fontSize: 48, marginBottom: 12 },
   emptyTitle:        { fontSize: 18, fontWeight: "600", color: "#111827", marginBottom: 8 },
   emptySub:          { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 20, marginBottom: 20 },
-  emptyBtn:          { height: 48, paddingHorizontal: 24, borderRadius: 24, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  emptyBtnText:      { fontSize: 14, fontWeight: "600", color: "#fff" },
   actionRow:         { flexDirection: "row", gap: 12 },
   actionBtn:         { flex: 1, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "#E5E7EB", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   actionBtnText:     { fontSize: 13, fontWeight: "500", color: "#374151" },
@@ -570,6 +557,4 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   lockIcon:          { fontSize: 32, marginBottom: 10 },
   lockTitle:         { fontSize: 17, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 8 },
   lockSub:           { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 20, marginBottom: 20 },
-  lockCta:           { height: 52, paddingHorizontal: 32, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  lockCtaText:       { fontSize: 15, fontWeight: "600", color: "#fff" },
 });

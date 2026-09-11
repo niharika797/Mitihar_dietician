@@ -12,10 +12,11 @@ import { getRequestStatus, getMyProfile, getMyVisit } from "../../services/profi
 import { getDailyChoices, getBeverages, type Beverage } from "../../services/meals";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore } from "../../store/useProgressStore";
-import { ProgressRing, MacroRow, BottomSheet, useToast } from "../../components/shared";
+import { ProgressRing, MacroRow, BottomSheet, useToast, ErrorState, Card, Button } from "../../components/shared";
 import PantrySection from "../../components/PantrySection";
 import ShoppingListSection from "../../components/ShoppingListSection";
 import PendingVisitSection from "../../components/PendingVisitSection";
+import { colors } from "../../constants/theme";
 import type { Meal, WeeklyPlan } from "../../types";
 
 function greeting() {
@@ -220,7 +221,7 @@ export default function HomeScreen() {
   const [localRatings, setLocalRatings] = useState<Record<string, 1 | -1>>({});
 
   // ── Server data ──────────────────────────────────────────────────────────
-  const { data: today, isLoading: todayLoading } = useQuery({
+  const { data: today, isLoading: todayLoading, isError: todayError, refetch: refetchToday } = useQuery({
     queryKey: QUERY_KEYS.TODAY,
     queryFn: getTodaySummary,
     refetchInterval: 60_000,
@@ -341,9 +342,13 @@ export default function HomeScreen() {
   if (todayLoading) {
     return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#1E7C45" />
+        <ActivityIndicator size="large" color={colors.brand[600]} />
       </View>
     );
+  }
+
+  if (todayError) {
+    return <ErrorState message="Could not load your dashboard" onRetry={() => refetchToday()} />;
   }
 
   const selectedMeal = todayMeals.find(m => m["Meal Type"].toLowerCase() === logSheet?.toLowerCase());
@@ -362,9 +367,9 @@ export default function HomeScreen() {
                 <View style={s.body}>
           {/* ── Calories ring ── */}
           <Text style={s.sectionLabel}>TODAY'S CALORIES</Text>
-          <View style={s.card}>
+          <Card style={{ marginBottom: 20 }}>
             <View style={s.calorieRow}>
-              <ProgressRing size={100} percentage={calPercent} color="#1E7C45" />
+              <ProgressRing size={100} percentage={calPercent} color={colors.brand[600]} />
               <View style={s.calorieInfo}>
                 <Text style={s.calBig}>{cals.toLocaleString()}</Text>
                 <Text style={s.calSub}>of {dailyTarget.toLocaleString()} target</Text>
@@ -380,17 +385,17 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
-          </View>
+          </Card>
 
           {/* ── Today's meals ── */}
           <View style={s.sectionHeader}>
             <Text style={s.sectionLabel}>TODAY'S MEALS</Text>
             <Pressable onPress={() => router.push("/(tabs)/meals")} style={s.seeAllBtn}>
               <Text style={s.seeAllText}>See All</Text>
-              <ChevronRight size={14} color="#1E7C45" />
+              <ChevronRight size={14} color={colors.brand[600]} />
             </Pressable>
           </View>
-          <View style={[s.card, { padding: 0, overflow: "hidden" }]}>
+          <Card padded={false} style={{ overflow: "hidden", marginBottom: 20 }}>
             {MEAL_ORDER
               .map(t => todayMeals.find(m => m["Meal Type"] === t))
               .filter((m): m is Meal => !!m)
@@ -418,14 +423,14 @@ export default function HomeScreen() {
                   </View>
                 );
               })}
-          </View>
+          </Card>
 
           {/* ── Quick log ── */}
           {/* Water and Steps tracking deferred — pending native health API integration (HealthKit / Health Connect) */}
           <Text style={s.sectionLabel}>QUICK LOG</Text>
           <Pressable style={s.snackCard} onPress={() => { setSnackCals("0"); setSnackSheet(true); }}>
             <View style={s.snackCardLeft}>
-              <Utensils size={22} color="#D97706" />
+              <Utensils size={22} color={colors.warm[600]} />
               <View style={s.snackCardText}>
                 <Text style={s.snackCardTitle}>Log a Snack</Text>
                 <Text style={s.snackCardSub}>track extras & bites</Text>
@@ -484,15 +489,7 @@ export default function HomeScreen() {
             <Text style={{ color: "#6B7280", fontSize: 13 }}>No meal planned for this slot today.</Text>
           )}
           {selectedMeal && (
-            <Pressable
-              style={sh.cta}
-              onPress={() => mealMut.mutate(selectedMeal)}
-              disabled={mealMut.isPending}
-            >
-              {mealMut.isPending
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={sh.ctaText}>✅ Confirm & Log</Text>}
-            </Pressable>
+            <Button label="✅ Confirm & Log" onPress={() => mealMut.mutate(selectedMeal)} loading={mealMut.isPending} />
           )}
         </View>
       </BottomSheet>
@@ -517,9 +514,7 @@ export default function HomeScreen() {
               </Pressable>
             ))}
           </View>
-          <Pressable style={sh.cta} onPress={() => snackMut.mutate(parseInt(snackCals) || 0)} disabled={snackMut.isPending}>
-            {snackMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={sh.ctaText}>Log Snack</Text>}
-          </Pressable>
+          <Button label="Log Snack" onPress={() => snackMut.mutate(parseInt(snackCals) || 0)} loading={snackMut.isPending} />
         </View>
       </BottomSheet>
 
@@ -561,15 +556,14 @@ const s = StyleSheet.create({
   bellBtn:     { width: 40, height: 40, borderRadius: 20, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
   bellDot:     { position: "absolute", top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: "#DC2626", borderWidth: 2, borderColor: "#fff" },
   pillRow:     { flexDirection: "row", gap: 8, marginTop: 12 },
-  streakPill:  { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FFFBEB", borderRadius: 99, paddingHorizontal: 14, paddingVertical: 6 },
+  streakPill:  { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.warm[50], borderRadius: 99, paddingHorizontal: 14, paddingVertical: 6 },
   streakEmoji: { fontSize: 16 },
-  streakText:  { fontSize: 14, fontWeight: "600", color: "#92400E" },
+  streakText:  { fontSize: 14, fontWeight: "600", color: colors.warm[700] },
   body:        { paddingHorizontal: 20, paddingTop: 20 },
   sectionLabel:{ fontSize: 11, fontWeight: "600", color: "#374151", letterSpacing: 1, marginBottom: 10 },
   sectionHeader:{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   seeAllBtn:   { flexDirection: "row", alignItems: "center", gap: 2 },
   seeAllText:  { fontSize: 12, fontWeight: "500", color: "#1E7C45" },
-  card:        { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 16, marginBottom: 20 },
   calorieRow:  { flexDirection: "row", alignItems: "center", gap: 20 },
   calorieInfo: { flex: 1 },
   calBig:      { fontSize: 28, fontWeight: "700", color: "#111827" },
@@ -591,7 +585,7 @@ const s = StyleSheet.create({
   snackCardText:  { gap: 2 },
   snackCardTitle: { fontSize: 15, fontWeight: "600", color: "#111827" },
   snackCardSub:   { fontSize: 11, color: "#6B7280" },
-  snackCardArrow: { fontSize: 22, fontWeight: "300", color: "#D97706" },
+  snackCardArrow: { fontSize: 22, fontWeight: "300", color: colors.warm[600] },
   doctorBanner:  { flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#DCFCE7", borderRadius: 12, padding: 14, marginBottom: 8 },
   doctorLabel:   { fontSize: 12, fontWeight: "500", color: "#166534" },
   doctorSub:     { fontSize: 12, color: "#374151", marginTop: 2 },
@@ -611,8 +605,6 @@ const sh = StyleSheet.create({
   title:         { fontSize: 18, fontWeight: "600", color: "#111827" },
   confirm:       { backgroundColor: "#F0FDF4", borderRadius: 8, padding: 12 },
   confirmText:   { fontSize: 12, color: "#166534" },
-  cta:           { height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  ctaText:       { fontSize: 16, fontWeight: "600", color: "#fff" },
   stepsInput:    { fontSize: 40, fontWeight: "700", color: "#111827", borderWidth: 1.5, borderColor: "#D97706", borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, minWidth: 160, textAlign: "center" },
   stepsBtnRow:   { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   stepPreset:    { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#F9FAFB" },

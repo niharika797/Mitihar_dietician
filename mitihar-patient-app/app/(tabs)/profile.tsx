@@ -4,10 +4,11 @@ import { useRouter } from "expo-router";
 import { ChevronRight, Edit2, Bell, Info, LogOut, User, RefreshCw, Settings } from "lucide-react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/useAuthStore";
-import { useToast } from "../../components/shared";
+import { useToast, ScreenHeader, Card, Button } from "../../components/shared";
 import { logoutPatient } from "../../services/auth";
 import { requestRenewal, getMyProfile } from "../../services/profile";
 import { computeHealthStats } from "../../utils/calculations";
+import { colors } from "../../constants/theme";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -83,12 +84,11 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={s.root} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={s.header}><Text style={s.headerTitle}>Profile</Text></View>
+      <ScreenHeader title="Profile" />
 
       <View style={s.body}>
         {/* Avatar card */}
-        <View style={s.avatarCard}>
+        <Card style={s.avatarCard}>
           <View style={s.avatar}>
             <User size={32} color="#fff" />
           </View>
@@ -98,9 +98,9 @@ export default function ProfileScreen() {
             {profile?.phone ? <Text style={s.email}>{profile.phone}</Text> : null}
           </View>
           <Pressable onPress={() => router.push("/profile/edit-profile")} style={s.editBtn}>
-            <Edit2 size={16} color="#1E7C45" />
+            <Edit2 size={16} color={colors.brand[600]} />
           </Pressable>
-        </View>
+        </Card>
 
         {/* Stats grid */}
         <View style={s.statsGrid}>
@@ -165,7 +165,7 @@ export default function ProfileScreen() {
 
         {/* Settings menu */}
         <Text style={s.sectionLabel}>SETTINGS</Text>
-        <View style={s.menuCard}>
+        <Card padded={false} style={{ overflow: "hidden" }}>
           {MENU.map((item, i) => {
             const Icon = item.icon;
             return (
@@ -178,7 +178,7 @@ export default function ProfileScreen() {
               </Pressable>
             );
           })}
-        </View>
+        </Card>
 
         {/* Logout */}
         <Pressable onPress={handleLogout} style={s.logoutBtn}>
@@ -193,8 +193,6 @@ export default function ProfileScreen() {
 const s = StyleSheet.create({
   root:          { flex: 1, backgroundColor: "#F9FAFB" },
   scroll:        { paddingBottom: 40 },
-  header:        { backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB", padding: 16 },
-  headerTitle:   { fontSize: 20, fontWeight: "600", color: "#111827" },
   body:          { paddingHorizontal: 20, paddingTop: 20, gap: 16 },
   avatarCard:    { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", padding: 20, flexDirection: "row", alignItems: "center", gap: 16 },
   avatar:        { width: 72, height: 72, borderRadius: 36, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
@@ -214,7 +212,6 @@ const s = StyleSheet.create({
   subSub:        { fontSize: 12, color: "#6B7280", marginTop: 2 },
   activateBtn:   { height: 34, paddingHorizontal: 14, borderRadius: 99, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
   activateBtnText:{ fontSize: 12, fontWeight: "600", color: "#fff" },
-  menuCard:      { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden" },
   menuRow:       { flexDirection: "row", alignItems: "center", gap: 14, padding: 15 },
   menuBorder:    { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   menuIcon:      { width: 36, height: 36, borderRadius: 10, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },

@@ -10,7 +10,8 @@ import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getTodaySummary, logWeight, getWeightHistory, getStreak } from "../../services/progress";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore } from "../../store/useProgressStore";
-import { BottomSheet, useToast } from "../../components/shared";
+import { BottomSheet, useToast, ScreenHeader, ErrorState, Card, Button } from "../../components/shared";
+import { colors, spacing } from "../../constants/theme";
 import type { WeightEntry } from "../../types";
 
 type BarData = { value: number; label?: string; frontColor?: string };
@@ -33,7 +34,7 @@ export default function ProgressScreen() {
     refetchInterval: 60_000,
   });
 
-  const { data: weightData } = useQuery({
+  const { data: weightData, isError: weightError, refetch: refetchWeight } = useQuery({
     queryKey: QUERY_KEYS.WEIGHT_HISTORY(30),
     queryFn: () => getWeightHistory(30),
   });
@@ -81,13 +82,12 @@ export default function ProgressScreen() {
   const STREAK_DOTS = [true, true, true, true, false, true, true];
   const STREAK_LABELS = ["M","T","W","T","F","S","S"];
 
-  if (isLoading) return <View style={s.loader}><ActivityIndicator size="large" color="#1E7C45" /></View>;
+  if (isLoading) return <View style={s.loader}><ActivityIndicator size="large" color={colors.brand[600]} /></View>;
 
   return (
     <View style={s.root}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
-        {/* Header */}
-        <View style={s.header}><Text style={s.headerTitle}>My Progress</Text></View>
+        <ScreenHeader title="My Progress" />
 
         <View style={s.body}>
           <Text style={s.sectionLabel}>TODAY</Text>
@@ -98,38 +98,40 @@ export default function ProgressScreen() {
             label="⚖️ Weight"
             value={`${currentWeight} kg`}
             note={targetWeight ? `Goal: ${targetWeight} kg` : undefined}
-            noteColor="#1E7C45"
+            noteColor={colors.brand[600]}
             onLog={() => { setTempWeight(currentWeight.toString()); setWeightSheet(true); }}
           />
 
           {/* Weight journey */}
           <Text style={[s.sectionLabel, { marginTop: 8 }]}>WEIGHT JOURNEY</Text>
-          <View style={s.card}>
+          <Card style={{ marginBottom: spacing.lg }}>
             <View style={s.weightGrid}>
               <StatPair label="Current" value={`${currentWeight} kg`} highlight />
               <StatPair label="Goal"    value={targetWeight !== null ? `${targetWeight} kg` : "Not set"} />
               <StatPair label="Left"    value={targetWeight !== null ? `${Math.abs(currentWeight - targetWeight).toFixed(1)} kg` : "—"} />
               <StatPair label="Streak"  value={`${streak}d`} />
             </View>
-            {chartData.length > 1 ? (
+            {weightError ? (
+              <ErrorState message="Could not load your weight history" onRetry={() => refetchWeight()} />
+            ) : chartData.length > 1 ? (
               <View style={s.chartWrap}>
                 <LineChart
                   data={chartData}
-                  color="#1E7C45"
+                  color={colors.brand[600]}
                   thickness={2.5}
                   curved
                   hideDataPoints={false}
-                  dataPointsColor="#1E7C45"
+                  dataPointsColor={colors.brand[600]}
                   dataPointsRadius={4}
-                  startFillColor="#DCFCE7"
-                  endFillColor="#DCFCE7"
+                  startFillColor={colors.brand[100]}
+                  endFillColor={colors.brand[100]}
                   startOpacity={0.3}
                   endOpacity={0.05}
                   areaChart
                   width={screenWidth - 48}
                   height={180}
-                  yAxisTextStyle={{ fontSize: 10, color: "#9CA3AF" }}
-                  xAxisLabelTextStyle={{ fontSize: 9, color: "#9CA3AF" }}
+                  yAxisTextStyle={{ fontSize: 10, color: colors.gray[400] }}
+                  xAxisLabelTextStyle={{ fontSize: 9, color: colors.gray[400] }}
                   noOfSections={4}
                   hideRules
                   xAxisThickness={0}
@@ -139,11 +141,11 @@ export default function ProgressScreen() {
             ) : (
               <Text style={s.noData}>Log your weight to see the trend</Text>
             )}
-          </View>
+          </Card>
 
           {/* Streak */}
           <Text style={s.sectionLabel}>STREAK</Text>
-          <View style={s.card}>
+          <Card>
             <Text style={s.streakBig}>🔥 {streak} Day Streak!</Text>
             <Text style={s.streakSub}>Keep logging every day</Text>
             <View style={s.dotRow}>
@@ -154,7 +156,7 @@ export default function ProgressScreen() {
                 </View>
               ))}
             </View>
-          </View>
+          </Card>
         </View>
       </ScrollView>
 
@@ -176,9 +178,7 @@ export default function ProgressScreen() {
           {parseFloat(tempWeight) > 0 && parseFloat(tempWeight) < currentWeight && (
             <Text style={sh.weightGood}>↓ Down {(currentWeight - parseFloat(tempWeight)).toFixed(1)}kg 🎉</Text>
           )}
-          <Pressable style={sh.cta} onPress={() => weightMut.mutate(parseFloat(tempWeight)||currentWeight)} disabled={weightMut.isPending}>
-            {weightMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={sh.ctaText}>Save</Text>}
-          </Pressable>
+          <Button label="Save" onPress={() => weightMut.mutate(parseFloat(tempWeight)||currentWeight)} loading={weightMut.isPending} />
         </View>
       </BottomSheet>
     </View>
@@ -231,11 +231,8 @@ const s = StyleSheet.create({
   root:       { flex: 1, backgroundColor: "#F9FAFB" },
   loader:     { flex: 1, alignItems: "center", justifyContent: "center" },
   scroll:     { paddingBottom: 32 },
-  header:     { backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB", padding: 16 },
-  headerTitle:{ fontSize: 20, fontWeight: "600", color: "#111827" },
   body:       { paddingHorizontal: 20, paddingTop: 16 },
   sectionLabel:{ fontSize: 11, fontWeight: "600", color: "#374151", letterSpacing: 1, marginBottom: 10 },
-  card:       { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 16, marginBottom: 16 },
   metricCard: { flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 14, marginBottom: 10 },
   metricIcon: { width: 44, height: 44, borderRadius: 10, backgroundColor: "#F9FAFB", alignItems: "center", justifyContent: "center" },
   metricBody: { flex: 1 },
@@ -268,6 +265,4 @@ const sh = StyleSheet.create({
   weightInput: { width: 100, height: 64, borderRadius: 12, borderWidth: 1.5, borderColor: "#1E7C45", fontSize: 28, fontWeight: "700", color: "#111827" },
   kgLabel:     { fontSize: 20, fontWeight: "600", color: "#374151" },
   weightGood:  { textAlign: "center", fontSize: 13, color: "#34B164", fontWeight: "500" },
-  cta:         { height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  ctaText:     { fontSize: 16, fontWeight: "600", color: "#fff" },
 });
