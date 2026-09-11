@@ -2187,6 +2187,7 @@ async def get_dashboard(
         plans_generated_this_week=plans_this_week,
         inactive_patients=inactive_patients,
         expiring_soon=expiring_soon,
+        product_tour_completed_at=doctor.product_tour_completed_at,
     )
 
 
