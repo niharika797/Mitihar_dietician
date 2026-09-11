@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { Joyride } from 'react-joyride';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { TopBar } from '../../components/layout/TopBar';
 import { CommandPalette } from '../../components/layout/CommandPalette';
 import { useAuthStore } from '../../../stores/authStore';
 import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
+import { useProductTour } from '../../hooks/useProductTour';
 
 function getBreadcrumbs(pathname: string) {
   const map: Record<string, { label: string }[]> = {
@@ -35,6 +37,8 @@ export function DoctorShell() {
     staleTime: 60 * 1000,
   });
   const pendingCount = requests.filter(r => r.status === 'pending').length;
+
+  const tour = useProductTour();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -68,6 +72,18 @@ export function DoctorShell() {
         </main>
       </div>
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} role="doctor" />
+      <Joyride
+        run={tour.run}
+        stepIndex={tour.stepIndex}
+        steps={tour.steps}
+        onEvent={tour.onEvent}
+        continuous
+        options={{
+          buttons: ['back', 'close', 'primary', 'skip'],
+          primaryColor: '#1E7C45',
+          zIndex: 10000,
+        }}
+      />
     </div>
   );
 }
