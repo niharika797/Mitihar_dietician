@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { Button } from './Button';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -28,36 +29,30 @@ export function ConfirmDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} onKeyDown={(e) => e.key === "Escape" && onCancel()} role="button" aria-label="Close dialog" tabIndex={0} />
       <div
-        className="relative bg-white rounded-lg shadow-[0_20px_25px_-5px_rgb(0_0_0/0.1)] w-full max-w-[480px] mx-4 p-6"
+        className="relative bg-card rounded-lg shadow-[var(--shadow-modal)] w-full max-w-[480px] mx-4 p-6"
       >
         <div className="flex items-start gap-4">
           {variant === 'danger' && (
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#FEF2F2] flex items-center justify-center">
-              <AlertTriangle size={20} className="text-[#DC2626]" />
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+              <AlertTriangle size={20} className="text-red-600" />
             </div>
           )}
           <div className="flex-1">
-            <h3 className="text-base font-semibold text-[#111827] mb-1">{title}</h3>
-            <p className="text-sm text-[#6B7280]">{description}</p>
+            <h3 className="text-base font-semibold text-foreground mb-1">{title}</h3>
+            <p className="text-sm text-muted-foreground">{description}</p>
           </div>
         </div>
         <div className="flex items-center justify-end gap-3 mt-6">
-          <button
-            onClick={onCancel}
-            className="h-9 px-4 rounded-md border border-[#D1D5DB] bg-white text-[#374151] hover:bg-[#F9FAFB] text-sm transition-colors"
-          >
+          <Button variant="outline" size="md" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={variant === 'danger' ? 'destructive' : 'primary'}
+            size="md"
             onClick={onConfirm}
-            className={`h-9 px-4 rounded-md text-white text-sm transition-colors ${
-              variant === 'danger'
-                ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
-                : 'bg-[#1E7C45] hover:bg-[#166534]'
-            }`}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
