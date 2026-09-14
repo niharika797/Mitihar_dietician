@@ -9,6 +9,7 @@ import { useAuthStore } from '../../../stores/authStore';
 import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
 import { useProductTour } from '../../hooks/useProductTour';
+import { useTheme } from '../../hooks/useTheme';
 
 function getBreadcrumbs(pathname: string) {
   const map: Record<string, { label: string }[]> = {
@@ -39,6 +40,7 @@ export function DoctorShell() {
   const pendingCount = requests.filter(r => r.status === 'pending').length;
 
   const tour = useProductTour();
+  const { theme } = useTheme();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -80,7 +82,7 @@ export function DoctorShell() {
         continuous
         options={{
           buttons: ['back', 'close', 'primary', 'skip'],
-          primaryColor: '#1E7C45',
+          primaryColor: theme === 'dark' ? '#34B164' : '#1E7C45',
           zIndex: 10000,
           skipScroll: true,
         }}
