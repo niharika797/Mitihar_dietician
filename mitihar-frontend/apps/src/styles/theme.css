@@ -50,6 +50,7 @@
   --red-600:   #DC2626;
   --red-50:    #FEF2F2;
   --amber-500: #F59E0B;
+  --amber-700: #B45309;
   --amber-50:  #FFFBEB;
   --blue-600:  #2563EB;
   --blue-50:   #EFF6FF;
@@ -121,6 +122,7 @@
   --brand-50: #10241A;
   --red-50: #2A1515;
   --amber-50: #2A2113;
+  --amber-700: #FCD34D;
   --blue-50: #12203A;
   --chart-1: #34B164;
   --chart-2: #60A5FA;
@@ -179,6 +181,7 @@
   --color-red-600:   var(--red-600);
   --color-red-50:    var(--red-50);
   --color-amber-500: var(--amber-500);
+  --color-amber-700: var(--amber-700);
   --color-amber-50:  var(--amber-50);
   --color-blue-600:  var(--blue-600);
   --color-blue-50:   var(--blue-50);

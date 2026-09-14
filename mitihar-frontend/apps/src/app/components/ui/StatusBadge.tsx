@@ -12,11 +12,11 @@ const statusStyles: Record<Status, string> = {
   approved: 'bg-brand-100 text-brand-700',
   paid:     'bg-brand-100 text-brand-700',
   inactive: 'bg-slate-100 text-slate-600',
-  pending:  'bg-amber-50 text-amber-500',
+  pending:  'bg-amber-50 text-amber-700',
   expired:  'bg-red-50 text-red-600',
   rejected: 'bg-red-50 text-red-600',
   overdue:  'bg-red-50 text-red-600',
-  warning:  'bg-amber-50 text-amber-500',
+  warning:  'bg-amber-50 text-amber-700',
 };
 
 const defaultLabels: Record<Status, string> = {
