@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, ChevronDown, User, Settings, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router';
-import { logout } from '../../../lib/authService';
+import { Search, Bell } from 'lucide-react';
 import { Notification } from '../../data/mockData';
 
 interface BreadcrumbItem {
@@ -19,17 +17,13 @@ interface TopBarProps {
 
 export function TopBar({ breadcrumbs, notifications, userName, userRole, onSearchOpen }: TopBarProps) {
   const [notifOpen, setNotifOpen] = useState(false);
-  const [avatarOpen, setAvatarOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
-  const avatarRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
-      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) setAvatarOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -110,48 +104,16 @@ export function TopBar({ breadcrumbs, notifications, userName, userRole, onSearc
         )}
       </div>
 
-      {/* Avatar dropdown */}
-      <div className="relative" ref={avatarRef}>
-        <button
-          onClick={() => setAvatarOpen(!avatarOpen)}
-          className="flex items-center gap-2 h-9 px-2 rounded-md hover:bg-[#F3F4F6] transition-colors"
-        >
-          <div className="w-7 h-7 rounded-full bg-[#DCFCE7] flex items-center justify-center">
-            <span className="text-[11px] font-semibold text-[#1E7C45]">
-              {userName.split(' ').map(w => w[0]).join('').slice(0, 2)}
-            </span>
-          </div>
-          <span className="hidden md:block text-sm font-medium text-[#374151]">
-            {userName.split(' ')[0]}
+      {/* Avatar */}
+      <div className="flex items-center gap-2 h-9 px-2">
+        <div className="w-7 h-7 rounded-full bg-[#DCFCE7] flex items-center justify-center">
+          <span className="text-[11px] font-semibold text-[#1E7C45]">
+            {userName.split(' ').map(w => w[0]).join('').slice(0, 2)}
           </span>
-          <ChevronDown size={14} className="text-[#9CA3AF]" />
-        </button>
-
-        {avatarOpen && (
-          <div className="absolute right-0 top-11 w-52 bg-white rounded-lg border border-[#E5E7EB] shadow-[0_10px_25px_-5px_rgb(0_0_0/0.1)] z-50 overflow-hidden py-1">
-            <div className="px-3 py-2.5 border-b border-[#F3F4F6]">
-              <p className="text-sm font-medium text-[#111827]">{userName}</p>
-              <p className="text-xs text-[#6B7280]">{userRole}</p>
-            </div>
-            <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#374151] hover:bg-[#F9FAFB] transition-colors">
-              <User size={15} className="text-[#6B7280]" />
-              Profile
-            </button>
-            <button className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#374151] hover:bg-[#F9FAFB] transition-colors">
-              <Settings size={15} className="text-[#6B7280]" />
-              Settings
-            </button>
-            <div className="border-t border-[#F3F4F6] mt-1 pt-1">
-              <button
-                onClick={() => { logout(); navigate('/'); }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
-              >
-                <LogOut size={15} />
-                Logout
-              </button>
-            </div>
-          </div>
-        )}
+        </div>
+        <span className="hidden md:block text-sm font-medium text-[#374151]">
+          {userName.split(' ')[0]}
+        </span>
       </div>
     </header>
   );
