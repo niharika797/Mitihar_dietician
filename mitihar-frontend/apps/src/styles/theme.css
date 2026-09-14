@@ -80,8 +80,8 @@
   --shadow-modal: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 
   /* Font family */
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'Geist Mono', monospace;
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
   /* Chart vars for recharts */
   --color-chart-1: var(--chart-1);
@@ -216,12 +216,12 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
 
   html {
@@ -233,7 +233,7 @@
   }
 
   code, pre, code[class*='language-'] {
-    font-family: 'Geist Mono', monospace;
+    font-family: var(--font-mono);
   }
 
   h1 {
@@ -270,6 +270,6 @@
     font-size: var(--text-sm);
     font-weight: 400;
     line-height: 1.5;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
 }
