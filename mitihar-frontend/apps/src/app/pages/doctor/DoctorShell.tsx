@@ -82,6 +82,7 @@ export function DoctorShell() {
           buttons: ['back', 'close', 'primary', 'skip'],
           primaryColor: '#1E7C45',
           zIndex: 10000,
+          skipScroll: true,
         }}
       />
     </div>
