@@ -6,6 +6,8 @@ import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { StatusBadge } from '../../components/ui/StatusBadge';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 export function Requests() {
   const queryClient = useQueryClient();
@@ -74,8 +76,8 @@ export function Requests() {
     <div className="p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 data-tour="tour-requests" className="text-2xl font-semibold text-[#111827] tracking-tight">Patient Requests</h1>
-          <p className="text-sm text-[#6B7280] mt-0.5">
+          <h1 data-tour="tour-requests" className="text-2xl font-semibold text-foreground tracking-tight">Patient Requests</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {isLoading ? 'Loading…' : `${requests.length} pending`}
           </p>
         </div>
@@ -83,79 +85,81 @@ export function Requests() {
 
       {/* Pending requests */}
       {isLoading ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-lg py-16 flex justify-center">
-          <Loader2 size={24} className="animate-spin text-[#1E7C45]" />
-        </div>
+        <Card className="py-16 flex justify-center">
+          <Loader2 size={20} className="animate-spin text-primary" />
+        </Card>
       ) : isError ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-lg py-16 flex flex-col items-center text-center">
-          <AlertCircle size={32} className="text-[#DC2626] mb-3" />
-          <p className="text-base font-medium text-[#374151]">Could not load requests</p>
-        </div>
+        <Card className="py-16 flex flex-col items-center text-center">
+          <AlertCircle size={20} className="text-destructive mb-3" />
+          <p className="text-base font-medium text-secondary-foreground">Could not load requests</p>
+        </Card>
       ) : requests.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-lg py-16 text-center mb-6">
-          <Bell size={36} className="text-[#D1D5DB] mx-auto mb-3" />
-          <p className="text-base font-medium text-[#374151]">No pending requests</p>
-          <p className="text-sm text-[#6B7280] mt-1">New patient requests will appear here</p>
-        </div>
+        <Card className="py-16 text-center mb-6">
+          <Bell size={20} className="text-slate-300 mx-auto mb-3" />
+          <p className="text-base font-medium text-secondary-foreground">No pending requests</p>
+          <p className="text-sm text-muted-foreground mt-1">New patient requests will appear here</p>
+        </Card>
       ) : (
         <div className="space-y-4">
           {requests.map(req => (
-            <div key={req.id} className="bg-white border border-[#E5E7EB] rounded-lg p-5">
+            <Card key={req.id} className="p-5">
               {/* Header */}
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#F0FDF4] flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-semibold text-[#1E7C45]">
+                  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm font-semibold text-primary">
                       {req.patient.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                     </span>
                   </div>
                   <div>
-                    <p className="text-base font-medium text-[#111827]">{req.patient.name}</p>
-                    <p className="text-xs text-[#6B7280]">
+                    <p className="text-base font-medium text-foreground">{req.patient.name}</p>
+                    <p className="text-xs text-muted-foreground">
                       {req.patient.gender} · {req.patient.email}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <StatusBadge status="pending" />
-                  <span className="flex items-center gap-1 text-xs text-[#9CA3AF]">
-                    <Clock size={11} /> {formatDate(req.requested_at)}
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Clock size={14} /> {formatDate(req.requested_at)}
                   </span>
                 </div>
               </div>
 
               {/* Contact */}
-              <div className="flex flex-wrap gap-4 mb-3 text-sm text-[#374151]">
+              <div className="flex flex-wrap gap-4 mb-3 text-sm text-secondary-foreground">
                 <span className="flex items-center gap-1.5">
-                  <Mail size={13} className="text-[#9CA3AF]" />
+                  <Mail size={14} className="text-muted-foreground" />
                   {req.patient.email}
                 </span>
               </div>
 
               {/* Actions */}
               <div className="flex items-center gap-3">
-                <button
+                <Button
+                  variant="primary"
+                  size="md"
                   onClick={() => handleAction(req.id, req.patient.name, 'accept')}
                   disabled={isMutating}
-                  className="flex items-center gap-2 h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors disabled:opacity-50"
                 >
-                  <CheckCircle size={15} />
+                  <CheckCircle size={16} />
                   Accept
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="md"
                   onClick={() => setRejectOpen(rejectOpen === req.id ? null : req.id)}
                   disabled={isMutating}
-                  className="flex items-center gap-2 h-9 px-4 rounded-md border border-[#FECACA] text-[#DC2626] text-sm hover:bg-[#FEF2F2] transition-colors disabled:opacity-50"
                 >
-                  <XCircle size={15} />
+                  <XCircle size={16} />
                   Reject
-                </button>
+                </Button>
               </div>
 
               {/* Inline reject note */}
               {rejectOpen === req.id && (
-                <div className="mt-3 pt-3 border-t border-[#F3F4F6]">
-                  <p className="text-xs text-[#6B7280] mb-1.5">
+                <div className="mt-3 pt-3 border-t border-border">
+                  <p className="text-xs text-muted-foreground mb-1.5">
                     Optional rejection note (sent to patient):
                   </p>
                   <div className="flex gap-2">
@@ -166,23 +170,24 @@ export function Requests() {
                         setRejectNote(prev => ({ ...prev, [req.id]: e.target.value }))
                       }
                       placeholder="e.g. Not accepting new patients at this time"
-                      className="flex-1 h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent"
+                      className="flex-1 h-9 px-3 rounded-md border border-border bg-input-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-destructive focus:border-transparent"
                     />
-                    <button
+                    <Button
+                      variant="destructive"
+                      size="md"
                       onClick={() => handleAction(req.id, req.patient.name, 'reject')}
                       disabled={isMutating}
-                      className="h-9 px-3 rounded-md bg-[#DC2626] text-white text-sm hover:bg-[#B91C1C] transition-colors disabled:opacity-50"
                     >
                       {rejectMutation.isPending ? (
                         <Loader2 size={14} className="animate-spin" />
                       ) : (
                         'Confirm Reject'
                       )}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       )}

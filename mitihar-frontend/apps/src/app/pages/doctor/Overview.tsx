@@ -7,6 +7,8 @@ import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { useAuthStore } from '../../../stores/authStore';
 
 export function DoctorOverview() {
@@ -71,7 +73,7 @@ export function DoctorOverview() {
   if (dashLoading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <Loader2 size={28} className="animate-spin text-[#1E7C45]" />
+        <Loader2 size={20} className="animate-spin text-primary" />
       </div>
     );
   }
@@ -79,11 +81,11 @@ export function DoctorOverview() {
   if (dashError || !dash) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[400px]">
-        <AlertCircle size={36} className="text-[#DC2626] mb-3" />
-        <p className="text-base font-medium text-[#374151]">Could not load dashboard</p>
+        <AlertCircle size={20} className="text-destructive mb-3" />
+        <p className="text-base font-medium text-secondary-foreground">Could not load dashboard</p>
         <button
           onClick={() => queryClient.invalidateQueries({ queryKey: qk.dashboard() })}
-          className="mt-3 text-sm text-[#1E7C45] hover:underline"
+          className="mt-3 text-sm text-primary hover:underline"
         >
           Try again
         </button>
@@ -98,77 +100,68 @@ export function DoctorOverview() {
       {/* Greeting */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 data-tour="tour-overview" className="text-2xl font-semibold text-[#111827] tracking-tight">
+          <h1 data-tour="tour-overview" className="text-2xl font-semibold text-foreground tracking-tight">
             Good morning, Dr. {doctorName.split(' ').pop()} 👋
           </h1>
-          <p className="text-sm text-[#6B7280] mt-0.5">{dayName}, {dateStr}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{dayName}, {dateStr}</p>
         </div>
       </div>
 
       {/* Top row: stat cards + quick actions */}
       <div className="grid grid-cols-12 gap-5 mb-6">
         <div className="col-span-12 lg:col-span-8 grid grid-cols-3 gap-4">
-          <StatCard icon={<Users size={18} className="text-[#1E7C45]" />} value={dash.active_patients} label="Active Patients" />
-          <StatCard icon={<Bell size={18} className="text-[#2563EB]" />} value={dash.pending_requests} label="Pending Requests" />
-          <StatCard icon={<BarChart2 size={18} className="text-[#F59E0B]" />} value={dash.plans_generated_this_week} label="Plans This Week" />
+          <StatCard icon={<Users size={18} className="text-primary" />} value={dash.active_patients} label="Active Patients" />
+          <StatCard icon={<Bell size={18} className="text-blue-600" />} value={dash.pending_requests} label="Pending Requests" />
+          <StatCard icon={<BarChart2 size={18} className="text-amber-500" />} value={dash.plans_generated_this_week} label="Plans This Week" />
         </div>
 
         {/* Quick Actions */}
-        <div className="col-span-12 lg:col-span-4 bg-white border border-[#E5E7EB] rounded-lg p-5">
-          <p className="text-base font-medium text-[#111827] mb-3">Quick Actions</p>
+        <Card className="col-span-12 lg:col-span-4 p-5">
+          <p className="text-base font-medium text-foreground mb-3">Quick Actions</p>
           <div className="flex flex-col gap-2">
-            <button
-              onClick={() => navigate('/doctor/requests')}
-              className="flex items-center gap-2.5 h-9 px-3 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors"
-            >
-              <UserPlus size={15} />
+            <Button variant="primary" size="md" onClick={() => navigate('/doctor/requests')} className="justify-start">
+              <UserPlus size={16} />
               Accept Patient Request
-            </button>
-            <button
-              onClick={() => navigate('/doctor/settings?tab=codes')}
-              className="flex items-center gap-2.5 h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-[#374151] text-sm hover:bg-[#F9FAFB] transition-colors"
-            >
-              <Key size={15} />
+            </Button>
+            <Button variant="outline" size="md" onClick={() => navigate('/doctor/settings?tab=codes')} className="justify-start">
+              <Key size={16} />
               Manage Codes
-            </button>
-            <button
-              onClick={() => navigate('/doctor/recipes')}
-              className="flex items-center gap-2.5 h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-[#374151] text-sm hover:bg-[#F9FAFB] transition-colors"
-            >
-              <ArrowRight size={15} />
+            </Button>
+            <Button variant="outline" size="md" onClick={() => navigate('/doctor/recipes')} className="justify-start">
+              <ArrowRight size={16} />
               Browse Recipes
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Bottom row: needs attention + pending requests */}
       <div className="grid grid-cols-12 gap-5">
         {/* Needs Attention — 60% */}
-        <div className="col-span-12 lg:col-span-7 bg-white border border-[#E5E7EB] rounded-lg overflow-hidden">
+        <Card className="col-span-12 lg:col-span-7 overflow-hidden">
           <div className="px-5 pt-4 pb-0 flex items-center justify-between">
-            <p className="text-base font-medium text-[#111827]">Needs Attention</p>
+            <p className="text-base font-medium text-foreground">Needs Attention</p>
             <button
               onClick={() => navigate('/doctor/patients')}
-              className="text-xs text-[#1E7C45] hover:underline flex items-center gap-1"
+              className="text-xs text-primary hover:underline flex items-center gap-1"
             >
-              View all patients <ArrowRight size={12} />
+              View all patients <ArrowRight size={14} />
             </button>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-0 px-5 mt-3 border-b border-[#E5E7EB]">
+          <div className="flex gap-0 px-5 mt-3 border-b border-border">
             {[
-              { id: 'noActivity' as const, label: 'No Activity', count: dash.inactive_patients.length, color: 'bg-[#FEF2F2] text-[#DC2626]' },
-              { id: 'expiring' as const, label: 'Expiring Soon', count: dash.expiring_soon.length, color: 'bg-[#FFFBEB] text-[#B45309]' },
+              { id: 'noActivity' as const, label: 'No Activity', count: dash.inactive_patients.length, color: 'bg-red-50 text-destructive' },
+              { id: 'expiring' as const, label: 'Expiring Soon', count: dash.expiring_soon.length, color: 'bg-amber-50 text-amber-700' },
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setAttentionTab(tab.id)}
                 className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
                   attentionTab === tab.id
-                    ? 'border-[#1E7C45] text-[#1E7C45]'
-                    : 'border-transparent text-[#6B7280] hover:text-[#374151]'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-secondary-foreground'
                 }`}
               >
                 {tab.label}
@@ -179,26 +172,26 @@ export function DoctorOverview() {
             ))}
           </div>
 
-          <div className="divide-y divide-[#F3F4F6]">
+          <div className="divide-y divide-border">
             {attentionTab === 'noActivity' ? (
               dash.inactive_patients.length === 0 ? (
                 <div className="py-8 text-center">
-                  <CheckCircle size={32} className="text-[#34B164] mx-auto mb-2" />
-                  <p className="text-sm text-[#6B7280]">All patients are active — no attention needed.</p>
+                  <CheckCircle size={20} className="text-brand-400 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">All patients are active — no attention needed.</p>
                 </div>
               ) : (
                 dash.inactive_patients.map(p => (
-                  <div key={p.patient_id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F9FAFB] transition-colors">
-                    <span className="w-2 h-2 rounded-full bg-[#DC2626] flex-shrink-0" />
+                  <div key={p.patient_id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-input-background transition-colors">
+                    <span className="w-2 h-2 rounded-full bg-destructive flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#111827]">{p.name}</p>
-                      <p className="text-xs text-[#6B7280]">{p.email}</p>
+                      <p className="text-sm font-medium text-foreground">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.email}</p>
                     </div>
                     <button
                       onClick={() => navigate(`/doctor/patients/${p.patient_id}`)}
-                      className="flex items-center gap-1 text-xs text-[#1E7C45] font-medium hover:underline flex-shrink-0"
+                      className="flex items-center gap-1 text-xs text-primary font-medium hover:underline flex-shrink-0"
                     >
-                      View <ArrowRight size={12} />
+                      View <ArrowRight size={14} />
                     </button>
                   </div>
                 ))
@@ -206,89 +199,91 @@ export function DoctorOverview() {
             ) : (
               dash.expiring_soon.length === 0 ? (
                 <div className="py-8 text-center">
-                  <CheckCircle size={32} className="text-[#34B164] mx-auto mb-2" />
-                  <p className="text-sm text-[#6B7280]">No plans expiring soon.</p>
+                  <CheckCircle size={20} className="text-brand-400 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No plans expiring soon.</p>
                 </div>
               ) : (
                 dash.expiring_soon.map(p => (
-                  <div key={p.patient_id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-[#F9FAFB] transition-colors">
-                    <span className="w-2 h-2 rounded-full bg-[#F59E0B] flex-shrink-0" />
+                  <div key={p.patient_id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-input-background transition-colors">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#111827]">{p.name}</p>
-                      <p className="text-xs text-[#6B7280]">Expires {p.subscription_end_date}</p>
+                      <p className="text-sm font-medium text-foreground">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">Expires {p.subscription_end_date}</p>
                     </div>
                     <button
                       onClick={() => navigate(`/doctor/patients/${p.patient_id}`)}
-                      className="flex items-center gap-1 text-xs text-[#1E7C45] font-medium hover:underline flex-shrink-0"
+                      className="flex items-center gap-1 text-xs text-primary font-medium hover:underline flex-shrink-0"
                     >
-                      View <ArrowRight size={12} />
+                      View <ArrowRight size={14} />
                     </button>
                   </div>
                 ))
               )
             )}
           </div>
-        </div>
+        </Card>
 
         {/* Pending Requests — 40% */}
-        <div className="col-span-12 lg:col-span-5 bg-white border border-[#E5E7EB] rounded-lg overflow-hidden">
-          <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-[#E5E7EB]">
-            <p className="text-base font-medium text-[#111827]">Pending Requests</p>
+        <Card className="col-span-12 lg:col-span-5 overflow-hidden">
+          <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-border">
+            <p className="text-base font-medium text-foreground">Pending Requests</p>
             <button
               onClick={() => navigate('/doctor/requests')}
-              className="text-xs text-[#1E7C45] hover:underline flex items-center gap-1"
+              className="text-xs text-primary hover:underline flex items-center gap-1"
             >
-              View all <ArrowRight size={12} />
+              View all <ArrowRight size={14} />
             </button>
           </div>
 
-          <div className="divide-y divide-[#F3F4F6]">
+          <div className="divide-y divide-border">
             {reqLoading ? (
               <div className="py-10 flex justify-center">
-                <Loader2 size={20} className="animate-spin text-[#1E7C45]" />
+                <Loader2 size={20} className="animate-spin text-primary" />
               </div>
             ) : pendingRequests.length === 0 ? (
               <div className="py-10 text-center px-6">
-                <Bell size={32} className="text-[#D1D5DB] mx-auto mb-2" />
-                <p className="text-sm text-[#6B7280]">No pending requests</p>
-                <p className="text-xs text-[#9CA3AF] mt-1">New requests will appear here</p>
+                <Bell size={20} className="text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No pending requests</p>
+                <p className="text-xs text-muted-foreground mt-1">New requests will appear here</p>
               </div>
             ) : (
               pendingRequests.slice(0, 4).map(req => (
                 <div key={req.id} className="px-5 py-3.5">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div>
-                      <p className="text-sm font-medium text-[#111827]">{req.patient.name}</p>
-                      <p className="text-xs text-[#6B7280] flex items-center gap-1">
-                        <Clock size={11} />
+                      <p className="text-sm font-medium text-foreground">{req.patient.name}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock size={14} />
                         {new Date(req.requested_at).toLocaleDateString('en-IN')}
                       </p>
                     </div>
                     <StatusBadge status="pending" />
                   </div>
                   <div className="flex gap-2">
-                    <button
+                    <Button
+                      variant="primary"
+                      size="sm"
                       onClick={() => handleRequestAction(req.id, req.patient.name, 'accept')}
                       disabled={acceptMutation.isPending || rejectMutation.isPending}
-                      className="flex items-center gap-1.5 h-7 px-3 rounded text-xs bg-[#1E7C45] text-white hover:bg-[#166534] transition-colors disabled:opacity-50"
                     >
-                      <CheckCircle size={12} />
+                      <CheckCircle size={14} />
                       Accept
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
                       onClick={() => handleRequestAction(req.id, req.patient.name, 'reject')}
                       disabled={acceptMutation.isPending || rejectMutation.isPending}
-                      className="flex items-center gap-1.5 h-7 px-3 rounded text-xs border border-[#D1D5DB] text-[#DC2626] hover:bg-[#FEF2F2] transition-colors disabled:opacity-50"
                     >
-                      <XCircle size={12} />
+                      <XCircle size={14} />
                       Reject
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
       <ConfirmDialog
@@ -318,14 +313,14 @@ function StatCard({
   label: string;
 }) {
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 shadow-[0_1px_3px_0_rgb(0_0_0/0.05)]">
+    <Card className="p-5">
       <div className="flex items-start justify-between mb-3">
-        <div className="w-10 h-10 rounded-full bg-[#F0FDF4] flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center">
           {icon}
         </div>
       </div>
-      <p className="text-3xl font-bold text-[#111827] tabular-nums">{value}</p>
-      <p className="text-sm text-[#6B7280] mt-0.5">{label}</p>
-    </div>
+      <p className="text-3xl font-bold text-foreground tabular-nums">{value}</p>
+      <p className="text-sm text-muted-foreground mt-0.5">{label}</p>
+    </Card>
   );
 }

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { doctorApi, PatientSummary, PendingRenewalItem, PendingApproval } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function daysLeft(expiry: string | null): number | null {
@@ -17,10 +19,10 @@ function daysLeft(expiry: string | null): number | null {
 
 function DaysLeftBadge({ expiry }: { expiry: string | null }) {
   const d = daysLeft(expiry);
-  if (d === null) return <span className="text-sm text-[#9CA3AF]">—</span>;
-  if (d <= 0)  return <span className="text-xs font-semibold text-[#DC2626] bg-[#FEF2F2] px-2 py-0.5 rounded-full">Expired</span>;
-  if (d <= 4)  return <span className="text-xs font-semibold text-[#B45309] bg-[#FFFBEB] px-2 py-0.5 rounded-full">{d}d left ⚠️</span>;
-  return <span className="text-xs font-semibold text-[#15803d] bg-[#DCFCE7] px-2 py-0.5 rounded-full">{d}d left</span>;
+  if (d === null) return <span className="text-sm text-muted-foreground">—</span>;
+  if (d <= 0)  return <span className="text-xs font-semibold text-destructive bg-red-50 px-2 py-0.5 rounded-full">Expired</span>;
+  if (d <= 4)  return <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{d}d left ⚠️</span>;
+  return <span className="text-xs font-semibold text-brand-700 bg-brand-100 px-2 py-0.5 rounded-full">{d}d left</span>;
 }
 
 function Token1Badge({ active, token }: { active: boolean; token: string | null }) {
@@ -31,18 +33,18 @@ function Token1Badge({ active, token }: { active: boolean; token: string | null 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
-        <p className="text-xs font-mono text-[#374151]">{token ?? '—'}</p>
+        <p className="text-xs font-mono text-secondary-foreground">{token ?? '—'}</p>
         {token && (
           <button
             onClick={copy}
             title="Copy Token 1"
-            className="p-0.5 rounded hover:bg-[#F3F4F6] text-[#9CA3AF] hover:text-[#1E7C45] transition-colors"
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
           >
-            <Copy size={12} />
+            <Copy size={14} />
           </button>
         )}
       </div>
-      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full w-fit ${active ? 'bg-[#DCFCE7] text-[#15803d]' : 'bg-[#F3F4F6] text-[#6B7280]'}`}>
+      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full w-fit ${active ? 'bg-brand-100 text-brand-700' : 'bg-secondary text-muted-foreground'}`}>
         {active ? 'Active' : 'Inactive'}
       </span>
     </div>
@@ -110,8 +112,8 @@ export function Patients() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 data-tour="tour-patients" className="text-2xl font-semibold text-[#111827] tracking-tight">Patients</h1>
-          <p className="text-sm text-[#6B7280] mt-0.5">
+          <h1 data-tour="tour-patients" className="text-2xl font-semibold text-foreground tracking-tight">Patients</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {data ? `${data.total} total patients` : 'Loading…'}
           </p>
         </div>
@@ -119,56 +121,52 @@ export function Patients() {
 
       {/* Expiry warning banner */}
       {pendingRenewals.length > 0 && (
-        <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-[#FFFBEB] border border-[#FDE68A]">
+        <div className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-500/30">
           <div className="flex items-center gap-2">
-            <Clock size={15} className="text-[#B45309]" />
-            <p className="text-sm text-[#B45309] font-medium">
+            <Clock size={16} className="text-amber-700" />
+            <p className="text-sm text-amber-700 font-medium">
               {pendingRenewals.length} patient{pendingRenewals.length > 1 ? 's' : ''} requesting renewal
             </p>
           </div>
-          <button
-            onClick={() => approveAllMut.mutate()}
-            disabled={approveAllMut.isPending}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-md bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50"
-          >
+          <Button variant="primary" size="sm" onClick={() => approveAllMut.mutate()} disabled={approveAllMut.isPending}>
             {approveAllMut.isPending
-              ? <Loader2 size={12} className="animate-spin" />
-              : <CheckCircle size={12} />}
+              ? <Loader2 size={14} className="animate-spin" />
+              : <CheckCircle size={14} />}
             Approve All
-          </button>
+          </Button>
         </div>
       )}
 
       {/* Search */}
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1 max-w-xs">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text" value={search} onChange={e => handleSearch(e.target.value)}
             placeholder="Search by name or email…"
-            className="w-full h-9 pl-9 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+            className="w-full h-9 pl-9 pr-3 rounded-md border border-border bg-input-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
-        {isFetching && !isLoading && <Loader2 size={16} className="animate-spin text-[#1E7C45]" />}
+        {isFetching && !isLoading && <Loader2 size={16} className="animate-spin text-primary" />}
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-[#E5E7EB] rounded-lg overflow-x-auto">
+      <Card className="overflow-x-auto">
         {isLoading ? (
-          <div className="py-20 flex justify-center"><Loader2 size={28} className="animate-spin text-[#1E7C45]" /></div>
+          <div className="py-20 flex justify-center"><Loader2 size={20} className="animate-spin text-primary" /></div>
         ) : isError ? (
-          <div className="py-20 flex flex-col items-center"><AlertCircle size={32} className="text-[#DC2626] mb-3" /><p className="text-sm text-[#374151]">Could not load patients</p></div>
+          <div className="py-20 flex flex-col items-center"><AlertCircle size={20} className="text-destructive mb-3" /><p className="text-sm text-secondary-foreground">Could not load patients</p></div>
         ) : data?.patients.length === 0 ? (
           <div className="py-16 flex flex-col items-center">
-            <UserX size={28} className="text-[#D1D5DB] mb-2" />
-            <p className="text-sm text-[#9CA3AF]">No patients found</p>
+            <UserX size={20} className="text-slate-300 mb-2" />
+            <p className="text-sm text-muted-foreground">No patients found</p>
           </div>
         ) : (
           <table className="w-full min-w-[900px]">
             <thead>
-              <tr className="bg-[#F9FAFB] border-b border-[#E5E7EB]">
+              <tr className="bg-input-background border-b border-border">
                 {['Patient', 'Token 1', 'Token 2 / Last Visit', 'Days Left', 'Visits (Month)', 'Renewal', ''].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280] whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -185,33 +183,36 @@ export function Patients() {
             </tbody>
           </table>
         )}
-      </div>
+      </Card>
 
       {/* Pagination */}
       {data && data.total > 10 && (
         <div className="flex items-center justify-between mt-4 px-1">
-          <p className="text-sm text-[#6B7280]">
+          <p className="text-sm text-muted-foreground">
             Showing {(page - 1) * 10 + 1}–{Math.min(page * 10, data.total)} of {data.total}
           </p>
           <div className="flex items-center gap-1">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              className="w-8 h-8 rounded border border-[#E5E7EB] flex items-center justify-center hover:bg-[#F3F4F6] disabled:opacity-40">
+            <Button variant="outline" size="sm" className="w-8 h-8 p-0" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
               <ChevronLeft size={14} />
-            </button>
+            </Button>
             {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
               const p = totalPages <= 5 ? i + 1 : Math.max(1, page - 2) + i;
               if (p > totalPages) return null;
               return (
-                <button key={p} onClick={() => setPage(p)}
-                  className={`w-8 h-8 rounded border text-sm ${page === p ? 'bg-[#1E7C45] border-[#1E7C45] text-white' : 'border-[#E5E7EB] text-[#374151] hover:bg-[#F3F4F6]'}`}>
+                <Button
+                  key={p}
+                  variant={page === p ? 'primary' : 'outline'}
+                  size="sm"
+                  className="w-8 h-8 p-0"
+                  onClick={() => setPage(p)}
+                >
                   {p}
-                </button>
+                </Button>
               );
             })}
-            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-              className="w-8 h-8 rounded border border-[#E5E7EB] flex items-center justify-center hover:bg-[#F3F4F6] disabled:opacity-40">
+            <Button variant="outline" size="sm" className="w-8 h-8 p-0" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
               <ChevronRight size={14} />
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -230,55 +231,53 @@ function PatientRow({
   hasPendingApproval: boolean;
 }) {
   return (
-    <tr className="border-b border-[#F3F4F6] last:border-0 hover:bg-[#F9FAFB] transition-colors">
+    <tr className="border-b border-border last:border-0 hover:bg-input-background transition-colors">
       <td className="px-4 py-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-[#F0FDF4] flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-semibold text-[#1E7C45]">
+          <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-semibold text-primary">
               {patient.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
             </span>
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-[#111827]">{patient.name}</p>
+              <p className="text-sm font-medium text-foreground">{patient.name}</p>
               {hasPendingApproval && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#FFFBEB] border border-[#FDE68A] text-[#B45309] font-medium whitespace-nowrap">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-500/30 text-amber-700 font-medium whitespace-nowrap">
                   Plan pending
                 </span>
               )}
             </div>
-            <p className="text-xs text-[#6B7280]">{patient.email}</p>
+            <p className="text-xs text-muted-foreground">{patient.email}</p>
           </div>
         </div>
       </td>
       <td className="px-4 py-4">
         <Token1Badge active={patient.token_1_active} token={patient.token_1} />
       </td>
-      <td className="px-4 py-4 text-xs text-[#6B7280]">
+      <td className="px-4 py-4 text-xs text-muted-foreground">
         —
       </td>
       <td className="px-4 py-4">
         <DaysLeftBadge expiry={patient.token_1_expiry} />
       </td>
-      <td className="px-4 py-4 text-sm text-[#374151] tabular-nums">—</td>
+      <td className="px-4 py-4 text-sm text-secondary-foreground tabular-nums">—</td>
       <td className="px-4 py-4">
         {patient.renewal_requested ? (
-          <button onClick={onApprove} disabled={approving}
-            className="flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50">
-            {approving ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+          <Button variant="primary" size="sm" onClick={onApprove} disabled={approving}>
+            {approving ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             Approve
-          </button>
+          </Button>
         ) : (
-          <span className="text-xs text-[#9CA3AF]">
+          <span className="text-xs text-muted-foreground">
             {patient.expiring_soon ? '⚠️ Expiring' : '—'}
           </span>
         )}
       </td>
       <td className="px-4 py-4">
-        <button onClick={onView}
-          className="flex items-center gap-1 h-7 px-2.5 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151] hover:border-[#1E7C45] hover:text-[#1E7C45]">
-          View <ArrowUpRight size={11} />
-        </button>
+        <Button variant="outline" size="sm" onClick={onView}>
+          View <ArrowUpRight size={14} />
+        </Button>
       </td>
     </tr>
   );
