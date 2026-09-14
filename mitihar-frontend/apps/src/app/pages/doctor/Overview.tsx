@@ -242,7 +242,7 @@ export function DoctorOverview() {
               </div>
             ) : pendingRequests.length === 0 ? (
               <div className="py-10 text-center px-6">
-                <Bell size={20} className="text-slate-300 mx-auto mb-2" />
+                <Bell size={20} className="text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm text-muted-foreground">No pending requests</p>
                 <p className="text-xs text-muted-foreground mt-1">New requests will appear here</p>
               </div>

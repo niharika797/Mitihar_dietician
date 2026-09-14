@@ -95,7 +95,7 @@ export function Requests() {
         </Card>
       ) : requests.length === 0 ? (
         <Card className="py-16 text-center mb-6">
-          <Bell size={20} className="text-slate-300 mx-auto mb-3" />
+          <Bell size={20} className="text-muted-foreground mx-auto mb-3" />
           <p className="text-base font-medium text-secondary-foreground">No pending requests</p>
           <p className="text-sm text-muted-foreground mt-1">New patient requests will appear here</p>
         </Card>

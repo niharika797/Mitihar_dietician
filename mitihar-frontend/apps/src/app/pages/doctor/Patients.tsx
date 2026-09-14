@@ -158,7 +158,7 @@ export function Patients() {
           <div className="py-20 flex flex-col items-center"><AlertCircle size={20} className="text-destructive mb-3" /><p className="text-sm text-secondary-foreground">Could not load patients</p></div>
         ) : data?.patients.length === 0 ? (
           <div className="py-16 flex flex-col items-center">
-            <UserX size={20} className="text-slate-300 mb-2" />
+            <UserX size={20} className="text-muted-foreground mb-2" />
             <p className="text-sm text-muted-foreground">No patients found</p>
           </div>
         ) : (
