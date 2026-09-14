@@ -52,7 +52,7 @@ export function DoctorShell() {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F9FAFB]">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar
         role="doctor"
         userName={userName}
