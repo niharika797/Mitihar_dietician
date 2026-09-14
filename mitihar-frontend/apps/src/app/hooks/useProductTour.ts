@@ -10,8 +10,6 @@ interface TourStep extends Step {
   route: string;
 }
 
-// SMOKE TEST: only 2 of the eventual 5 steps. Extended in Task 9 once this
-// proves cross-route attach works.
 const TOUR_STEPS: TourStep[] = [
   {
     route: '/doctor/overview',
@@ -25,6 +23,27 @@ const TOUR_STEPS: TourStep[] = [
     target: '[data-tour="tour-patients"]',
     title: 'Your Patients',
     content: 'Every patient assigned to you shows up here.',
+    skipBeacon: true,
+  },
+  {
+    route: '/doctor/requests',
+    target: '[data-tour="tour-requests"]',
+    title: 'Patient Requests',
+    content: 'New patients who choose you send a request here — accept or decline from this screen.',
+    skipBeacon: true,
+  },
+  {
+    route: '/doctor/recipes',
+    target: '[data-tour="tour-recipes"]',
+    title: 'Recipe Library',
+    content: 'Browse and add recipes your patients\' meal plans can draw from.',
+    skipBeacon: true,
+  },
+  {
+    route: '/doctor/settings',
+    target: '[data-tour="tour-settings"]',
+    title: 'Settings',
+    content: 'Manage your profile, subscription codes, and security here. That\'s the tour — you\'re all set.',
     skipBeacon: true,
   },
 ];
