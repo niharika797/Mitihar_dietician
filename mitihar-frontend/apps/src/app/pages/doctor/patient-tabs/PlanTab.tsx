@@ -756,39 +756,38 @@ function ComboDishSearchModal({ mealType, mode, onClose, onSelect }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose}
         onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close" />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between p-4 border-b border-[#E5E7EB]">
-          <p className="text-sm font-semibold text-[#111827]">
+      <div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <p className="text-sm font-semibold text-foreground">
             {mode === 'swap' ? 'Swap Dish' : 'Add Dish'} — {mealType}
           </p>
-          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
-            <X size={15} />
+          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:bg-accent">
+            <X size={16} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           <div className="relative mb-3">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input type="text" value={query} onChange={e => setQuery(e.target.value)}
               placeholder="Search recipes…" autoFocus
-              className="w-full h-9 pl-8 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+              className="w-full h-9 pl-8 pr-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
-          {loading && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-[#1E7C45]" /></div>}
+          {loading && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-primary" /></div>}
           {!loading && query.length >= 2 && results.length === 0 && (
-            <p className="text-sm text-[#9CA3AF] text-center py-4">No matches found</p>
+            <p className="text-sm text-muted-foreground text-center py-4">No matches found</p>
           )}
           <div className="space-y-1.5">
             {results.map(r => (
-              <div key={r.id} className="flex items-center justify-between p-2.5 rounded-md border border-[#E5E7EB] hover:border-[#D1D5DB]">
+              <div key={r.id} className="flex items-center justify-between p-2.5 rounded-md border border-border hover:border-muted-foreground/40">
                 <div>
-                  <p className="text-sm font-medium text-[#111827]">{r.recipe_name}</p>
-                  <p className="text-xs text-[#9CA3AF]">
+                  <p className="text-sm font-medium text-foreground">{r.recipe_name}</p>
+                  <p className="text-xs text-muted-foreground">
                     {Math.round(r.cal_per_serving)} kcal · {r.is_verified ? '✓ Verified' : 'Unverified'}
                   </p>
                 </div>
-                <button onClick={() => onSelect(r)}
-                  className="h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534]">
+                <Button onClick={() => onSelect(r)} variant="primary" size="sm" className="h-7 px-3 text-xs">
                   {mode === 'swap' ? 'Swap' : 'Add'}
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -829,51 +828,52 @@ function ComboCard({ combo, mealType, patientId, swapping, onSwap }: {
   const slotTypes = [...new Set(combo.dishes.map(d => d.slot_type))];
 
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-lg p-3 flex flex-col gap-2">
+    <Card variant="interactive" className="p-3 flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wide">
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
           Combo {combo.combo_index + 1}
         </span>
-        <span className="flex items-center gap-1 text-[10px] text-[#DC2626]">
+        <span className="flex items-center gap-1 text-[10px] text-destructive">
           <Flame size={9} />
           <span className="tabular-nums font-medium">{Math.round(combo.total_calories)}</span>
-          <span className="text-[#9CA3AF]">kcal</span>
+          <span className="text-muted-foreground">kcal</span>
         </span>
       </div>
 
       {!expanded ? (
         <>
           <p
-            className="text-xs font-medium text-[#111827] leading-snug flex-1 cursor-pointer hover:text-[#1E7C45]"
+            className="text-xs font-medium text-foreground leading-snug flex-1 cursor-pointer hover:text-primary"
             onClick={() => setExpanded(true)}
           >
             {dishNames}
           </p>
           <div className="flex flex-wrap gap-1">
             {slotTypes.map(t => (
-              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280]">{t}</span>
+              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{t}</span>
             ))}
           </div>
-          <button
+          <Button
             onClick={() => onSwap(combo.combo_id)}
             disabled={swapping}
-            className="mt-1 flex items-center justify-center gap-1.5 h-7 rounded-md border border-[#D1D5DB] text-xs text-[#374151] hover:border-[#1E7C45] hover:text-[#1E7C45] disabled:opacity-50 transition-colors"
+            variant="outline"
+            className="mt-1 h-7 gap-1.5 text-xs"
           >
             {swapping ? <Loader2 size={11} className="animate-spin" /> : <ArrowLeftRight size={11} />}
             Swap
-          </button>
+          </Button>
         </>
       ) : (
         <>
           <div className="flex flex-col gap-1.5 mt-1">
             {combo.dishes.map((dish, idx) => (
               <div key={idx} className="flex items-center gap-1.5 text-xs">
-                <span className="flex-1 text-[#111827] truncate leading-snug">{dish.recipe_name}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280] shrink-0">{dish.slot_type}</span>
+                <span className="flex-1 text-foreground truncate leading-snug">{dish.recipe_name}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground shrink-0">{dish.slot_type}</span>
                 <button
                   onClick={() => setSearchTarget({ dishIndex: idx, action: 'swap' })}
                   disabled={dishEditMut.isPending}
-                  className="p-0.5 rounded hover:bg-[#F3F4F6] text-[#6B7280] hover:text-[#1E7C45] disabled:opacity-50 shrink-0"
+                  className="p-0.5 rounded hover:bg-border text-muted-foreground hover:text-primary disabled:opacity-50 shrink-0"
                   title="Swap dish"
                 >
                   <ArrowLeftRight size={11} />
@@ -887,7 +887,7 @@ function ComboCard({ combo, mealType, patientId, swapping, onSwap }: {
                     });
                   }}
                   disabled={dishEditMut.isPending}
-                  className="p-0.5 rounded hover:bg-[#FEE2E2] text-[#6B7280] hover:text-[#DC2626] disabled:opacity-50 shrink-0"
+                  className="p-0.5 rounded hover:bg-red-50 text-muted-foreground hover:text-destructive disabled:opacity-50 shrink-0"
                   title="Remove dish"
                 >
                   <X size={11} />
@@ -897,16 +897,17 @@ function ComboCard({ combo, mealType, patientId, swapping, onSwap }: {
           </div>
           <button
             onClick={() => setSearchTarget({ dishIndex: -1, action: 'add' })}
-            className="flex items-center gap-1 text-xs text-[#1E7C45] hover:underline mt-0.5"
+            className="flex items-center gap-1 text-xs text-primary hover:underline mt-0.5"
           >
             <Plus size={11} /> Add Dish
           </button>
-          <button
+          <Button
             onClick={() => setExpanded(false)}
-            className="mt-1 flex items-center justify-center h-7 rounded-md border border-[#D1D5DB] text-xs text-[#374151] hover:border-[#1E7C45] hover:text-[#1E7C45]"
+            variant="outline"
+            className="mt-1 h-7 text-xs"
           >
             Done
-          </button>
+          </Button>
         </>
       )}
 
@@ -921,7 +922,7 @@ function ComboCard({ combo, mealType, patientId, swapping, onSwap }: {
           })}
         />
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -983,42 +984,40 @@ function AddCustomMealModal({ patientId, activeDate, mealType, combos, onClose, 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose}
         onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close" />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between p-4 border-b border-[#E5E7EB]">
-          <p className="text-sm font-semibold text-[#111827]">Add Custom Meal — {mealType}</p>
-          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
-            <X size={15} />
+      <div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <p className="text-sm font-semibold text-foreground">Add Custom Meal — {mealType}</p>
+          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:bg-accent">
+            <X size={16} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {/* Combo selector */}
           <div className="mb-3">
-            <p className="text-xs text-[#6B7280] mb-1.5">Add to combo</p>
+            <p className="text-xs text-muted-foreground mb-1.5">Add to combo</p>
             <div className="flex gap-2 flex-wrap">
               {combos.map((c, i) => (
-                <button
+                <Button
                   key={c.combo_id}
                   onClick={() => setComboIndex(i)}
-                  className={`h-7 px-3 rounded-md text-xs border transition-colors ${
-                    comboIndex === i
-                      ? 'bg-[#1E7C45] text-white border-[#1E7C45]'
-                      : 'border-[#D1D5DB] text-[#374151] hover:border-[#1E7C45]'
-                  }`}
+                  variant={comboIndex === i ? 'primary' : 'outline'}
+                  size="sm"
+                  className="h-7 px-3 text-xs"
                 >
                   Combo {i + 1}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
 
           {/* Tab toggle */}
-          <div className="flex gap-1 mb-3 p-1 bg-[#F3F4F6] rounded-lg">
+          <div className="flex gap-1 mb-3 p-1 bg-secondary rounded-lg">
             {(['library', 'custom'] as const).map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={`flex-1 h-7 rounded-md text-xs font-medium transition-colors ${
-                  tab === t ? 'bg-white text-[#111827] shadow-sm' : 'text-[#6B7280]'
+                  tab === t ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
                 }`}
               >
                 {t === 'library' ? 'From Library' : 'Custom'}
@@ -1029,26 +1028,26 @@ function AddCustomMealModal({ patientId, activeDate, mealType, combos, onClose, 
           {tab === 'library' ? (
             <>
               <div className="relative mb-3">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input type="text" value={query} onChange={e => setQuery(e.target.value)}
                   placeholder="Search recipes…" autoFocus
-                  className="w-full h-9 pl-8 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+                  className="w-full h-9 pl-8 pr-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
               </div>
-              {loading && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-[#1E7C45]" /></div>}
+              {loading && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-primary" /></div>}
               {!loading && query.length >= 2 && results.length === 0 && (
-                <p className="text-sm text-[#9CA3AF] text-center py-4">No matches found</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No matches found</p>
               )}
               <div className="space-y-1.5">
                 {results.map(r => (
-                  <div key={r.id} className="flex items-center justify-between p-2.5 rounded-md border border-[#E5E7EB] hover:border-[#D1D5DB]">
+                  <div key={r.id} className="flex items-center justify-between p-2.5 rounded-md border border-border hover:border-muted-foreground/40">
                     <div>
-                      <p className="text-sm font-medium text-[#111827]">{r.recipe_name}</p>
-                      <p className="text-xs text-[#9CA3AF]">{Math.round(r.cal_per_serving)} kcal · {r.is_verified ? '✓ Verified' : 'Unverified'}</p>
+                      <p className="text-sm font-medium text-foreground">{r.recipe_name}</p>
+                      <p className="text-xs text-muted-foreground">{Math.round(r.cal_per_serving)} kcal · {r.is_verified ? '✓ Verified' : 'Unverified'}</p>
                     </div>
-                    <button onClick={() => handleLibrarySelect(r)} disabled={submitting}
-                      className="h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50">
+                    <Button onClick={() => handleLibrarySelect(r)} disabled={submitting}
+                      variant="primary" size="sm" className="h-7 px-3 text-xs">
                       Add
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1056,7 +1055,7 @@ function AddCustomMealModal({ patientId, activeDate, mealType, combos, onClose, 
           ) : (
             <div className="space-y-3">
               <input
-                className="w-full h-8 px-3 rounded-md border border-[#D1D5DB] text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+                className="w-full h-8 px-3 rounded-md border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Dish name *"
                 value={customName}
                 onChange={e => setCustomName(e.target.value)}
@@ -1064,19 +1063,21 @@ function AddCustomMealModal({ patientId, activeDate, mealType, combos, onClose, 
               <input
                 type="number"
                 min={1}
-                className="w-full h-8 px-3 rounded-md border border-[#D1D5DB] text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+                className="w-full h-8 px-3 rounded-md border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Calories *"
                 value={customCal}
                 onChange={e => setCustomCal(e.target.value)}
               />
-              <button
+              <Button
+                type="button"
                 onClick={handleCustomAdd}
                 disabled={submitting}
-                className="w-full h-9 rounded-md bg-[#1E7C45] text-white text-sm font-medium hover:bg-[#166634] disabled:opacity-50 flex items-center justify-center gap-2"
+                variant="primary"
+                className="w-full gap-2"
               >
                 {submitting && <Loader2 size={13} className="animate-spin" />}
                 Add Dish
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -1142,20 +1143,20 @@ export function PlanTab({
 
   if (isLoading) return (
     <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-[#1E7C45]" />
+      <Loader2 size={24} className="animate-spin text-primary" />
     </div>
   );
 
   const isV2 = !!weeklyPlan && weeklyPlan.combos_available !== false;
 
   if (!isV2 && (isError || !plan)) return (
-    <div className="max-w-4xl bg-white border border-[#E5E7EB] rounded-lg py-14 text-center">
-      <CalendarDays size={36} className="text-[#D1D5DB] mx-auto mb-3" />
-      <p className="text-base font-medium text-[#374151]">No active plan</p>
-      <p className="text-sm text-[#6B7280] mt-1">
+    <Card className="max-w-4xl py-14 text-center">
+      <CalendarDays size={36} className="text-muted-foreground mx-auto mb-3" />
+      <p className="text-base font-medium text-foreground">No active plan</p>
+      <p className="text-sm text-muted-foreground mt-1">
         {patientName} doesn't have an active meal plan yet.
       </p>
-    </div>
+    </Card>
   );
 
   const grouped  = groupByDate(plan?.meals ?? []);
@@ -1164,10 +1165,10 @@ export function PlanTab({
   const dates    = isV2 ? v2Dates : v1Dates;
 
   if (dates.length === 0) return (
-    <div className="max-w-4xl bg-white border border-[#E5E7EB] rounded-lg py-14 text-center">
-      <CalendarDays size={36} className="text-[#D1D5DB] mx-auto mb-3" />
-      <p className="text-base font-medium text-[#374151]">Plan has no meals yet</p>
-    </div>
+    <Card className="max-w-4xl py-14 text-center">
+      <CalendarDays size={36} className="text-muted-foreground mx-auto mb-3" />
+      <p className="text-base font-medium text-foreground">Plan has no meals yet</p>
+    </Card>
   );
 
   const activeDate = dates[activeDateIdx] ?? dates[0];
@@ -1184,43 +1185,41 @@ export function PlanTab({
     <div className="max-w-4xl">
       {/* Plan-level doctor notes */}
       {plan?.doctor_notes && !editingNotes && (
-        <div className="mb-5 px-4 py-3 bg-[#F0FDF4] border border-[#DCFCE7] rounded-lg">
+        <div className="mb-5 px-4 py-3 bg-brand-50 border border-brand-100 rounded-lg">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-medium text-[#15803d]">Doctor Notes</p>
+            <p className="text-xs font-medium text-brand-700">Doctor Notes</p>
             <button
               onClick={() => { setNotesValue(plan?.doctor_notes ?? ''); setEditingNotes(true); }}
-              className="flex items-center gap-1 text-xs text-[#1E7C45] hover:underline"
+              className="flex items-center gap-1 text-xs text-primary hover:underline"
             >
               <Pencil size={11} /> Edit
             </button>
           </div>
-          <p className="text-sm text-[#374151]">{plan?.doctor_notes}</p>
+          <p className="text-sm text-secondary-foreground">{plan?.doctor_notes}</p>
         </div>
       )}
       {editingNotes && (
-        <div className="mb-5 px-4 py-3 bg-[#F0FDF4] border border-[#DCFCE7] rounded-lg">
-          <p className="text-xs font-medium text-[#15803d] mb-1">Doctor Notes</p>
+        <div className="mb-5 px-4 py-3 bg-brand-50 border border-brand-100 rounded-lg">
+          <p className="text-xs font-medium text-brand-700 mb-1">Doctor Notes</p>
           <textarea value={notesValue} onChange={e => setNotesValue(e.target.value)}
             rows={3}
-            className="w-full resize-none bg-white border border-[#DCFCE7] rounded
-                       px-2 py-1.5 text-sm text-[#374151] focus:outline-none
-                       focus:ring-2 focus:ring-[#1E7C45]"
+            className="w-full resize-none bg-card border border-brand-100 rounded
+                       px-2 py-1.5 text-sm text-secondary-foreground focus:outline-none
+                       focus:ring-2 focus:ring-ring"
             placeholder="Notes visible to the patient on their plan…"
           />
           <div className="flex gap-2 mt-2">
-            <button onClick={() => overrideMutation.mutate(notesValue)}
+            <Button onClick={() => overrideMutation.mutate(notesValue)}
               disabled={overrideMutation.isPending}
-              className="flex items-center gap-1.5 h-7 px-3 rounded bg-[#1E7C45]
-                         text-white text-xs hover:bg-[#166534] disabled:opacity-50">
+              variant="primary" size="sm" className="h-7 gap-1.5 px-3 text-xs">
               {overrideMutation.isPending
                 ? <Loader2 size={11} className="animate-spin" />
                 : <Save size={11} />} Save
-            </button>
-            <button onClick={() => setEditingNotes(false)}
-              className="h-7 px-3 rounded border border-[#D1D5DB] bg-white
-                         text-xs text-[#374151]">
+            </Button>
+            <Button onClick={() => setEditingNotes(false)}
+              variant="outline" size="sm" className="h-7 px-3 text-xs">
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -1228,8 +1227,8 @@ export function PlanTab({
         <button
           onClick={() => { setNotesValue(''); setEditingNotes(true); }}
           className="flex items-center gap-2 h-8 px-3 mb-4 rounded-md border
-                     border-dashed border-[#D1D5DB] text-xs text-[#6B7280]
-                     hover:border-[#1E7C45] hover:text-[#1E7C45]"
+                     border-dashed border-border text-xs text-muted-foreground
+                     hover:border-primary hover:text-primary"
         >
           <Pencil size={12} /> Add doctor notes to this plan
         </button>
@@ -1239,16 +1238,17 @@ export function PlanTab({
       {isV2 && (
         <div className="mb-4 flex items-center justify-between gap-3">
           {weeklyPlan.approval_status === 'draft' ? (
-            <button
+            <Button
               onClick={() => approveMut.mutate()}
               disabled={approveMut.isPending}
-              className="flex items-center gap-2 h-9 px-5 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166634] disabled:opacity-50"
+              variant="primary"
+              className="gap-2 px-5"
             >
               {approveMut.isPending && <Loader2 size={13} className="animate-spin" />}
               Approve Week
-            </button>
+            </Button>
           ) : (
-            <span className="flex items-center gap-1.5 text-sm text-[#15803d] font-medium">
+            <span className="flex items-center gap-1.5 text-sm text-brand-700 font-medium">
               <CalendarDays size={14} /> Plan approved — visible to patient
             </span>
           )}
@@ -1260,20 +1260,20 @@ export function PlanTab({
       {/* Day heading + totals */}
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-[#111827]">
+          <h2 className="text-lg font-semibold text-foreground">
             {activeDate} — Meal Plan
           </h2>
-          <p className="text-sm text-[#6B7280]">
+          <p className="text-sm text-muted-foreground">
             {isV2 ? '4 combos per slot · v2 plan' : `${dayMeals.length} meals · ${patientMealsPerDay}-meal plan`}
           </p>
         </div>
         {!isV2 && (
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-[#6B7280]">Day total:</span>
-            <span className="font-semibold text-[#111827] tabular-nums">
+            <span className="text-muted-foreground">Day total:</span>
+            <span className="font-semibold text-foreground tabular-nums">
               {Math.round(totalCalories)} kcal
             </span>
-            <span className="text-xs text-[#9CA3AF]">
+            <span className="text-xs text-muted-foreground">
               P:{Math.round(totalProtein)}g · C:{Math.round(totalCarbs)}g · F:{Math.round(totalFat)}g
             </span>
           </div>
@@ -1285,7 +1285,7 @@ export function PlanTab({
         <div className="space-y-6">
           {Object.entries(weeklyPlan.plan[activeDate] ?? {}).map(([mealType, combos]) => (
             <div key={mealType}>
-              <h3 className="text-sm font-semibold text-[#374151] mb-3 uppercase tracking-wide">
+              <h3 className="text-sm font-semibold text-secondary-foreground mb-3 uppercase tracking-wide">
                 {mealType}
               </h3>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1302,7 +1302,7 @@ export function PlanTab({
               </div>
               <button
                 onClick={() => setAddCustomFor({ mealType, combos })}
-                className="mt-2 flex items-center gap-2 h-8 px-3 rounded-md border border-dashed border-[#D1D5DB] text-xs text-[#6B7280] hover:border-[#1E7C45] hover:text-[#1E7C45] w-full justify-center transition-colors"
+                className="mt-2 flex items-center gap-2 h-8 px-3 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary w-full justify-center transition-colors"
               >
                 <Plus size={12} /> Add Custom Meal
               </button>
@@ -1331,8 +1331,8 @@ export function PlanTab({
             <button
               onClick={() => setShowAddForm(true)}
               className="flex items-center gap-2 h-9 px-4 rounded-md border border-dashed
-                         border-[#D1D5DB] text-sm text-[#6B7280] hover:border-[#1E7C45]
-                         hover:text-[#1E7C45] transition-colors w-full justify-center"
+                         border-border text-sm text-muted-foreground hover:border-primary
+                         hover:text-primary transition-colors w-full justify-center"
             >
               <Plus size={14} /> Add Custom Meal to {activeDate}
             </button>
