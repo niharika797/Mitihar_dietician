@@ -122,7 +122,7 @@ export function NotesTab({ patientId, patientName }: NotesTabProps) {
         </div>
       ) : notes.length === 0 ? (
         <Card className="py-14 text-center">
-          <StickyNote size={20} className="text-slate-300 mx-auto mb-3" />
+          <StickyNote size={20} className="text-muted-foreground mx-auto mb-3" />
           <p className="text-base font-medium text-secondary-foreground">No notes yet</p>
           <p className="text-sm text-muted-foreground mt-1">
             Add clinical notes to keep track of important observations.

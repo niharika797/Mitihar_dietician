@@ -74,7 +74,7 @@ export function ActivityTab({ patientId, patientName }: ActivityTabProps) {
         </Card>
       ) : sortedDates.length === 0 ? (
         <Card className="py-16 text-center">
-          <ClipboardList size={20} className="text-slate-300 mx-auto mb-3" />
+          <ClipboardList size={20} className="text-muted-foreground mx-auto mb-3" />
           <p className="text-base font-medium text-secondary-foreground">No logs in the last {days} days</p>
           <p className="text-sm text-muted-foreground mt-1">
             {patientName} hasn't logged any meals recently.

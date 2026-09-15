@@ -18,7 +18,7 @@ const LazyWaterChart = lazy(() =>
 function ChartSkeleton({ height }: { height: number }) {
   return (
     <div className="flex items-center justify-center" style={{ height }}>
-      <Loader2 size={20} className="animate-spin text-slate-300" />
+      <Loader2 size={20} className="animate-spin text-muted-foreground" />
     </div>
   );
 }
