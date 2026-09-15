@@ -188,47 +188,46 @@ function RecipeSearchModal({ patientId, date, mealType, dishIndex, mode, onClose
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose}
         onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close" />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between p-4 border-b border-[#E5E7EB]">
-          <p className="text-sm font-semibold text-[#111827]">
+      <div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <p className="text-sm font-semibold text-foreground">
             {mode === 'swap' ? 'Swap Dish' : 'Add Dish'} — {mealType}
           </p>
-          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
-            <X size={15} />
+          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:bg-accent">
+            <X size={16} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {!customMode ? (
             <>
               <div className="relative mb-3">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input type="text" value={query} onChange={e => setQuery(e.target.value)}
                   placeholder="Search recipes…" autoFocus
-                  className="w-full h-9 pl-8 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+                  className="w-full h-9 pl-8 pr-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
               </div>
-              {loading && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-[#1E7C45]" /></div>}
+              {loading && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-primary" /></div>}
               {!loading && query.length >= 2 && results.length === 0 && (
-                <p className="text-sm text-[#9CA3AF] text-center py-4">No matches found</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No matches found</p>
               )}
               <div className="space-y-1.5 mb-3">
                 {results.map(r => (
-                  <div key={r.id} className="flex items-center justify-between p-2.5 rounded-md border border-[#E5E7EB] hover:border-[#D1D5DB]">
+                  <div key={r.id} className="flex items-center justify-between p-2.5 rounded-md border border-border hover:border-muted-foreground/40">
                     <div>
-                      <p className="text-sm font-medium text-[#111827]">{r.recipe_name}</p>
-                      <p className="text-xs text-[#9CA3AF]">
+                      <p className="text-sm font-medium text-foreground">{r.recipe_name}</p>
+                      <p className="text-xs text-muted-foreground">
                         {Math.round(r.cal_per_serving)} kcal · {r.is_verified ? '✓ Verified' : 'Unverified'}
                       </p>
                     </div>
-                    <button onClick={() => callPatch({ action: mode, replacement_food_id: r.id })}
-                      disabled={submitting}
-                      className="h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50">
+                    <Button onClick={() => callPatch({ action: mode, replacement_food_id: r.id })}
+                      disabled={submitting} variant="primary" size="sm" className="h-7 px-3 text-xs">
                       Use
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
               <button onClick={() => setCustomMode(true)}
-                className="w-full h-8 rounded-md border border-dashed border-[#D1D5DB] text-xs text-[#6B7280] hover:border-[#1E7C45] hover:text-[#1E7C45]">
+                className="w-full h-8 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary">
                 Enter custom values instead
               </button>
             </>
@@ -236,37 +235,36 @@ function RecipeSearchModal({ patientId, date, mealType, dishIndex, mode, onClose
             <>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-[#374151] mb-1">Dish Name *</label>
+                  <label className="block text-xs font-medium text-secondary-foreground mb-1">Dish Name *</label>
                   <input type="text" value={customForm.name}
                     onChange={e => setCustomForm(p => ({ ...p, name: e.target.value }))}
-                    className="w-full h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+                    className="w-full h-8 px-2 rounded border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
                 </div>
                 {(['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((k, i) => (
                   <div key={k}>
-                    <label className="block text-xs font-medium text-[#374151] mb-1">
+                    <label className="block text-xs font-medium text-secondary-foreground mb-1">
                       {['Calories *', 'Protein g', 'Carbs g', 'Fat g', 'Fiber g'][i]}
                     </label>
                     <input type="number" min={0} value={customForm[k]}
                       onChange={e => setCustomForm(p => ({ ...p, [k]: e.target.value }))}
-                      className="w-full h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+                      className="w-full h-8 px-2 rounded border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
                   </div>
                 ))}
               </div>
-              <label className="flex items-center gap-2 text-xs text-[#374151] mb-4 cursor-pointer">
+              <label className="flex items-center gap-2 text-xs text-secondary-foreground mb-4 cursor-pointer">
                 <input type="checkbox" checked={flagForDb} onChange={e => setFlagForDb(e.target.checked)}
-                  className="rounded border-[#D1D5DB]" />
+                  className="rounded border-border" />
                 Submit to recipe library (pending admin review)
               </label>
               <div className="flex gap-2">
-                <button onClick={handleCustomSubmit} disabled={submitting}
-                  className="flex items-center gap-1.5 h-8 px-4 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166634] disabled:opacity-50">
+                <Button onClick={handleCustomSubmit} disabled={submitting}
+                  variant="primary" size="sm" className="gap-1.5 px-4 text-xs">
                   {submitting && <Loader2 size={11} className="animate-spin" />}
                   {mode === 'swap' ? 'Swap' : 'Add'}
-                </button>
-                <button onClick={() => setCustomMode(false)}
-                  className="h-8 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151]">
+                </Button>
+                <Button onClick={() => setCustomMode(false)} variant="outline" size="sm" className="px-3 text-xs">
                   Back to search
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -318,14 +316,14 @@ function MealCard({
   };
 
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-lg p-4 relative hover:border-[#D1D5DB] transition-colors">
+    <Card variant="interactive" className="p-4 relative">
       {/* Slot header */}
       <div className="flex items-center justify-between mb-3">
         <div>
-          <span className="text-xs font-medium uppercase tracking-wide text-[#6B7280]">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {meal['Meal Type']}
           </span>
-          <p className="text-xs text-[#9CA3AF]">{meal['Diet Type']}</p>
+          <p className="text-xs text-muted-foreground">{meal['Diet Type']}</p>
         </div>
         <div className="flex items-center gap-2">
           {/* Session 22E (decision a): doctor-only generation-quality flag. Σ(scaled)
@@ -340,19 +338,19 @@ function MealCard({
             return (
               <span
                 title={`Plan provides ${Math.round(provided)} kcal, target was ${Math.round(target)} kcal — dish portion may be too small or large for this slot`}
-                className="flex items-center text-[#D97706]"
+                className="flex items-center text-amber-700"
               >
                 <AlertCircle size={14} />
               </span>
             );
           })()}
-          <MacroPill icon={<Flame size={11} />} value={meal['Total Calories']} unit="kcal" color="text-[#DC2626]" />
+          <MacroPill icon={<Flame size={11} />} value={meal['Total Calories']} unit="kcal" color="text-destructive" />
           <button
             onClick={() => { setNoteText(meal.doctor_note ?? ''); setNoteOpen(true); }}
             title="Add note"
-            className="w-6 h-6 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6] hover:text-[#374151]"
+            className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-secondary-foreground"
           >
-            <StickyNote size={12} />
+            <StickyNote size={14} />
           </button>
         </div>
       </div>
@@ -372,30 +370,30 @@ function MealCard({
           ))}
         </div>
       ) : (
-        <p className="text-sm font-medium text-[#111827] mb-3 leading-snug">
+        <p className="text-sm font-medium text-foreground mb-3 leading-snug">
           {meal['Menu Names']}
         </p>
       )}
 
       {/* Macro summary row */}
       <div className="flex items-center gap-3 flex-wrap mb-3">
-        <MacroPill icon={<Beef size={11} />}     value={meal['Total Protein']}  unit="g P"  color="text-[#2563EB]" />
-        <MacroPill icon={<Wheat size={11} />}    value={meal['Total Carbs']}    unit="g C"  color="text-[#F59E0B]" />
-        <MacroPill icon={<Droplets size={11} />} value={meal['Total Fat']}      unit="g F"  color="text-[#6B7280]" />
+        <MacroPill icon={<Beef size={11} />}     value={meal['Total Protein']}  unit="g P"  color="text-blue-600" />
+        <MacroPill icon={<Wheat size={11} />}    value={meal['Total Carbs']}    unit="g C"  color="text-amber-500" />
+        <MacroPill icon={<Droplets size={11} />} value={meal['Total Fat']}      unit="g F"  color="text-muted-foreground" />
       </div>
 
       {hasDishes && (
         <button
           onClick={() => setModalState({ mode: 'add', dishIndex: -1 })}
-          className="flex items-center gap-1.5 h-7 px-3 rounded-md border border-dashed border-[#D1D5DB] text-xs text-[#6B7280] hover:border-[#1E7C45] hover:text-[#1E7C45] w-full justify-center mb-2"
+          className="flex items-center gap-1.5 h-7 px-3 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary w-full justify-center mb-2"
         >
           <Plus size={11} /> Add Dish
         </button>
       )}
 
       {meal.doctor_note && !noteOpen && (
-        <div className="px-3 py-2 bg-[#F0FDF4] rounded-md border border-[#DCFCE7]">
-          <p className="text-xs text-[#15803d] flex items-start gap-1.5">
+        <div className="px-3 py-2 bg-brand-50 rounded-md border border-brand-100">
+          <p className="text-xs text-brand-700 flex items-start gap-1.5">
             <StickyNote size={11} className="mt-0.5 flex-shrink-0" />
             <span>{meal.doctor_note}</span>
           </p>
@@ -409,18 +407,17 @@ function MealCard({
             onChange={e => setNoteText(e.target.value)}
             rows={2}
             placeholder="Add a note for this meal…"
-            className="w-full resize-none text-sm px-2 py-1.5 border border-[#DCFCE7] rounded bg-[#F0FDF4] text-[#374151] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+            className="w-full resize-none text-sm px-2 py-1.5 border border-brand-100 rounded bg-brand-50 text-secondary-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
           <div className="flex gap-2 mt-1.5">
-            <button onClick={handleSaveNote} disabled={saving || !noteText.trim()}
-              className="flex items-center gap-1.5 h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50">
+            <Button onClick={handleSaveNote} disabled={saving || !noteText.trim()}
+              variant="primary" size="sm" className="h-7 gap-1.5 px-3 text-xs">
               {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
               Save
-            </button>
-            <button onClick={() => setNoteOpen(false)}
-              className="h-7 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151] hover:bg-[#F9FAFB]">
+            </Button>
+            <Button onClick={() => setNoteOpen(false)} variant="outline" size="sm" className="h-7 px-3 text-xs">
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -436,7 +433,7 @@ function MealCard({
           onSuccess={() => { onUpdated(); setModalState(null); }}
         />
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -635,22 +632,22 @@ function AddMealForm({
 
   const numField = (key: keyof CustomMealForm, label: string) => (
     <div key={String(key)}>
-      <label className="block text-xs font-medium text-[#374151] mb-1">{label}</label>
+      <label className="block text-xs font-medium text-secondary-foreground mb-1">{label}</label>
       <input type="number" min={0}
         value={form[key] as string}
         onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
-        className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm
-                   focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+        className="w-full h-9 px-3 rounded-md border border-border bg-input-background text-sm text-foreground
+                   focus:outline-none focus:ring-2 focus:ring-ring"
       />
     </div>
   );
 
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-lg p-5">
+    <Card className="p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-[#111827]">Add Custom Meal — {activeDate}</h3>
-        <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
-          <X size={15} />
+        <h3 className="text-sm font-semibold text-foreground">Add Custom Meal — {activeDate}</h3>
+        <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:bg-accent">
+          <X size={16} />
         </button>
       </div>
 
@@ -658,34 +655,34 @@ function AddMealForm({
         <div className="grid grid-cols-2 gap-3 mb-4">
           {/* Dish name with autocomplete + AI lookup */}
           <div className="col-span-2 relative">
-            <label htmlFor="plan-dish-name" className="block text-xs font-medium text-[#374151] mb-1">
-              Dish Name <span className="text-[#DC2626]">*</span>
+            <label htmlFor="plan-dish-name" className="block text-xs font-medium text-secondary-foreground mb-1">
+              Dish Name <span className="text-destructive">*</span>
             </label>
             <div className="relative flex gap-2">
               <div className="relative flex-1">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="plan-dish-name" required type="text" value={form.name}
                   onChange={e => { setForm(p => ({ ...p, name: e.target.value })); setShowDropdown(true); }}
                   onFocus={() => setShowDropdown(true)}
                   placeholder="e.g. Masoor Dal Soup"
-                  className="w-full h-9 pl-8 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+                  className="w-full h-9 pl-8 pr-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 {showDropdown && form.name.length >= 2 && (
-                  <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-white border border-[#E5E7EB] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                     {searchLoading && (
-                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-[#6B7280]">
+                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
                         <Loader2 size={12} className="animate-spin" /> Searching…
                       </div>
                     )}
                     {!searchLoading && searchResults.length === 0 && (
-                      <div className="px-3 py-2 text-sm text-[#9CA3AF]">No matches — use AI lookup below</div>
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No matches — use AI lookup below</div>
                     )}
                     {searchResults.map(r => (
                       <button key={r.id} type="button" onClick={() => handleSelectRecipe(r)}
-                        className="w-full text-left px-3 py-2 hover:bg-[#F9FAFB] border-b border-[#F3F4F6] last:border-0">
-                        <p className="text-sm font-medium text-[#111827]">{r.recipe_name}</p>
-                        <p className="text-xs text-[#9CA3AF]">{Math.round(r.cal_per_serving)} kcal · {r.diet_type}</p>
+                        className="w-full text-left px-3 py-2 hover:bg-input-background border-b border-border last:border-0">
+                        <p className="text-sm font-medium text-foreground">{r.recipe_name}</p>
+                        <p className="text-xs text-muted-foreground">{Math.round(r.cal_per_serving)} kcal · {r.diet_type}</p>
                       </button>
                     ))}
                   </div>
@@ -693,8 +690,8 @@ function AddMealForm({
               </div>
               <button type="button" onClick={handleGeminiLookup}
                 disabled={geminiLoading || !form.name.trim()} title="Fetch nutrition from AI"
-                className="flex items-center gap-1.5 h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-xs text-[#6B7280] hover:border-[#1E7C45] hover:text-[#1E7C45] disabled:opacity-40 whitespace-nowrap">
-                {geminiLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                className="flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-xs text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-40 whitespace-nowrap">
+                {geminiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                 AI Lookup
               </button>
             </div>
@@ -702,20 +699,20 @@ function AddMealForm({
 
           {/* Meal type */}
           <div>
-            <label htmlFor="plan-meal-type" className="block text-xs font-medium text-[#374151] mb-1">Meal Type</label>
+            <label htmlFor="plan-meal-type" className="block text-xs font-medium text-secondary-foreground mb-1">Meal Type</label>
             <select id="plan-meal-type" value={form.mealType}
               onChange={e => setForm(p => ({ ...p, mealType: e.target.value }))}
-              className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]">
+              className="w-full h-9 px-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
               {mealTypes.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
 
           {/* Diet type */}
           <div>
-            <label htmlFor="plan-diet-type" className="block text-xs font-medium text-[#374151] mb-1">Diet Type</label>
+            <label htmlFor="plan-diet-type" className="block text-xs font-medium text-secondary-foreground mb-1">Diet Type</label>
             <select id="plan-diet-type" value={form.diet_type}
               onChange={e => setForm(p => ({ ...p, diet_type: e.target.value }))}
-              className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45]">
+              className="w-full h-9 px-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
               {['Vegetarian', 'Non-Vegetarian', 'Eggetarian'].map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
@@ -728,23 +725,21 @@ function AddMealForm({
           {numField('fiber',    'Fiber (g)')}
         </div>
 
-        <div className="border border-[#E5E7EB] rounded-md px-3 py-2 mb-4 bg-[#F9FAFB] text-xs text-[#6B7280]">
+        <div className="border border-border rounded-md px-3 py-2 mb-4 bg-muted text-xs text-muted-foreground">
           This meal is added directly to {patientName}'s plan. It is not saved to the recipe library.
         </div>
 
         <div className="flex gap-3">
-          <button type="submit" disabled={submitting}
-            className="flex items-center gap-2 h-9 px-5 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166634] disabled:opacity-50">
+          <Button type="submit" disabled={submitting} variant="primary" size="md" className="gap-2 px-5">
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
             Add Meal
-          </button>
-          <button type="button" onClick={onClose}
-            className="h-9 px-4 rounded-md border border-[#D1D5DB] bg-white text-[#374151] text-sm hover:bg-[#F9FAFB]">
+          </Button>
+          <Button type="button" onClick={onClose} variant="outline" size="md">
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </Card>
   );
 }
 
