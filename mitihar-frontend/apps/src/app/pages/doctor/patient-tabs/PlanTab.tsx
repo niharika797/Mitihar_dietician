@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { doctorApi, MealEntry, FoodItemSummary, Dish, ComboEntry } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
+import { Button } from '../../../components/ui/Button';
+import { Card } from '../../../components/ui/Card';
 import {
   StickyNote, Flame, Beef, Wheat, Droplets,
   Plus, X, Loader2, AlertCircle, CalendarDays, Pencil, Save,
@@ -68,7 +70,7 @@ function MacroPill({ icon, value, unit, color }: {
     <span className={`flex items-center gap-1 text-xs ${color}`}>
       {icon}
       <span className="tabular-nums font-medium">{Math.round(value)}</span>
-      <span className="text-[#9CA3AF]">{unit}</span>
+      <span className="text-muted-foreground">{unit}</span>
     </span>
   );
 }
@@ -83,48 +85,48 @@ function DishCard({ dish, index, onSwap, onRemove, removing }: {
 }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   return (
-    <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-md p-2.5">
+    <div className="bg-muted border border-border rounded-md p-2.5">
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <p className="text-xs font-medium text-[#111827] leading-snug flex-1">{dish.recipe_name}</p>
+        <p className="text-xs font-medium text-foreground leading-snug flex-1">{dish.recipe_name}</p>
         <div className="flex gap-0.5 flex-shrink-0">
           <button onClick={onSwap} title="Swap dish"
-            className="w-6 h-6 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#E5E7EB] hover:text-[#1E7C45]">
+            className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:bg-border hover:text-primary transition-colors">
             <ArrowLeftRight size={11} />
           </button>
           <button onClick={() => setConfirmRemove(true)} title="Remove dish"
-            className="w-6 h-6 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#FEE2E2] hover:text-[#DC2626]">
+            className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:bg-red-50 hover:text-destructive transition-colors">
             <X size={11} />
           </button>
         </div>
       </div>
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
         {dish.is_custom_override && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]">Custom</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-600/30">Custom</span>
         )}
         {dish.food_id && !dish.is_custom_override && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280] border border-[#E5E7EB]">Library</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">Library</span>
         )}
       </div>
       <div className="flex items-center gap-2.5 flex-wrap">
-        <span className="flex items-center gap-0.5 text-[10px] text-[#DC2626]">
+        <span className="flex items-center gap-0.5 text-[10px] text-destructive">
           <Flame size={9} /><span className="tabular-nums font-medium">{Math.round(dish.scaled_calories ?? dish.calories)}</span>
         </span>
-        <span className="text-[10px] text-[#2563EB] tabular-nums">{dish.protein.toFixed(1)}g P</span>
-        <span className="text-[10px] text-[#F59E0B] tabular-nums">{dish.carbs.toFixed(1)}g C</span>
-        <span className="text-[10px] text-[#6B7280] tabular-nums">{dish.fat.toFixed(1)}g F</span>
+        <span className="text-[10px] text-blue-600 tabular-nums">{dish.protein.toFixed(1)}g P</span>
+        <span className="text-[10px] text-amber-500 tabular-nums">{dish.carbs.toFixed(1)}g C</span>
+        <span className="text-[10px] text-muted-foreground tabular-nums">{dish.fat.toFixed(1)}g F</span>
       </div>
       {confirmRemove && (
-        <div className="mt-2 p-2 bg-[#FEF2F2] border border-[#FECACA] rounded flex items-center justify-between">
-          <span className="text-[10px] text-[#DC2626]">Remove this dish?</span>
+        <div className="mt-2 p-2 bg-red-50 border border-destructive/30 rounded flex items-center justify-between">
+          <span className="text-[10px] text-destructive">Remove this dish?</span>
           <div className="flex gap-1.5">
-            <button onClick={() => { onRemove(index); setConfirmRemove(false); }} disabled={removing}
-              className="h-5 px-2 rounded bg-[#DC2626] text-white text-[9px] hover:bg-[#B91C1C] disabled:opacity-50">
+            <Button onClick={() => { onRemove(index); setConfirmRemove(false); }} disabled={removing}
+              variant="destructive" className="h-5 px-2 text-[9px]">
               {removing ? '…' : 'Remove'}
-            </button>
-            <button onClick={() => setConfirmRemove(false)}
-              className="h-5 px-2 rounded border border-[#D1D5DB] bg-white text-[#374151] text-[9px]">
+            </Button>
+            <Button onClick={() => setConfirmRemove(false)}
+              variant="outline" className="h-5 px-2 text-[9px]">
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -493,14 +495,10 @@ function DaySelector({ dates, activeDateIdx, onSelect }: DaySelectorProps) {
   return (
     <div className="flex items-center gap-2 mb-5 flex-wrap">
       {dates.map((date, idx) => (
-        <button key={date} onClick={() => onSelect(idx)}
-          className={`h-8 px-3 text-sm font-medium rounded-md transition-colors ${
-            activeDateIdx === idx
-              ? 'bg-[#1E7C45] text-white'
-              : 'bg-white border border-[#E5E7EB] text-[#6B7280] hover:border-[#D1D5DB] hover:text-[#374151]'
-          }`}>
+        <Button key={date} onClick={() => onSelect(idx)}
+          variant={activeDateIdx === idx ? 'primary' : 'outline'} size="sm">
           {formatDate(date)}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -515,26 +513,26 @@ interface TdeeProgressBarProps {
 
 function TdeeProgressBar({ totalCalories, patientTdee, patientMealsPerDay }: TdeeProgressBarProps) {
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-lg p-4 mb-5">
+    <Card className="p-4 mb-5">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm text-[#374151]">
+        <span className="text-sm text-secondary-foreground">
           Calories vs TDEE
-          <span className="text-xs text-[#9CA3AF] ml-1.5">({patientMealsPerDay}-meal plan)</span>
+          <span className="text-xs text-muted-foreground ml-1.5">({patientMealsPerDay}-meal plan)</span>
         </span>
-        <span className="text-sm text-[#6B7280] tabular-nums">
+        <span className="text-sm text-muted-foreground tabular-nums">
           {Math.round(totalCalories)} / {Math.round(patientTdee)} kcal
         </span>
       </div>
-      <div className="h-2 bg-[#F3F4F6] rounded-full overflow-hidden">
-        <div className="h-full bg-[#1E7C45] rounded-full"
+      <div className="h-2 bg-muted rounded-full overflow-hidden">
+        <div className="h-full bg-primary rounded-full"
           style={{ width: `${Math.min(100, (totalCalories / patientTdee) * 100)}%` }} />
       </div>
-      <p className="text-xs text-[#6B7280] mt-1.5">
+      <p className="text-xs text-muted-foreground mt-1.5">
         {totalCalories < patientTdee
           ? `${Math.round(patientTdee - totalCalories)} kcal below TDEE`
           : `${Math.round(totalCalories - patientTdee)} kcal above TDEE`}
       </p>
-    </div>
+    </Card>
   );
 }
 
