@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { doctorApi } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
 import { Plus, StickyNote, Send, Loader2 } from 'lucide-react';
+import { Button } from '../../../components/ui/Button';
+import { Card } from '../../../components/ui/Card';
 
 interface NotesTabProps {
   patientId: number;
@@ -52,31 +54,28 @@ export function NotesTab({ patientId, patientName }: NotesTabProps) {
   };
 
   const noteTypeBadge: Record<NoteType, string> = {
-    general:  'bg-[#F3F4F6] text-[#374151]',
-    dietary:  'bg-[#DCFCE7] text-[#15803d]',
-    medical:  'bg-[#EFF6FF] text-[#2563EB]',
-    progress: 'bg-[#FFFBEB] text-[#B45309]',
+    general:  'bg-muted text-secondary-foreground',
+    dietary:  'bg-brand-100 text-brand-700',
+    medical:  'bg-blue-50 text-blue-600',
+    progress: 'bg-amber-50 text-amber-700',
   };
 
   return (
     <div className="max-w-2xl">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-[#111827]">Clinical Notes</h2>
-          <p className="text-sm text-[#6B7280]">Notes for {patientName} — visible only to you</p>
+          <h2 className="text-lg font-semibold text-foreground">Clinical Notes</h2>
+          <p className="text-sm text-muted-foreground">Notes for {patientName} — visible only to you</p>
         </div>
-        <button
-          onClick={() => setAdding(!adding)}
-          className="flex items-center gap-2 h-9 px-3 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors"
-        >
-          <Plus size={15} />
+        <Button variant="primary" size="md" onClick={() => setAdding(!adding)}>
+          <Plus size={14} />
           Add Note
-        </button>
+        </Button>
       </div>
 
       {/* Add note form */}
       {adding && (
-        <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-lg p-4 mb-4">
+        <Card className="bg-brand-50 border-brand-100 p-4 mb-4">
           {/* Note type selector */}
           <div className="flex gap-2 mb-3 flex-wrap">
             {NOTE_TYPES.map(t => (
@@ -85,8 +84,8 @@ export function NotesTab({ patientId, patientName }: NotesTabProps) {
                 onClick={() => setNoteType(t)}
                 className={`h-7 px-3 rounded-full text-xs font-medium capitalize transition-colors ${
                   noteType === t
-                    ? 'bg-[#1E7C45] text-white'
-                    : 'bg-white border border-[#D1D5DB] text-[#374151] hover:border-[#1E7C45]'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-card border border-border text-secondary-foreground hover:border-primary'
                 }`}
               >
                 {t}
@@ -98,58 +97,51 @@ export function NotesTab({ patientId, patientName }: NotesTabProps) {
             onChange={e => setNewNote(e.target.value)}
             placeholder="Add a clinical note about this patient…"
             rows={3}
-            className="w-full resize-none bg-white border border-[#D1D5DB] rounded-md px-3 py-2 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
+            className="w-full resize-none bg-card border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
           />
           <div className="flex items-center justify-end gap-2 mt-2">
-            <button
-              onClick={() => { setAdding(false); setNewNote(''); setNoteType('general'); }}
-              className="h-8 px-3 rounded border border-[#D1D5DB] bg-white text-sm text-[#374151] hover:bg-[#F9FAFB] transition-colors"
-            >
+            <Button variant="outline" size="sm" onClick={() => { setAdding(false); setNewNote(''); setNoteType('general'); }}>
               Cancel
-            </button>
-            <button
-              onClick={handleAdd}
-              disabled={!newNote.trim() || addMutation.isPending}
-              className="flex items-center gap-1.5 h-8 px-3 rounded bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors disabled:opacity-50"
-            >
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleAdd} disabled={!newNote.trim() || addMutation.isPending}>
               {addMutation.isPending ? (
-                <Loader2 size={13} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
               ) : (
-                <Send size={13} />
+                <Send size={14} />
               )}
               Save Note
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Notes list */}
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-[#1E7C45]" />
+          <Loader2 size={20} className="animate-spin text-primary" />
         </div>
       ) : notes.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-lg py-14 text-center">
-          <StickyNote size={32} className="text-[#D1D5DB] mx-auto mb-3" />
-          <p className="text-base font-medium text-[#374151]">No notes yet</p>
-          <p className="text-sm text-[#6B7280] mt-1">
+        <Card className="py-14 text-center">
+          <StickyNote size={20} className="text-slate-300 mx-auto mb-3" />
+          <p className="text-base font-medium text-secondary-foreground">No notes yet</p>
+          <p className="text-sm text-muted-foreground mt-1">
             Add clinical notes to keep track of important observations.
           </p>
-        </div>
+        </Card>
       ) : (
         <div className="space-y-3">
           {notes.map(note => (
-            <div key={note.id} className="bg-white border border-[#E5E7EB] rounded-lg p-4">
+            <Card key={note.id} className="p-4">
               <div className="flex items-center justify-between mb-2 gap-2">
                 <span
                   className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium capitalize ${noteTypeBadge[note.note_type as NoteType] ?? noteTypeBadge.general}`}
                 >
                   {note.note_type}
                 </span>
-                <p className="text-xs text-[#9CA3AF] font-mono">{formatDate(note.created_at)}</p>
+                <p className="text-xs text-muted-foreground font-mono">{formatDate(note.created_at)}</p>
               </div>
-              <p className="text-sm text-[#374151] leading-relaxed">{note.content}</p>
-            </div>
+              <p className="text-sm text-secondary-foreground leading-relaxed">{note.content}</p>
+            </Card>
           ))}
         </div>
       )}
