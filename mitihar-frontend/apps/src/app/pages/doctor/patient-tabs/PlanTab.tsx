@@ -1,10 +1,12 @@
 ﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { doctorApi, MealEntry, FoodItemSummary, Dish, ComboEntry } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
+import { EASE_OUT } from '../../../lib/motion-tokens';
 import {
   StickyNote, Flame, Beef, Wheat, Droplets,
   Plus, X, Loader2, AlertCircle, CalendarDays, Pencil, Save,
@@ -152,6 +154,7 @@ function RecipeSearchModal({ patientId, date, mealType, dishIndex, mode, onClose
     { name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '' },
   );
   const { results, loading } = useRecipeSearch(query);
+  const prefersReducedMotion = useReducedMotion();
 
   const callPatch = async (body: Parameters<typeof doctorApi.patchDish>[4]) => {
     setSubmitting(true);
@@ -186,9 +189,17 @@ function RecipeSearchModal({ patientId, date, mealType, dishIndex, mode, onClose
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose}
-        onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close" />
-      <div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]">
+      <motion.div className="absolute inset-0 bg-black/40" onClick={onClose}
+        onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close"
+        initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+        transition={{ duration: 0.2 }} />
+      <motion.div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]"
+        initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2, ease: EASE_OUT }}>
         <div className="flex items-center justify-between p-4 border-b border-border">
           <p className="text-sm font-semibold text-foreground">
             {mode === 'swap' ? 'Swap Dish' : 'Add Dish'} — {mealType}
@@ -269,7 +280,7 @@ function RecipeSearchModal({ patientId, date, mealType, dishIndex, mode, onClose
             </>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -422,17 +433,19 @@ function MealCard({
         </div>
       )}
 
-      {modalState && (
-        <RecipeSearchModal
-          patientId={patientId}
-          date={meal.Date}
-          mealType={meal['Meal Type']}
-          dishIndex={modalState.dishIndex}
-          mode={modalState.mode}
-          onClose={() => setModalState(null)}
-          onSuccess={() => { onUpdated(); setModalState(null); }}
-        />
-      )}
+      <AnimatePresence>
+        {modalState && (
+          <RecipeSearchModal
+            patientId={patientId}
+            date={meal.Date}
+            mealType={meal['Meal Type']}
+            dishIndex={modalState.dishIndex}
+            mode={modalState.mode}
+            onClose={() => setModalState(null)}
+            onSuccess={() => { onUpdated(); setModalState(null); }}
+          />
+        )}
+      </AnimatePresence>
     </Card>
   );
 }
@@ -752,11 +765,20 @@ function ComboDishSearchModal({ mealType, mode, onClose, onSelect }: {
 }) {
   const [query, setQuery] = useState('');
   const { results, loading } = useRecipeSearch(query);
+  const prefersReducedMotion = useReducedMotion();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose}
-        onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close" />
-      <div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]">
+      <motion.div className="absolute inset-0 bg-black/40" onClick={onClose}
+        onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close"
+        initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+        transition={{ duration: 0.2 }} />
+      <motion.div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]"
+        initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2, ease: EASE_OUT }}>
         <div className="flex items-center justify-between p-4 border-b border-border">
           <p className="text-sm font-semibold text-foreground">
             {mode === 'swap' ? 'Swap Dish' : 'Add Dish'} — {mealType}
@@ -792,7 +814,7 @@ function ComboDishSearchModal({ mealType, mode, onClose, onSelect }: {
             ))}
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -911,17 +933,19 @@ function ComboCard({ combo, mealType, patientId, swapping, onSwap }: {
         </>
       )}
 
-      {searchTarget && (
-        <ComboDishSearchModal
-          mealType={mealType}
-          mode={searchTarget.action}
-          onClose={() => setSearchTarget(null)}
-          onSelect={(fi) => dishEditMut.mutate({
-            dishIndex: searchTarget.dishIndex,
-            body: { action: searchTarget.action, food_item_id: fi.id },
-          })}
-        />
-      )}
+      <AnimatePresence>
+        {searchTarget && (
+          <ComboDishSearchModal
+            mealType={mealType}
+            mode={searchTarget.action}
+            onClose={() => setSearchTarget(null)}
+            onSelect={(fi) => dishEditMut.mutate({
+              dishIndex: searchTarget.dishIndex,
+              body: { action: searchTarget.action, food_item_id: fi.id },
+            })}
+          />
+        )}
+      </AnimatePresence>
     </Card>
   );
 }
@@ -942,6 +966,7 @@ function AddCustomMealModal({ patientId, activeDate, mealType, combos, onClose, 
   const [customName, setCustomName] = useState('');
   const [customCal, setCustomCal] = useState('');
   const { results, loading } = useRecipeSearch(query);
+  const prefersReducedMotion = useReducedMotion();
 
   const handleLibrarySelect = async (fi: FoodItemSummary) => {
     const comboId = combos[comboIndex]?.combo_id;
@@ -982,9 +1007,17 @@ function AddCustomMealModal({ patientId, activeDate, mealType, combos, onClose, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose}
-        onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close" />
-      <div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]">
+      <motion.div className="absolute inset-0 bg-black/40" onClick={onClose}
+        onKeyDown={e => e.key === 'Escape' && onClose()} role="button" tabIndex={-1} aria-label="Close"
+        initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+        transition={{ duration: 0.2 }} />
+      <motion.div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[85vh]"
+        initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2, ease: EASE_OUT }}>
         <div className="flex items-center justify-between p-4 border-b border-border">
           <p className="text-sm font-semibold text-foreground">Add Custom Meal — {mealType}</p>
           <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:bg-accent">
@@ -1081,7 +1114,7 @@ function AddCustomMealModal({ patientId, activeDate, mealType, combos, onClose, 
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -1349,19 +1382,21 @@ export function PlanTab({
         </>
       )}
 
-      {addCustomFor && (
-        <AddCustomMealModal
-          patientId={patientId}
-          activeDate={activeDate}
-          mealType={addCustomFor.mealType}
-          combos={addCustomFor.combos}
-          onClose={() => setAddCustomFor(null)}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: qk.weeklyPlan(patientId) });
-            setAddCustomFor(null);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {addCustomFor && (
+          <AddCustomMealModal
+            patientId={patientId}
+            activeDate={activeDate}
+            mealType={addCustomFor.mealType}
+            combos={addCustomFor.combos}
+            onClose={() => setAddCustomFor(null)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: qk.weeklyPlan(patientId) });
+              setAddCustomFor(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, Search, ChefHat, Flame, Beef, Wheat, Sparkles,
   Loader2, X, AlertCircle, UserPlus, Calendar, Check,
@@ -10,6 +11,7 @@ import { doctorApi, FoodItemSummary, PatientSummary } from '../../../lib/doctorA
 import { qk } from '../../../lib/queryKeys';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { EASE_OUT } from '../../lib/motion-tokens';
 
 const AVOID_TAGS = [
   "avoid_diabetes","avoid_hypertension","avoid_highchol","avoid_pcos",
@@ -72,10 +74,20 @@ function AssignModal({ recipe, onClose }: AssignModalProps) {
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
     );
 
+  const prefersReducedMotion = useReducedMotion();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="button" aria-label="Close dialog" tabIndex={0} />
-      <div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[90vh]">
+      <motion.div className="absolute inset-0 bg-black/40" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="button" aria-label="Close dialog" tabIndex={0}
+        initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+        transition={{ duration: 0.2 }} />
+      <motion.div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[90vh]"
+        initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2, ease: EASE_OUT }}>
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-border">
           <div>
@@ -193,7 +205,7 @@ function AssignModal({ recipe, onClose }: AssignModalProps) {
             </Button>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -718,12 +730,14 @@ export function Recipes() {
       )}
 
       {/* Assign Recipe Modal */}
-      {assignRecipe && (
-        <AssignModal
-          recipe={assignRecipe}
-          onClose={() => setAssignRecipe(null)}
-        />
-      )}
+      <AnimatePresence>
+        {assignRecipe && (
+          <AssignModal
+            recipe={assignRecipe}
+            onClose={() => setAssignRecipe(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
