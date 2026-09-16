@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Bell, Sun, Moon } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Notification } from '../../data/mockData';
 import { useTheme } from '../../hooks/useTheme';
+import { EASE_OUT } from '../../lib/motion-tokens';
 
 interface BreadcrumbItem {
   label: string;
@@ -20,6 +22,7 @@ export function TopBar({ breadcrumbs, notifications, userName, userRole, onSearc
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
+  const prefersReducedMotion = useReducedMotion();
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -81,39 +84,47 @@ export function TopBar({ breadcrumbs, notifications, userName, userRole, onSearc
           )}
         </button>
 
-        {notifOpen && (
-          <div className="absolute right-0 top-11 w-80 bg-card rounded-lg border border-border shadow-[var(--shadow-modal)] z-50 overflow-hidden">
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <span className="text-sm font-semibold text-foreground">Notifications</span>
-              {unreadCount > 0 && (
-                <span className="text-xs text-muted-foreground">{unreadCount} unread</span>
-              )}
-            </div>
-            <div className="max-h-72 overflow-y-auto">
-              {notifications.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">No notifications</p>
-              ) : (
-                notifications.map(notif => (
-                  <div
-                    key={notif.id}
-                    className={`px-4 py-3 border-b border-border last:border-0 ${!notif.read ? 'bg-brand-50' : ''}`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${
-                        notif.type === 'alert' ? 'bg-destructive' :
-                        notif.type === 'warning' ? 'bg-amber-500' : 'bg-primary'
-                      }`} />
-                      <div>
-                        <p className="text-sm text-foreground">{notif.text}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{notif.time}</p>
+        <AnimatePresence>
+          {notifOpen && (
+            <motion.div
+              className="absolute right-0 top-11 w-80 bg-card rounded-lg border border-border shadow-[var(--shadow-modal)] z-50 overflow-hidden origin-top-right"
+              initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.95 }}
+              animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+              exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15, ease: EASE_OUT }}
+            >
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <span className="text-sm font-semibold text-foreground">Notifications</span>
+                {unreadCount > 0 && (
+                  <span className="text-xs text-muted-foreground">{unreadCount} unread</span>
+                )}
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">No notifications</p>
+                ) : (
+                  notifications.map(notif => (
+                    <div
+                      key={notif.id}
+                      className={`px-4 py-3 border-b border-border last:border-0 ${!notif.read ? 'bg-brand-50' : ''}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${
+                          notif.type === 'alert' ? 'bg-destructive' :
+                          notif.type === 'warning' ? 'bg-amber-500' : 'bg-primary'
+                        }`} />
+                        <div>
+                          <p className="text-sm text-foreground">{notif.text}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{notif.time}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
+                  ))
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Avatar */}

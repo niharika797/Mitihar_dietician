@@ -2,7 +2,8 @@ import React, { useEffect, useCallback } from 'react';
 import { Command } from 'cmdk';
 import { Search, Users, ChefHat, LayoutDashboard, Bell, Settings, CreditCard } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { EASE_STANDARD } from '../../lib/motion-tokens';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -51,29 +52,31 @@ export function CommandPalette({ open, onClose, role }: CommandPaletteProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  if (!open) return null;
-
-  const groups = [...new Set(commands.map(c => c.group))];
+  const groups = open ? [...new Set(commands.map(c => c.group))] : [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
-      <motion.div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-        onKeyDown={(e) => e.key === "Escape" && onClose()}
-        role="button"
-        aria-label="Close command palette"
-        tabIndex={0}
-        initial={prefersReducedMotion ? undefined : { opacity: 0 }}
-        animate={prefersReducedMotion ? undefined : { opacity: 1 }}
-        transition={{ duration: 0.15 }}
-      />
-      <motion.div
-        className="relative w-full max-w-lg mx-4"
-        initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.98, y: -4 }}
-        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-      >
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
+          <motion.div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={onClose}
+            onKeyDown={(e) => e.key === "Escape" && onClose()}
+            role="button"
+            aria-label="Close command palette"
+            tabIndex={0}
+            initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+            animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          />
+          <motion.div
+            className="relative w-full max-w-lg mx-4"
+            initial={prefersReducedMotion ? undefined : { opacity: 0, transform: 'translateY(-4px) scale(0.98)' }}
+            animate={prefersReducedMotion ? undefined : { opacity: 1, transform: 'translateY(0px) scale(1)' }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0, transform: 'translateY(-4px) scale(0.98)' }}
+            transition={{ duration: 0.15, ease: EASE_STANDARD }}
+          >
         <Command
           className="bg-card rounded-xl border border-border shadow-[var(--shadow-modal)] overflow-hidden"
           shouldFilter
@@ -114,7 +117,9 @@ export function CommandPalette({ open, onClose, role }: CommandPaletteProps) {
             ))}
           </Command.List>
         </Command>
-      </motion.div>
-    </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }
