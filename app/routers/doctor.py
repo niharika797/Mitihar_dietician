@@ -2232,7 +2232,31 @@ async def get_dashboard(
         plans_generated_this_week=plans_this_week,
         inactive_patients=inactive_patients,
         expiring_soon=expiring_soon,
+        product_tour_completed_at=doctor.product_tour_completed_at,
     )
+
+
+# ─── PATCH /api/v1/doctor/tour-complete ───────────────────────────────────
+
+@router.patch("/tour-complete", status_code=200)
+async def complete_tour(
+    request: Request,
+    doctor: Doctor = Depends(get_current_doctor),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Doctor finishes or skips the product tour — both call this identically.
+    Stores the UTC timestamp. Idempotent — safe to call multiple times.
+    """
+    did = _doctor_id(request)
+    completed_at = datetime.now(timezone.utc)
+    await session.execute(
+        update(Doctor)
+        .where(Doctor.id == did)
+        .values(product_tour_completed_at=completed_at)
+    )
+    await session.flush()
+    return {"message": "Tour complete", "completed_at": completed_at.isoformat()}
 
 
 # ─── POST /api/v1/doctor/patients/{patient_id}/record-visit ───────────────

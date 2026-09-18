@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { doctorApi, MealLogEntry } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
-import { CheckCircle, XCircle, Loader2, ClipboardList } from 'lucide-react';
+import { Loader2, ClipboardList } from 'lucide-react';
+import { Card } from '../../../components/ui/Card';
 
 interface ActivityTabProps {
   patientId: number;
@@ -44,17 +45,17 @@ export function ActivityTab({ patientId, patientName }: ActivityTabProps) {
     <div className="max-w-3xl">
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-[#111827]">Activity Log</h2>
-          <p className="text-sm text-[#6B7280]">Meal logs for {patientName}</p>
+          <h2 className="text-lg font-semibold text-foreground">Activity Log</h2>
+          <p className="text-sm text-muted-foreground">Meal logs for {patientName}</p>
         </div>
         {/* Period selector */}
-        <div className="flex items-center gap-1 border border-[#D1D5DB] rounded-md overflow-hidden">
+        <div className="flex items-center gap-1 border border-border rounded-md overflow-hidden">
           {DAY_OPTIONS.map(d => (
             <button
               key={d}
               onClick={() => setDays(d)}
               className={`h-8 px-3 text-xs font-medium transition-colors ${
-                days === d ? 'bg-[#1E7C45] text-white' : 'text-[#6B7280] hover:bg-[#F3F4F6]'
+                days === d ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
               }`}
             >
               {d}d
@@ -65,20 +66,20 @@ export function ActivityTab({ patientId, patientName }: ActivityTabProps) {
 
       {isLoading ? (
         <div className="flex justify-center py-16">
-          <Loader2 size={24} className="animate-spin text-[#1E7C45]" />
+          <Loader2 size={20} className="animate-spin text-primary" />
         </div>
       ) : isError ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-lg py-14 text-center">
-          <p className="text-base font-medium text-[#374151]">Could not load activity logs</p>
-        </div>
+        <Card className="py-14 text-center">
+          <p className="text-base font-medium text-secondary-foreground">Could not load activity logs</p>
+        </Card>
       ) : sortedDates.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-lg py-16 text-center">
-          <ClipboardList size={32} className="text-[#D1D5DB] mx-auto mb-3" />
-          <p className="text-base font-medium text-[#374151]">No logs in the last {days} days</p>
-          <p className="text-sm text-[#6B7280] mt-1">
+        <Card className="py-16 text-center">
+          <ClipboardList size={20} className="text-muted-foreground mx-auto mb-3" />
+          <p className="text-base font-medium text-secondary-foreground">No logs in the last {days} days</p>
+          <p className="text-sm text-muted-foreground mt-1">
             {patientName} hasn't logged any meals recently.
           </p>
-        </div>
+        </Card>
       ) : (
         <div className="space-y-5">
           {sortedDates.map(date => {
@@ -86,23 +87,23 @@ export function ActivityTab({ patientId, patientName }: ActivityTabProps) {
             const totalCals = logs.reduce((s, l) => s + (l.calories_consumed ?? 0), 0);
 
             return (
-              <div key={date} className="bg-white border border-[#E5E7EB] rounded-lg overflow-hidden">
-                <div className="px-5 py-3 bg-[#F9FAFB] border-b border-[#E5E7EB] flex items-center justify-between">
-                  <p className="text-sm font-medium text-[#374151]">{formatDate(date)}</p>
-                  <div className="flex items-center gap-3 text-xs text-[#6B7280]">
-                    <span className="tabular-nums font-medium text-[#111827]">
+              <Card key={date} className="overflow-hidden">
+                <div className="px-5 py-3 bg-input-background border-b border-border flex items-center justify-between">
+                  <p className="text-sm font-medium text-secondary-foreground">{formatDate(date)}</p>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="tabular-nums font-medium text-foreground">
                       {Math.round(totalCals)} kcal
                     </span>
-                    <span className="text-[#9CA3AF]">{logs.length} entries</span>
+                    <span className="text-muted-foreground">{logs.length} entries</span>
                   </div>
                 </div>
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#F3F4F6]">
+                    <tr className="border-b border-border">
                       {['Meal', 'Food', 'Calories', 'Protein', 'Carbs', 'Fat'].map(h => (
                         <th
                           key={h}
-                          className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280]"
+                          className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
                         >
                           {h}
                         </th>
@@ -111,31 +112,31 @@ export function ActivityTab({ patientId, patientName }: ActivityTabProps) {
                   </thead>
                   <tbody>
                     {logs.map(log => (
-                      <tr key={log.id} className="border-b border-[#F3F4F6] last:border-0 hover:bg-[#F9FAFB]">
-                        <td className="px-4 py-3 text-sm text-[#6B7280]">{log.meal_type}</td>
-                        <td className="px-4 py-3 text-sm text-[#111827]">
+                      <tr key={log.id} className="border-b border-border last:border-0 hover:bg-input-background">
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{log.meal_type}</td>
+                        <td className="px-4 py-3 text-sm text-foreground">
                           {log.custom_food_name ?? '—'}
                           {log.notes && (
-                            <p className="text-xs text-[#9CA3AF] mt-0.5">{log.notes}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{log.notes}</p>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-[#374151] tabular-nums">
+                        <td className="px-4 py-3 text-sm text-secondary-foreground tabular-nums">
                           {Math.round(log.calories_consumed)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-[#2563EB] tabular-nums">
+                        <td className="px-4 py-3 text-sm text-blue-600 tabular-nums">
                           {log.protein_g.toFixed(1)}g
                         </td>
-                        <td className="px-4 py-3 text-sm text-[#F59E0B] tabular-nums">
+                        <td className="px-4 py-3 text-sm text-amber-500 tabular-nums">
                           {log.carbs_g.toFixed(1)}g
                         </td>
-                        <td className="px-4 py-3 text-sm text-[#6B7280] tabular-nums">
+                        <td className="px-4 py-3 text-sm text-muted-foreground tabular-nums">
                           {log.fat_g.toFixed(1)}g
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </Card>
             );
           })}
         </div>

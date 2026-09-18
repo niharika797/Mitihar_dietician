@@ -1,6 +1,7 @@
 import React from 'react';
 import { PatientSummary } from '../../../../lib/doctorApi';
 import { Mail, Calendar, Target, AlertTriangle } from 'lucide-react';
+import { Card } from '../../../components/ui/Card';
 
 interface ProfileTabProps {
   patient: PatientSummary;
@@ -23,35 +24,35 @@ export function ProfileTab({ patient }: ProfileTabProps) {
   return (
     <div className="grid grid-cols-12 gap-5 max-w-4xl">
       {/* Personal Info */}
-      <div className="col-span-12 md:col-span-6 bg-white border border-[#E5E7EB] rounded-lg p-5">
-        <h3 className="text-base font-medium text-[#111827] mb-4">Personal Information</h3>
+      <Card className="col-span-12 md:col-span-6 p-5">
+        <h3 className="text-base font-medium text-foreground mb-4">Personal Information</h3>
         <div className="space-y-3">
           <InfoRow label="Full Name" value={patient.name} />
           <InfoRow label="Age" value={patient.date_of_birth ? `${calcAge(patient.date_of_birth)} years` : '—'} />
           <InfoRow label="Gender" value={patient.gender ? patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1).toLowerCase() : '—'} />
           <InfoRow label="Meals per Day" value={String(patient.meals_per_day)} />
           <div className="flex items-start gap-2 py-2">
-            <Mail size={15} className="text-[#6B7280] mt-0.5 flex-shrink-0" />
+            <Mail size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs text-[#9CA3AF]">Email</p>
-              <p className="text-sm text-[#111827]">{patient.email}</p>
+              <p className="text-xs text-muted-foreground">Email</p>
+              <p className="text-sm text-foreground">{patient.email}</p>
             </div>
           </div>
           {patient.date_of_birth && (
             <div className="flex items-start gap-2 py-2">
-              <Calendar size={15} className="text-[#6B7280] mt-0.5 flex-shrink-0" />
+              <Calendar size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs text-[#9CA3AF]">Date of Birth</p>
-                <p className="text-sm text-[#111827]">{patient.date_of_birth}</p>
+                <p className="text-xs text-muted-foreground">Date of Birth</p>
+                <p className="text-sm text-foreground">{patient.date_of_birth}</p>
               </div>
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Health Profile */}
-      <div className="col-span-12 md:col-span-6 bg-white border border-[#E5E7EB] rounded-lg p-5">
-        <h3 className="text-base font-medium text-[#111827] mb-4">Health Metrics</h3>
+      <Card className="col-span-12 md:col-span-6 p-5">
+        <h3 className="text-base font-medium text-foreground mb-4">Health Metrics</h3>
         <div className="space-y-3">
           <InfoRow label="Height" value={patient.height_cm ? `${patient.height_cm} cm` : '—'} />
           <InfoRow label="Current Weight" value={patient.weight_kg ? `${patient.weight_kg} kg` : '—'} />
@@ -70,88 +71,88 @@ export function ProfileTab({ patient }: ProfileTabProps) {
           />
           <InfoRow label="Activity Level" value={ACTIVITY_LABELS[patient.activity_level ?? ''] ?? patient.activity_level ?? '—'} />
         </div>
-      </div>
+      </Card>
 
       {/* Dietary & Goals */}
-      <div className="col-span-12 bg-white border border-[#E5E7EB] rounded-lg p-5">
-        <h3 className="text-base font-medium text-[#111827] mb-4">Dietary & Health Profile</h3>
+      <Card className="col-span-12 p-5">
+        <h3 className="text-base font-medium text-foreground mb-4">Dietary & Health Profile</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
           <div>
-            <p className="text-xs text-[#9CA3AF] mb-1">Diet Type</p>
-            <p className="text-sm font-medium text-[#111827]">{patient.diet_type || '—'}</p>
+            <p className="text-xs text-muted-foreground mb-1">Diet Type</p>
+            <p className="text-sm font-medium text-foreground">{patient.diet_type || '—'}</p>
           </div>
           <div>
-            <p className="text-xs text-[#9CA3AF] mb-1">Main Health Condition</p>
-            <p className="text-sm font-medium text-[#111827]">{patient.health_condition || '—'}</p>
+            <p className="text-xs text-muted-foreground mb-1">Main Health Condition</p>
+            <p className="text-sm font-medium text-foreground">{patient.health_condition || '—'}</p>
           </div>
-          <div className="col-span-1 md:col-span-2 border-t border-[#F3F4F6] pt-4">
-            <p className="text-xs text-[#9CA3AF] mb-2 uppercase tracking-wider font-semibold">Health Goals</p>
+          <div className="col-span-1 md:col-span-2 border-t border-border pt-4">
+            <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-semibold">Health Goals</p>
             <div className="flex flex-wrap gap-2">
               {patient.health_goals.length > 0 ? (
                 patient.health_goals.map(goal => (
-                  <span key={goal} className="px-2.5 py-1 bg-[#F0FDF4] text-[#166534] text-xs font-medium rounded-full border border-[#BBF7D0]">
+                  <span key={goal} className="px-2.5 py-1 bg-brand-50 text-brand-700 text-xs font-medium rounded-full border border-brand-100">
                     {goal}
                   </span>
                 ))
               ) : (
-                <span className="text-sm text-[#9CA3AF]">No specific goals listed</span>
+                <span className="text-sm text-muted-foreground">No specific goals listed</span>
               )}
             </div>
           </div>
-          <div className="col-span-1 md:col-span-2 border-t border-[#F3F4F6] pt-4">
-            <p className="text-xs text-[#9CA3AF] mb-2 uppercase tracking-wider font-semibold flex items-center gap-1">
-              <AlertTriangle size={12} className="text-[#DC2626]" /> Medical Conditions & Allergies
+          <div className="col-span-1 md:col-span-2 border-t border-border pt-4">
+            <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider font-semibold flex items-center gap-1">
+              <AlertTriangle size={14} className="text-destructive" /> Medical Conditions & Allergies
             </p>
             <div className="space-y-3">
               <div>
-                <p className="text-[10px] text-[#9CA3AF] mb-1 italic">Conditions:</p>
+                <p className="text-[10px] text-muted-foreground mb-1 italic">Conditions:</p>
                 <div className="flex flex-wrap gap-2">
                   {patient.medical_conditions.length > 0 ? (
                     patient.medical_conditions.map(cond => (
-                      <span key={cond} className="px-2.5 py-1 bg-[#FEF2F2] text-[#991B1B] text-xs font-medium rounded-full border border-[#FECACA]">
+                      <span key={cond} className="px-2.5 py-1 bg-red-50 text-destructive text-xs font-medium rounded-full border border-destructive/30">
                         {cond}
                       </span>
                     ))
                   ) : (
-                    <span className="text-sm text-[#9CA3AF]">None reported</span>
+                    <span className="text-sm text-muted-foreground">None reported</span>
                   )}
                 </div>
               </div>
               <div>
-                <p className="text-[10px] text-[#9CA3AF] mb-1 italic">Allergies:</p>
+                <p className="text-[10px] text-muted-foreground mb-1 italic">Allergies:</p>
                 <div className="flex flex-wrap gap-2">
                   {patient.food_allergies.length > 0 ? (
                     patient.food_allergies.map(allergy => (
-                      <span key={allergy} className="px-2.5 py-1 bg-[#FFFBEB] text-[#92400E] text-xs font-medium rounded-full border border-[#FEF3C7]">
+                      <span key={allergy} className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-full border border-amber-500/30">
                         {allergy}
                       </span>
                     ))
                   ) : (
-                    <span className="text-sm text-[#9CA3AF]">No food allergies reported</span>
+                    <span className="text-sm text-muted-foreground">No food allergies reported</span>
                   )}
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Subscription */}
-      <div className="col-span-12 bg-white border border-[#E5E7EB] rounded-lg p-5">
-        <h3 className="text-base font-medium text-[#111827] mb-4">Subscription Status</h3>
+      <Card className="col-span-12 p-5">
+        <h3 className="text-base font-medium text-foreground mb-4">Subscription Status</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[
             { label: 'Status',     value: patient.subscription_status.charAt(0).toUpperCase() + patient.subscription_status.slice(1) },
             { label: 'User Type',  value: patient.user_type === 'doctor_assigned' ? 'Doctor Assigned' : 'Standalone' },
             { label: 'Meals Intake',  value: `${patient.meals_per_day} meals/day` },
           ].map(item => (
-            <div key={item.label} className="bg-[#F9FAFB] rounded-lg p-3">
-              <p className="text-xs text-[#9CA3AF] mb-1">{item.label}</p>
-              <p className="text-sm font-medium text-[#111827]">{item.value}</p>
+            <div key={item.label} className="bg-input-background rounded-lg p-3">
+              <p className="text-xs text-muted-foreground mb-1">{item.label}</p>
+              <p className="text-sm font-medium text-foreground">{item.value}</p>
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
     </div>
   );
@@ -159,9 +160,9 @@ export function ProfileTab({ patient }: ProfileTabProps) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-[#F3F4F6] last:border-0">
-      <span className="text-xs text-[#9CA3AF]">{label}</span>
-      <span className="text-sm text-[#111827] font-medium">{value}</span>
+    <div className="flex items-center justify-between py-2 border-b border-border last:border-0">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-sm text-foreground font-medium">{value}</span>
     </div>
   );
 }

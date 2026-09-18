@@ -5,9 +5,11 @@ import {
   Search, UserCheck, ChevronLeft, ChevronRight, Stethoscope,
   Loader2, X, Plus,
 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { adminApi, DoctorAdminView, CreateDoctorBody, UpdateDoctorBody } from '../../../lib/adminApi';
 import { aqk } from '../../../lib/queryKeys';
+import { EASE_OUT } from '../../lib/motion-tokens';
 
 const PAGE_SIZE = 10;
 
@@ -40,11 +42,29 @@ function OnboardModal({ onClose }: { onClose: () => void }) {
       setForm(prev => ({ ...prev, [k]: e.target.value }));
 
   const canSubmit = form.email.trim() && form.password.length >= 8 && form.name.trim();
+  const prefersReducedMotion = useReducedMotion();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && (onClose)} role="button" aria-label="Close dialog" tabIndex={0} />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md">
+      <motion.div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+        onKeyDown={(e) => e.key === "Escape" && (onClose)}
+        role="button"
+        aria-label="Close dialog"
+        tabIndex={0}
+        initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+        transition={{ duration: 0.2 }}
+      />
+      <motion.div
+        className="relative bg-white rounded-xl shadow-2xl w-full max-w-md"
+        initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2, ease: EASE_OUT }}
+      >
         <div className="flex items-center justify-between p-5 border-b border-[#E5E7EB]">
           <p className="text-base font-semibold text-[#111827]">Onboard New Doctor</p>
           <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
@@ -121,7 +141,7 @@ function OnboardModal({ onClose }: { onClose: () => void }) {
             Create Doctor
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -160,10 +180,29 @@ function EditDoctorModal({ doctor, onClose }: { doctor: DoctorAdminView; onClose
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm(prev => ({ ...prev, [k]: e.target.value }));
 
+  const prefersReducedMotion = useReducedMotion();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} onKeyDown={(e) => e.key === 'Escape' && onClose()} role="button" aria-label="Close dialog" tabIndex={0} />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md">
+      <motion.div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+        onKeyDown={(e) => e.key === 'Escape' && onClose()}
+        role="button"
+        aria-label="Close dialog"
+        tabIndex={0}
+        initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+        transition={{ duration: 0.2 }}
+      />
+      <motion.div
+        className="relative bg-white rounded-xl shadow-2xl w-full max-w-md"
+        initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2, ease: EASE_OUT }}
+      >
         <div className="flex items-center justify-between p-5 border-b border-[#E5E7EB]">
           <p className="text-base font-semibold text-[#111827]">Edit Doctor</p>
           <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
@@ -214,7 +253,7 @@ function EditDoctorModal({ doctor, onClose }: { doctor: DoctorAdminView; onClose
             Save Changes
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -408,10 +447,14 @@ export function AdminDoctors() {
       )}
 
       {/* Onboard modal */}
-      {showOnboard && <OnboardModal onClose={() => setShowOnboard(false)} />}
+      <AnimatePresence>
+        {showOnboard && <OnboardModal onClose={() => setShowOnboard(false)} />}
+      </AnimatePresence>
 
       {/* Edit doctor modal */}
-      {editDoctor && <EditDoctorModal doctor={editDoctor} onClose={() => setEditDoctor(null)} />}
+      <AnimatePresence>
+        {editDoctor && <EditDoctorModal doctor={editDoctor} onClose={() => setEditDoctor(null)} />}
+      </AnimatePresence>
 
       {/* Confirm dialog */}
       <ConfirmDialog

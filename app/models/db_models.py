@@ -152,6 +152,7 @@ class Doctor(Base):
     role: Mapped[str | None] = mapped_column(String(10), default="doctor")
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    product_tour_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # relationships
     patients: Mapped[list["Patient"]] = relationship("Patient", back_populates="doctor", foreign_keys="Patient.doctor_id")

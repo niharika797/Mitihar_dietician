@@ -2,6 +2,8 @@ import React, { useEffect, useCallback } from 'react';
 import { Command } from 'cmdk';
 import { Search, Users, ChefHat, LayoutDashboard, Bell, Settings, CreditCard } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { EASE_STANDARD } from '../../lib/motion-tokens';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -34,6 +36,7 @@ const adminCommands = [
 export function CommandPalette({ open, onClose, role }: CommandPaletteProps) {
   const navigate = useNavigate();
   const commands = role === 'doctor' ? doctorCommands : adminCommands;
+  const prefersReducedMotion = useReducedMotion();
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -49,47 +52,64 @@ export function CommandPalette({ open, onClose, role }: CommandPaletteProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  if (!open) return null;
-
-  const groups = [...new Set(commands.map(c => c.group))];
+  const groups = open ? [...new Set(commands.map(c => c.group))] : [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="button" aria-label="Close command palette" tabIndex={0} />
-      <div className="relative w-full max-w-lg mx-4">
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
+          <motion.div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={onClose}
+            onKeyDown={(e) => e.key === "Escape" && onClose()}
+            role="button"
+            aria-label="Close command palette"
+            tabIndex={0}
+            initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+            animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          />
+          <motion.div
+            className="relative w-full max-w-lg mx-4"
+            initial={prefersReducedMotion ? undefined : { opacity: 0, transform: 'translateY(-4px) scale(0.98)' }}
+            animate={prefersReducedMotion ? undefined : { opacity: 1, transform: 'translateY(0px) scale(1)' }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0, transform: 'translateY(-4px) scale(0.98)' }}
+            transition={{ duration: 0.15, ease: EASE_STANDARD }}
+          >
         <Command
-          className="bg-white rounded-xl border border-[#E5E7EB] shadow-[0_20px_25px_-5px_rgb(0_0_0/0.15)] overflow-hidden"
+          className="bg-card rounded-xl border border-border shadow-[var(--shadow-modal)] overflow-hidden"
           shouldFilter
         >
-          <div className="flex items-center gap-3 px-4 border-b border-[#E5E7EB]">
-            <Search size={16} className="text-[#9CA3AF] flex-shrink-0" />
+          <div className="flex items-center gap-3 px-4 border-b border-border">
+            <Search size={16} className="text-muted-foreground flex-shrink-0" />
             <Command.Input
               aria-label="Search patients, pages, and actions"
               placeholder="Search patients, pages, actions..."
-              className="flex-1 h-12 bg-transparent text-sm text-[#111827] placeholder:text-[#9CA3AF] outline-none"
+              className="flex-1 h-12 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
             />
-            <kbd className="flex items-center gap-0.5 rounded border border-[#E5E7EB] bg-[#F9FAFB] px-1.5 text-[10px] text-[#9CA3AF]">
+            <kbd className="flex items-center gap-0.5 rounded border border-border bg-input-background px-1.5 text-[10px] text-muted-foreground">
               ESC
             </kbd>
           </div>
 
           <Command.List className="max-h-72 overflow-y-auto py-2">
-            <Command.Empty className="py-8 text-center text-sm text-[#6B7280]">
+            <Command.Empty className="py-8 text-center text-sm text-muted-foreground">
               No results found.
             </Command.Empty>
 
             {groups.map(group => (
               <Command.Group key={group} heading={group}
-                className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-[#9CA3AF]"
+                className="[&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-muted-foreground"
               >
                 {commands.filter(c => c.group === group).map(cmd => (
                   <Command.Item
                     key={cmd.to}
                     value={cmd.label}
                     onSelect={() => { navigate(cmd.to); onClose(); }}
-                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-[#374151] cursor-pointer data-[selected=true]:bg-[#F0FDF4] data-[selected=true]:text-[#1E7C45] transition-colors"
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-secondary-foreground cursor-pointer data-[selected=true]:bg-brand-50 data-[selected=true]:text-primary transition-colors"
                   >
-                    <span className="text-[#6B7280] data-[selected=true]:text-[#1E7C45]">{cmd.icon}</span>
+                    <span className="text-muted-foreground data-[selected=true]:text-primary">{cmd.icon}</span>
                     {cmd.label}
                   </Command.Item>
                 ))}
@@ -97,7 +117,9 @@ export function CommandPalette({ open, onClose, role }: CommandPaletteProps) {
             ))}
           </Command.List>
         </Command>
-      </div>
-    </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }

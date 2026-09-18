@@ -326,6 +326,7 @@ class DoctorDashboardStats(BaseModel):
     plans_generated_this_week: int
     inactive_patients: list[dict]
     expiring_soon: list[dict]
+    product_tour_completed_at: Optional[datetime] = None
 
 
 # ── Visit verification schemas ─────────────────────────────────────────────

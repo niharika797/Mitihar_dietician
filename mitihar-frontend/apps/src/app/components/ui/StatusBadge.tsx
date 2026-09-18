@@ -8,15 +8,15 @@ interface StatusBadgeProps {
 }
 
 const statusStyles: Record<Status, string> = {
-  active:   'bg-[#DCFCE7] text-[#15803d]',
-  approved: 'bg-[#DCFCE7] text-[#15803d]',
-  paid:     'bg-[#DCFCE7] text-[#15803d]',
-  inactive: 'bg-[#F3F4F6] text-[#4B5563]',
-  pending:  'bg-[#FFFBEB] text-[#B45309]',
-  expired:  'bg-[#FEF2F2] text-[#DC2626]',
-  rejected: 'bg-[#FEF2F2] text-[#DC2626]',
-  overdue:  'bg-[#FEF2F2] text-[#DC2626]',
-  warning:  'bg-[#FFFBEB] text-[#B45309]',
+  active:   'bg-brand-100 text-brand-700',
+  approved: 'bg-brand-100 text-brand-700',
+  paid:     'bg-brand-100 text-brand-700',
+  inactive: 'bg-slate-100 text-slate-600',
+  pending:  'bg-amber-50 text-amber-700',
+  expired:  'bg-red-50 text-red-600',
+  rejected: 'bg-red-50 text-red-600',
+  overdue:  'bg-red-50 text-red-600',
+  warning:  'bg-amber-50 text-amber-700',
 };
 
 const defaultLabels: Record<Status, string> = {

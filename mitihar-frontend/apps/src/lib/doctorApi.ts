@@ -290,6 +290,7 @@ export interface DashboardStats {
   plans_generated_this_week: number;
   inactive_patients: { patient_id: number; name: string; email: string }[];
   expiring_soon: { patient_id: number; name: string; subscription_end_date: string }[];
+  product_tour_completed_at: string | null;
 }
 
 // ── v2 weekly plan types ─────────────────────────────────────────────────────
@@ -406,6 +407,8 @@ export const doctorApi = {
   // Dashboard
   getDashboard: () =>
     apiClient.get<DashboardStats>('/doctor/dashboard').then(r => r.data),
+  completeTour: () =>
+    apiClient.patch<{ message: string; completed_at: string }>('/doctor/tour-complete').then(r => r.data),
 
   // Patients
   listPatients: (page: number, search: string) =>

@@ -37,7 +37,7 @@ export function PatientDetail() {
   if (isLoading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <Loader2 size={28} className="animate-spin text-[#1E7C45]" />
+        <Loader2 size={20} className="animate-spin text-primary" />
       </div>
     );
   }
@@ -45,11 +45,11 @@ export function PatientDetail() {
   if (isError || !patient) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[400px]">
-        <AlertCircle size={40} className="text-[#9CA3AF] mb-3" />
-        <p className="text-base font-medium text-[#374151]">Patient not found</p>
+        <AlertCircle size={20} className="text-muted-foreground mb-3" />
+        <p className="text-base font-medium text-secondary-foreground">Patient not found</p>
         <button
           onClick={() => navigate('/doctor/patients')}
-          className="mt-4 text-sm text-[#1E7C45] hover:underline"
+          className="mt-4 text-sm text-primary hover:underline"
         >
           ← Back to Patients
         </button>
@@ -70,10 +70,10 @@ export function PatientDetail() {
   return (
     <div>
       {/* Patient header */}
-      <div className="bg-white border-b border-[#E5E7EB] px-6 py-4">
+      <div className="bg-card border-b border-border px-6 py-4">
         <button
           onClick={() => navigate('/doctor/patients')}
-          className="flex items-center gap-1.5 text-sm text-[#6B7280] hover:text-[#374151] mb-3 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-secondary-foreground mb-3 transition-colors"
         >
           <ChevronLeft size={16} />
           Patients
@@ -82,31 +82,31 @@ export function PatientDetail() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">{patient.name}</h1>
+              <h1 className="text-2xl font-semibold text-foreground tracking-tight">{patient.name}</h1>
               <StatusBadge status={subStatusToStatus(patient.subscription_status)} />
             </div>
-            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-sm text-[#6B7280]">
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
               <span>{patient.gender}</span>
               {patient.bmi != null && (
                 <>
-                  <span className="text-[#D1D5DB]">·</span>
+                  <span className="text-border">·</span>
                   <span>BMI {patient.bmi.toFixed(1)}</span>
                 </>
               )}
               {patient.tdee != null && (
                 <>
-                  <span className="text-[#D1D5DB]">·</span>
+                  <span className="text-border">·</span>
                   <span>TDEE {Math.round(patient.tdee)} kcal</span>
                 </>
               )}
-              <span className="text-[#D1D5DB]">·</span>
+              <span className="text-border">·</span>
               <span>{patient.meals_per_day} meals/day</span>
             </div>
-            <p className="text-sm text-[#6B7280] mt-0.5">{patient.email}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{patient.email}</p>
           </div>
 
           <div className="text-right">
-            <p className="text-xs text-[#9CA3AF]">
+            <p className="text-xs text-muted-foreground">
               {patient.user_type === 'doctor_assigned' ? 'Doctor assigned' : 'Standalone'}
             </p>
           </div>
@@ -120,8 +120,8 @@ export function PatientDetail() {
               onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.id
-                  ? 'border-[#1E7C45] text-[#1E7C45]'
-                  : 'border-transparent text-[#6B7280] hover:text-[#374151] hover:border-[#D1D5DB]'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-secondary-foreground hover:border-border'
               }`}
             >
               {tab.label}

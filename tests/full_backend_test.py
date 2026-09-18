@@ -503,6 +503,26 @@ if test_patient_id:
         check("Override returns end_date not null", r.json().get("end_date") is not None)
 
 # ─────────────────────────────────────────────
+# SECTION 17 — DOCTOR: PRODUCT TOUR
+# ─────────────────────────────────────────────
+print("\n── SECTION 17: Doctor — Product Tour ──")
+
+r = httpx.get(f"{BASE}/doctor/dashboard", headers=hdr(doctor_token))
+check("Dashboard has product_tour_completed_at", "product_tour_completed_at" in r.json() if r.status_code == 200 else False)
+
+r = httpx.patch(f"{BASE}/doctor/tour-complete", headers=hdr(doctor_token))
+check("PATCH /doctor/tour-complete returns 200 (first call)", r.status_code == 200, r.text)
+first_completed_at = r.json().get("completed_at") if r.status_code == 200 else None
+
+r = httpx.patch(f"{BASE}/doctor/tour-complete", headers=hdr(doctor_token))
+check("PATCH /doctor/tour-complete returns 200 (second call, idempotent)", r.status_code == 200, r.text)
+second_completed_at = r.json().get("completed_at") if r.status_code == 200 else None
+check("Second call's timestamp is not earlier than the first", bool(first_completed_at) and bool(second_completed_at) and second_completed_at >= first_completed_at)
+
+r = httpx.get(f"{BASE}/doctor/dashboard", headers=hdr(doctor_token))
+check("Dashboard reflects product_tour_completed_at set after PATCH", r.status_code == 200 and r.json().get("product_tour_completed_at") is not None, r.text)
+
+# ─────────────────────────────────────────────
 # FINAL SUMMARY
 # ─────────────────────────────────────────────
 print("\n" + "="*60)

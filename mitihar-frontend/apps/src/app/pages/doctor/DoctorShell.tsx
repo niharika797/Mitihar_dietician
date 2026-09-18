@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { Joyride } from 'react-joyride';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { TopBar } from '../../components/layout/TopBar';
 import { CommandPalette } from '../../components/layout/CommandPalette';
 import { useAuthStore } from '../../../stores/authStore';
 import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
+import { useProductTour } from '../../hooks/useProductTour';
+import { useTheme } from '../../hooks/useTheme';
 
 function getBreadcrumbs(pathname: string) {
   const map: Record<string, { label: string }[]> = {
@@ -60,6 +63,9 @@ export function DoctorShell() {
     type: (f.status === 'approved' ? 'request' : 'warning') as 'request' | 'warning',
   }));
 
+  const tour = useProductTour();
+  const { theme } = useTheme();
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -72,7 +78,7 @@ export function DoctorShell() {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F9FAFB]">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar
         role="doctor"
         userName={userName}
@@ -92,6 +98,19 @@ export function DoctorShell() {
         </main>
       </div>
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} role="doctor" />
+      <Joyride
+        run={tour.run}
+        stepIndex={tour.stepIndex}
+        steps={tour.steps}
+        onEvent={tour.onEvent}
+        continuous
+        options={{
+          buttons: ['back', 'close', 'primary', 'skip'],
+          primaryColor: theme === 'dark' ? '#34B164' : '#1E7C45',
+          zIndex: 10000,
+          skipScroll: true,
+        }}
+      />
     </div>
   );
 }

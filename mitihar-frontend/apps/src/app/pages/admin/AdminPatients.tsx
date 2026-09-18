@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Users, Loader2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { adminApi, AdminPatientView } from '../../../lib/adminApi';
 import { aqk } from '../../../lib/queryKeys';
+import { EASE_OUT } from '../../lib/motion-tokens';
 
 const PAGE_SIZE = 15;
 
@@ -70,6 +72,8 @@ export function AdminPatients() {
   const patients = data?.patients ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const prefersReducedMotion = useReducedMotion();
 
   return (
     <div className="p-6">
@@ -219,9 +223,22 @@ export function AdminPatients() {
            kept for aggregate stats but the email becomes erased_{id}@deleted.local
            so the same email CAN be re-registered. This is DPDP Act compliance.
         ────────────────────────────────────────────────────────────────────── */}
+      <AnimatePresence>
       {confirmPatient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+          animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+          exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6"
+            initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+            animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+            transition={{ duration: 0.2, ease: EASE_OUT }}
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-[#FEF2F2] flex items-center justify-center flex-shrink-0">
                 <Trash2 size={18} className="text-[#DC2626]" />
@@ -271,9 +288,10 @@ export function AdminPatients() {
                 }
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
