@@ -106,6 +106,8 @@ class PatientProfileResponse(BaseModel):
     disclaimer_accepted_at: Optional[datetime] = None
     # Product tour gate (Phase 1, distinct from disclaimer_accepted_at above)
     product_tour_completed_at: Optional[datetime] = None
+    # From Google's OIDC 'picture' claim — set on Google Sign-In, null otherwise
+    profile_picture_url: Optional[str] = None
     # Subscription expiry date
     subscription_end_date: Optional[datetime] = None
     # Token 1 — subscription identifier shown to doctor

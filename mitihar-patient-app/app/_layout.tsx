@@ -37,6 +37,7 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
+  Inter_800ExtraBold,
 } from "@expo-google-fonts/inter";
 import * as SplashScreen from "expo-splash-screen";
 import { ToastProvider } from "../components/shared";
@@ -138,6 +139,7 @@ function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    Inter_800ExtraBold,
   });
 
   const [splashDone, setSplashDone] = useState(false);

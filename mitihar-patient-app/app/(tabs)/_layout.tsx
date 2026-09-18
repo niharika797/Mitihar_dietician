@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Tabs, useRouter } from "expo-router";
 import { Home, UtensilsCrossed, BarChart2, User } from "lucide-react-native";
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
+import { colors } from "../../constants/theme";
 import { useAuthStore } from "../../store/useAuthStore";
 import { completeTour, getMyProfile } from "../../services/profile";
 
@@ -158,11 +159,11 @@ function TabsInner() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#1E7C45",
-        tabBarInactiveTintColor: "#9CA3AF",
+        tabBarActiveTintColor: colors.brand[600],
+        tabBarInactiveTintColor: colors.gray[400],
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#E5E7EB",
+          backgroundColor: colors.white,
+          borderTopColor: colors.gray[200],
           borderTopWidth: 1,
           paddingBottom: 8,
           paddingTop: 4,
