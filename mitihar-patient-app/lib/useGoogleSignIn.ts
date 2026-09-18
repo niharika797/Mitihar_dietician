@@ -38,7 +38,11 @@ export function useGoogleSignIn() {
     googleDiscovery,
   );
 
-  const signInWithGoogle = useCallback(async (gdprConsent: boolean): Promise<GoogleSignInResult> => {
+  // Optional: only matters for first-time signup (backend ignores it for existing
+  // accounts — see GoogleTokenRequest.gdpr_consent in auth.py). Defaults to false so
+  // callers with no consent UI (e.g. the login screen) can omit it safely; a screen
+  // with a real checkbox (register.tsx) still passes the actual state explicitly.
+  const signInWithGoogle = useCallback(async (gdprConsent: boolean = false): Promise<GoogleSignInResult> => {
     if (!process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID) {
       return { ok: false, cancelled: false, error: "Google sign-in is not configured" };
     }
