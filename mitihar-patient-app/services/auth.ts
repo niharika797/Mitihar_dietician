@@ -13,10 +13,11 @@ export interface RegisterPayload {
   diet: string;
   health_condition: string;
   doctor_code?: string;
+  gdpr_consent: boolean;
 }
 
 export async function registerPatient(payload: RegisterPayload) {
-  const { data } = await api.post("/auth/register", { ...payload, gdpr_consent: true });
+  const { data } = await api.post("/auth/register", payload);
   // Audit W-3: backend returns { message, doctor_connected } only — no user_id field.
   // Removed user_id from cast to prevent callers from reading undefined as a number.
   return data as { message: string; doctor_connected: boolean };
@@ -32,8 +33,9 @@ export async function loginPatient(email: string, password: string): Promise<Tok
 }
 
 // ── POST /auth/google/verify ───────────────────────────────────────────────
-export async function verifyGoogleToken(id_token: string): Promise<GoogleVerifyResponse> {
-  const { data } = await api.post("/auth/google/verify", { id_token });
+export async function verifyGoogleToken(id_token: string, gdpr_consent?: boolean): Promise<GoogleVerifyResponse> {
+  // gdpr_consent is only required by the backend on first-time signup (existing accounts ignore it).
+  const { data } = await api.post("/auth/google/verify", { id_token, gdpr_consent });
   return data as GoogleVerifyResponse;
 }
 
