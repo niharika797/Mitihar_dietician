@@ -31,6 +31,12 @@ export async function acceptDisclaimer() {
   return data;
 }
 
+// ── PATCH /patients/tour-complete ───────────────────────────────────────────
+export async function completeTour() {
+  const { data } = await api.patch("/patients/tour-complete", {});
+  return data;
+}
+
 // ── POST /patients/activate ────────────────────────────────────────────────
 // Audit M-5: callers MUST store both tokens from the response in SecureStore:
 //   await SecureStore.setItemAsync(SECURE_KEYS.ACCESS_TOKEN,  result.access_token);

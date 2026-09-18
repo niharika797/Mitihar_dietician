@@ -494,6 +494,27 @@ async def accept_disclaimer(
     return {"message": "Disclaimer accepted", "accepted_at": accepted_at.isoformat()}
 
 
+# ─── PATCH /api/v1/patients/tour-complete ──────────────────────────────────
+
+@router.patch("/tour-complete", status_code=200)
+async def complete_tour(
+    patient: Patient = Depends(get_current_patient),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Patient finishes or skips the product tour — both call this identically.
+    Stores the UTC timestamp. Idempotent — safe to call multiple times.
+    """
+    completed_at = datetime.now(timezone.utc)
+    await session.execute(
+        update(Patient)
+        .where(Patient.id == patient.id)
+        .values(product_tour_completed_at=completed_at)
+    )
+    await session.flush()
+    return {"message": "Tour complete", "completed_at": completed_at.isoformat()}
+
+
 # ─── POST /api/v1/patients/request-renewal ────────────────────────────────
 # Audit C-5: patient-facing renewal endpoint that sits outside /doctor/* so
 # DoctorIsolationMiddleware does NOT intercept it.  The doctor-facing

@@ -76,6 +76,7 @@ _ONBOARDING_EXCLUSIONS = (
     f"{settings.API_V1_STR}/patients/activate",
     f"{settings.API_V1_STR}/patients/doctors",
     f"{settings.API_V1_STR}/patients/request-doctor",
+    f"{settings.API_V1_STR}/patients/tour-complete",
 )
 
 

@@ -12,6 +12,19 @@ import { useToast } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { MacroRow } from "../../components/shared";
 import type { Meal, WeeklyComboV2, WeekResponseV2 } from "../../types";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+// forwardRef: react-native-copilot's walkthroughable() attaches a ref to
+// measure this component's position. A plain function component silently
+// drops an incoming ref, leaving CopilotStep's measure() polling forever.
+const MealsHeader = React.forwardRef<View>(function MealsHeader(_props, ref) {
+  return (
+    <View ref={ref} style={s.header}>
+      <Text style={s.headerTitle}>Meal Plan</Text>
+    </View>
+  );
+});
+const CopilotMealsHeader = walkthroughable(MealsHeader);
 
 const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner"];
 const MEAL_CALORIE_LABELS: Record<string, string> = {
@@ -376,9 +389,9 @@ export default function MealsScreen() {
 
   return (
     <ScrollView style={s.root} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-      <View style={s.header}>
-        <Text style={s.headerTitle}>Meal Plan</Text>
-      </View>
+      <CopilotStep text="Your weekly meal plan lives here — browse days and confirm your choices." order={2} name="meals">
+        <CopilotMealsHeader />
+      </CopilotStep>
 
       {/* Week strip */}
       <WeekStrip days={weekDays} selected={selectedDate} today={today} onSelect={setSelectedDate} />
