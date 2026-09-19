@@ -1,8 +1,8 @@
 # VIDEO PRODUCTION DISCOVERY REPORT: MITIHAR PLATFORM
 
-**Document Purpose:** Comprehensive pre-production discovery and technical-to-narrative blueprint for the client-facing Remotion project-explainer video for the **Mitihar** dietetics platform.  
-**Target Output:** 4–5 minute high-fidelity explainer video (240–270 seconds @ 30fps).  
-**Repository Basis:** `niharika797/Mitihar_dietician` (Branch: `feature/api-remediation-v0.2`, HEAD commit `081e2aa`).  
+**Document Purpose:** Comprehensive pre-production discovery and technical-to-narrative blueprint for the client-facing Remotion project-explainer video for the **Mitihar** dietetics platform.
+**Target Output:** 4–5 minute high-fidelity explainer video (240–270 seconds @ 30fps).
+**Repository Basis:** `niharika797/Mitihar_dietician` (Branch: `feature/api-remediation-v0.2`, HEAD commit `081e2aa`).
 **Audit Standard:** Grounded strictly in verified codebase implementation, git logs, database schemas, test results, and deployment artifacts. No speculative or unverified claims.
 
 ---
@@ -16,7 +16,7 @@ The platform is architecturally unified across three distinct applications:
 2. **Patient Companion App (`mitihar-patient-app`)**: A cross-platform mobile application built on React Native and Expo Router (with NativeWind styling), guiding patients through an 8-stage biometric onboarding flow, interactive 21-meal weekly schedules, 1-tap meal and hydration logging, pantry-aware shopping lists, and visual progress tracking.
 3. **High-Performance Core Backend (`app/`)**: A FastAPI asynchronous REST service backed by PostgreSQL 15, SQLAlchemy 2.0, and Redis, incorporating a 5-layer security middleware stack, 84+ endpoints, a deterministic meal generation engine tailored to 4 Indian culinary regions and clinical health conditions, with Gemini AI fallback integration.
 
-**Deployment & Readiness Status:**  
+**Deployment & Readiness Status:**
 The backend API has an active, load-tested staging deployment on **Google Cloud Run** in region `asia-south1`, connected to Cloud SQL PostgreSQL and GCP Memorystore Redis via Direct VPC Egress, orchestrated by 3 Cloud Scheduler cron jobs. Both the web dashboard and mobile companion application are fully engineered and tested locally against the staging API, with Firebase Hosting and Expo EAS build configurations in place.
 
 ---
@@ -326,8 +326,8 @@ Every metric below is verified directly from repository files. These numbers are
 
 ## 13. Proposed Scene-by-Scene Video Storyboard (4–5 Minutes)
 
-**Total Duration:** 4 minutes 15 seconds (255 seconds / 7,650 frames @ 30fps)  
-**Tone:** Elegant, clinical, modern, inspiring, authoritative.  
+**Total Duration:** 4 minutes 15 seconds (255 seconds / 7,650 frames @ 30fps)
+**Tone:** Elegant, clinical, modern, inspiring, authoritative.
 **Music:** Sophisticated ambient corporate track with subtle rhythmic pulse and warm acoustic undertones.
 
 ```
