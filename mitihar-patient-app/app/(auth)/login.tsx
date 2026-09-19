@@ -12,6 +12,8 @@ import { loginPatient } from "../../services/auth";
 import { getMyProfile } from "../../services/profile";
 import { storage } from "../../lib/storage";
 import { SECURE_KEYS } from "../../lib/axios";
+import { useGoogleSignIn } from "../../lib/useGoogleSignIn";
+import { getApiError } from "../../lib/getApiError";
 
 // ── Mitihar leaf logo (SVG-via-react-native-svg) ──────────────────────────
 import Svg, { Ellipse, Path } from "react-native-svg";
@@ -46,10 +48,28 @@ export default function LoginScreen() {
   const router = useRouter(); // still used for "Register" link and "Forgot password" nav
   const { loginSuccess } = useAuthStore();
   const { showToast } = useToast();
+  const { signInWithGoogle } = useGoogleSignIn();
 
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw]     = useState(false);
+  const [googlePending, setGooglePending] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    setGooglePending(true);
+    try {
+      const result = await signInWithGoogle();
+      if (!result.ok && !result.cancelled) {
+        showToast(result.error, "error");
+      }
+      // cancelled: user closed the consent screen — no toast, matches a
+      // no-op back-navigation on the email/password form.
+    } catch (err) {
+      showToast(getApiError(err, "Google sign-in failed"), "error");
+    } finally {
+      setGooglePending(false);
+    }
+  };
 
   const loginMut = useMutation({
     mutationFn: async () => {
@@ -143,9 +163,17 @@ export default function LoginScreen() {
         </View>
 
         {/* Google */}
-        <Pressable style={s.googleBtn} onPress={() => showToast("Google sign-in coming soon", "info")}>
-          <GoogleIcon />
-          <Text style={s.googleText}>Continue with Google</Text>
+        <Pressable
+          style={[s.googleBtn, googlePending && s.primaryBtnDisabled]}
+          onPress={handleGoogleSignIn}
+          disabled={googlePending}
+        >
+          {googlePending
+            ? <ActivityIndicator color="#111827" />
+            : <>
+                <GoogleIcon />
+                <Text style={s.googleText}>Continue with Google</Text>
+              </>}
         </Pressable>
 
         {/* Register link */}

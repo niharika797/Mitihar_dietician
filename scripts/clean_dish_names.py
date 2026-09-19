@@ -285,6 +285,11 @@ async def pass_c_llm_rename(db, write: bool):
         except Exception as e:
             print(f"  ERROR on batch starting {batch_ids[0]}: {e}")
             print("  Checkpoint saved. Re-run to resume from this batch.")
+            # Own session, own transaction -- roll back explicitly so the
+            # aborted transaction doesn't outlive this function and surface as
+            # a confusing, unrelated failure the next time `db` is used (e.g.
+            # pass_d_report's SELECT, right after this in main()).
+            await db.rollback()
             break
 
     print(f"  Total renamed in Pass C: {total_changed}")

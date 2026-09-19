@@ -4,8 +4,9 @@ import { logout } from '../../../lib/authService';
 import {
   LayoutDashboard, Users, Bell, ChefHat, Settings, LogOut,
   Stethoscope, Utensils, CreditCard, ScrollText, ChevronLeft, ChevronRight,
-  Leaf, ClipboardCheck,
+  ClipboardCheck,
 } from 'lucide-react';
+import mitiharLogo from '../../../assets/app_icon.png';
 
 type Role = 'doctor' | 'admin';
 
@@ -111,7 +112,7 @@ export function Sidebar({ role, userName, userRole, pendingCount = 0, pendingFoo
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-border flex-shrink-0">
         <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-          <Leaf size={16} className="text-primary-foreground" />
+          <img src={mitiharLogo} alt="Mitihar logo" className="w-5 h-5 object-contain" />
         </div>
         {!collapsed && (
           <span className="text-sm font-semibold text-foreground tracking-tight">Mitihar</span>

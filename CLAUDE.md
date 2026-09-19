@@ -60,10 +60,6 @@ docker-compose up -d
 python -m scripts.seed_admin
 python -m scripts.seed_food_items
 python -m scripts.seed_6k_recipes
-
-# Rename dishes with Gemini (checkpointed, idempotent)
-python -m scripts.rename_dishes_gemini
-python -m scripts.rename_dishes_gemini --dry-run
 ```
 
 ## Frontend Commands
@@ -205,7 +201,7 @@ REDIS_URL=redis://localhost:6379/0   # Dev: local Docker (mityahar-redis contain
 ## Known Pending Issues (updated 2026-07-05)
 
 - `mitihar-frontend/apps/` has unverified changes from Sprint 5 (`PlanTab.tsx` rewrite). Run `pnpm dev` and check browser console for TypeScript errors around `patientMealsPerDay` prop before editing.
-- **Dish-rename state is unclear — don't trust old checkpoint claims.** `scripts/rename_dishes_gemini.py` + its `rename_checkpoint.json` were deleted 2026-06-29, superseded by `scripts/clean_dish_names.py` (uses `food_items.original_name` as its rollback snapshot; session notes record a completed run — 117 changes). But as of 2026-07-13, `original_name` is **0/2137 rows populated on both local dev and staging** — the completed run's snapshot didn't survive to the current dataset (likely lost in a later pool-expansion reseed). Before re-running `clean_dish_names.py`, verify current data state first — it will not resume cleanly on the assumption anything is already snapshotted.
+- **Dish-rename state is unclear — don't trust old checkpoint claims.** `scripts/rename_dishes_gemini.py` was superseded by `scripts/clean_dish_names.py` (uses `food_items.original_name` as its rollback snapshot; session notes record a completed run — 117 changes), but despite an earlier claim here that it was deleted 2026-06-29, `git log --follow` showed it was still live on this branch until 2026-08-13, when it was actually deleted (zero references anywhere — confirmed via repo-wide grep before removal). As of 2026-07-13, `original_name` is **0/2137 rows populated on both local dev and staging** — the completed run's snapshot didn't survive to the current dataset (likely lost in a later pool-expansion reseed). Before re-running `clean_dish_names.py`, verify current data state first — it will not resume cleanly on the assumption anything is already snapshotted.
 - **Admin IP whitelist is dynamic (residential ISP)**: `ADMIN_IP_WHITELIST` in `deploy-env-reference.txt` (formerly `.env.production`) is set to `49.36.111.236/32`. This is a Jio residential IP and **will change** on modem restart or ISP reassignment. If admin endpoints return 403, re-check public IP (`curl ifconfig.me`) and update the env var.
 - **axios.ts bundle-splitting warning (pre-launch debt)**: `lib/axios.ts` in `mitihar-frontend/apps/` is dynamically imported by `PlanTab.tsx` but statically imported by 5 other modules. Vite warns that dynamic import will not move it into a separate chunk, contributing to a 675 KB monolithic JS bundle (above 500 KB recommended limit). Fix before Layer 2 4G retest: either make all imports static, or use `build.rollupOptions.output.manualChunks` to force code-splitting.
 - ~~**`POST /progress/log/weight` is slow (Layer 3/4 watch item)**~~ — **RESOLVED 2026-07-04** (`dd39dde`): weight-log Gemini plan regeneration made non-blocking (fire-and-forget); endpoint no longer waits synchronously on `DietPlanService.generate_diet_plan()`.

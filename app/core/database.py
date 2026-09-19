@@ -1,5 +1,6 @@
 import os
 from typing import AsyncGenerator
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -49,6 +50,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
+            # Postgres treats COMMIT on an already-aborted transaction as a
+            # silent ROLLBACK, with no exception raised. So a statement that
+            # failed deep inside a route/service and was caught there without
+            # an explicit session.rollback() would otherwise make this commit()
+            # "succeed" while discarding the whole transaction -- including
+            # writes that succeeded earlier in the same request -- with the
+            # response still looking like a 200. Empirically confirmed against
+            # a live session: probe with a trivial statement first. Postgres
+            # rejects any command but ROLLBACK/COMMIT on an aborted transaction,
+            # so this surfaces the failure as a real, catchable exception.
+            await session.execute(text("SELECT 1"))
             await session.commit()
         except Exception:
             await session.rollback()

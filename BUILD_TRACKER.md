@@ -200,7 +200,7 @@ All of the following have been built and verified across Sessions 1–8:
 
 ## CURRENT STATUS
 
-> _Updated 2026-08-07 (later same day, no code changes this session). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
+> _Updated 2026-09-11 (re-verified, no changes). Max 40 lines. Full narrative in BUILD_TRACKER_ARCHIVE.md._
 
 **Committed (`0a2cfbe`):** Quantity-aware pantry backend + grams input UI — `patient_pantry.quantity_g` three-state, migration `e4f5a6b7c8d9`, `_PANTRY_IN_STOCK` predicate, live-computed `/shopping-list`, `confirm-choice` pantry deltas, debounced grams input in `PantrySection`.
 
@@ -237,12 +237,18 @@ All of the following have been built and verified across Sessions 1–8:
 - Run 4 (2 workers/2 vCPU + Postgres bumped to `db-custom-4-15360`): **both abort conditions cleared** — sustained error rate 0.0088%, p95>3s streak ~4s (vs 30s threshold), Cloud SQL CPU 0.44/0.54 (below Run 1's original baseline), QI latency mean 176.6ms.
 - Enabled `pg_stat_statements` on staging (no restart — confirmed empirically via direct `CREATE EXTENSION`, not assumed). Top-5 query analysis: `/meal-plan/week`'s `selectinload` combo-materialization query is ~77% of top-5 total time — confirmed as the dominant cost driver, not evenly spread across endpoints. Not yet remediated.
 - Working config candidate: Cloud Run 2 workers/2 vCPU, `DB_POOL_SIZE=12`/`DB_MAX_OVERFLOW=7`, Postgres `db-custom-4-15360`. PR opened `feature/api-remediation-v0.2` → `main` (not merged) with this as the recommended baseline.
+- **2026-08-07 (later still):** Fixed CI (`27a8577`) — unquoted all-digit `SECRET_KEY` in `.github/workflows/ci.yml` was parsed as a YAML 1.1 octal literal (all zeros → integer `0`), collapsing to `"0"` at runtime and failing the 32-char `SECRET_KEY` validator. Pre-existing since CI was added (`647f4be`); this was the first CI run this branch had triggered.
+- **2026-08-07 (later still):** Security fix in doctor MFA setup (`Settings.tsx`, uncommitted) — the QR code was rendered by sending the TOTP provisioning URI (contains the MFA secret) to a third-party image proxy (`api.qrserver.com`). Replaced with local client-side rendering via `qrcode.react` (`QRCodeSVG`) so the secret never leaves the browser.
+- **2026-08-07 (later still):** Implemented real Google Sign-In for the patient app (uncommitted) — new `lib/useGoogleSignIn.ts` hook (expo-auth-session ID-token flow), wired into `login.tsx`/`register.tsx` (replaces the old "coming soon" toast) with pending-state UI; `services/auth.ts` now sends `gdpr_consent: true` on `/auth/google/verify` to match the backend's first-signup requirement. Added `expo-auth-session` dep, filled the real Google OAuth client ID into `eas.json` (was a placeholder).
 
 **Blockers / pending:**
-- Known coverage gap: pre-minted tokens skip `POST /auth/token` and `POST /auth/refresh` entirely, unlike real client traffic.
-- `/meal-plan/week`'s selectinload cost concentration is confirmed but not yet addressed — no fix applied.
+- `AUDIT_REPORT.md` C1 still open: `doctor.py:1409` `swap_weekly_combo` — `TypeError` on every call (`_fill_slot_dishes` missing `user_diet` param), feature dead in prod.
+- `AUDIT_REPORT.md` itself still uncommitted; only the `scripts/` batch of findings has been triaged/fixed, `app/` Major findings (architecture) not yet started.
+- Google sign-in + MFA QR fix (uncommitted) not yet committed or device-tested.
+- CI fix `27a8577` (quoted `SECRET_KEY`) landed Aug 7; not reconfirmed green this session. `/meal-plan/week` selectinload cost still unaddressed.
 
 **Next action:**
-Review/merge decision on the open PR `feature/api-remediation-v0.2` → `main`. If merged, consider addressing the `/meal-plan/week` selectinload cost concentration as a follow-up.
+Fix C1 (`swap_weekly_combo`) in `doctor.py`, then commit `AUDIT_REPORT.md` plus the outstanding `database.py`/`clean_dish_names.py`/`.gitignore`/`CLAUDE.md` diffs and the Google sign-in/MFA fix; triage remaining `app/` Major findings next.
+(Re-verified this session — no new commits or edits since the above; state unchanged.)
 
 **Standing constraint:** COOKIE_SECURE fail-closed guard only fires when `ENVIRONMENT=production`. Every non-production tier must set `COOKIE_SECURE=True` explicitly (staging does).

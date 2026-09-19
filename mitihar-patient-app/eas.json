@@ -15,14 +15,14 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://STAGING-URL-NOT-DEPLOYED-YET.example.com/api/v1",
-        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "PLACEHOLDER-SET-BEFORE-BUILD.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "759811872653-769dr7oh4ofrnc2h0uvmc9lel3v4dhof.apps.googleusercontent.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://PLACEHOLDER-CLOUD-RUN-URL-NOT-DEPLOYED-YET.example.com/api/v1",
-        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "PLACEHOLDER-SET-BEFORE-BUILD.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "759811872653-769dr7oh4ofrnc2h0uvmc9lel3v4dhof.apps.googleusercontent.com",
         "EXPO_PUBLIC_SENTRY_DSN": ""
       }
     }

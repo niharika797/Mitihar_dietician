@@ -1,15 +1,17 @@
 # Current State
 
-_Last updated: 2026-08-07 (later same day). Overwritten each session — no history here. Full narrative in docs/BUILD_TRACKER_ARCHIVE.md._
+_Last updated: 2026-09-11. Overwritten each session — no history here. Full narrative in docs/BUILD_TRACKER_ARCHIVE.md._
 
 ## Done this session
-- Ran 4 isolated 1000-user load tests against staging to find the abort-condition-clearing config, changing one variable per run: Run 1 (1 worker/1 vCPU) failed p95; Run 2 (2 workers/2 vCPU) fixed Cloud Run but pegged Postgres CPU (55s p95>3s streak); Run 3 (1 worker/2 vCPU) proved worker count, not vCPU, relieves Cloud Run (272s streak, worst of all); Run 4 (2 workers/2 vCPU + Postgres bumped to `db-custom-4-15360`) cleared **both** abort conditions (0.0088% sustained error rate, ~4s p95>3s streak vs the 30s threshold).
-- Enabled `pg_stat_statements` on staging (no restart needed — confirmed empirically) and identified `/meal-plan/week`'s `selectinload` combo-materialization query as ~77% of top-5 query total time — the dominant cost driver, not evenly spread.
-- Working config candidate: Cloud Run 2 workers/2 vCPU, `DB_POOL_SIZE=12`/`DB_MAX_OVERFLOW=7`, Postgres `db-custom-4-15360`.
+- Re-verified working tree against HEAD (`5006cd0`, branch `feature/api-remediation-v0.2`) via `git diff --stat` + `git log -1` — no new commits, no code edits made this pass; state is unchanged from the prior session's writeup.
+- Confirmed uncommitted diffs still present: `database.py` (post-commit safety probe), `clean_dish_names.py` (rollback-on-error fix), `.gitignore`/`CLAUDE.md`; plus carried-over Google Sign-In (`lib/useGoogleSignIn.ts`, `login.tsx`/`register.tsx`, `gdpr_consent` in `auth.ts`, real client ID in `eas.json`, `expo-auth-session` dep) and doctor MFA QR fix (`Settings.tsx` → local `qrcode.react` render, no more secret sent to `api.qrserver.com`).
+- Confirmed `AUDIT_REPORT.md`, `.mcp.json`, `.ignore` still untracked; `scripts/drop_instructions.py` staged-renamed to `scripts/archive/`; `scripts/rename_dishes_gemini.py` staged-deleted.
 
 ## Blockers / pending
-- Known coverage gap: pre-minted tokens skip `POST /auth/token` and `POST /auth/refresh` entirely, unlike real client traffic.
-- `/meal-plan/week`'s selectinload cost concentration is now confirmed but not yet addressed — no fix applied this session.
+- `AUDIT_REPORT.md` C1 still open: `doctor.py:1409` `swap_weekly_combo` — `TypeError` on every call (`_fill_slot_dishes` missing `user_diet` param), feature dead in prod.
+- `AUDIT_REPORT.md` itself still uncommitted; only the `scripts/` batch of findings has been triaged/fixed, `app/` Major findings (architecture) not yet started.
+- Google sign-in + MFA QR fix (uncommitted) not yet committed or device-tested.
+- CI fix `27a8577` (quoted `SECRET_KEY`) landed Aug 7; not reconfirmed green this session. `/meal-plan/week` selectinload cost still unaddressed.
 
 ## Next action
-PR opened `feature/api-remediation-v0.2` → `main` (not merged) with the Run 4 config as the recommended baseline. Await review/merge decision.
+Fix C1 (`swap_weekly_combo`) in `doctor.py`, then commit `AUDIT_REPORT.md` plus the outstanding `database.py`/`clean_dish_names.py`/`.gitignore`/`CLAUDE.md` diffs and the Google sign-in/MFA fix; triage remaining `app/` Major findings next.
