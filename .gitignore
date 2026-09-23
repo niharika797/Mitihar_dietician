@@ -185,3 +185,6 @@ tests/performance/tokens.json
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# ── brag skill output (generated launch video, not source) ───────────────────
+brag-output/
