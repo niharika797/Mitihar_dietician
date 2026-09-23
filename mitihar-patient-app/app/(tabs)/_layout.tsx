@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { Tabs, useRouter } from "expo-router";
 import { Home, UtensilsCrossed, BarChart2, User } from "lucide-react-native";
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
@@ -106,7 +106,14 @@ function TourController() {
   const syncedStep = useRef<string | null>(null);
 
   useEffect(() => {
-    if (tourDone) return;
+    // ponytail: react-native-copilot's CopilotStep.measure() (dist/index.js ~L1084)
+    // polls requestAnimationFrame with no cap/cancellation if the target ref goes
+    // stale mid-poll (e.g. this controller's own router.push mid-tour). Confirmed
+    // hang on Expo web (dev/test only per CLAUDE.md); no evidence on native.
+    // Upgrade path if that changes: patch-package on react-native-copilot to add
+    // a bounded retry + cancellation to CopilotStep.measure(), mirroring the
+    // MAX_START_TRIES cap `start()` already has (dist/index.js ~L882-978).
+    if (tourDone || Platform.OS === "web") return;
 
     const onStepChange = (step: any) => {
       if (!step?.name || syncedStep.current === step.name) return;
