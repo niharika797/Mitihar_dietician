@@ -13,11 +13,12 @@ Rollback:
   quantity_g: restore from db-backups/mityahar_2026-06-24.sql
   recipe names: UPDATE food_items SET recipe_name = original_name WHERE original_name IS NOT NULL
 
-Run: python -m scripts.fix_recipe_quantities
+Run: python -m scripts.fix_recipe_quantities            (dry run)
+     python -m scripts.fix_recipe_quantities --write     (apply passes A-F)
 """
 
+import argparse
 import asyncio
-import os
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -179,12 +180,23 @@ async def pass_f(db, snapshot, new_cals, verified_ids):
 
 
 async def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--write", action="store_true", help="apply passes A-F (default is dry-run preview)")
+    args = ap.parse_args()
+
     async with AsyncSessionLocal() as db:
         print("Snapshotting bad recipe set...")
         snapshot = await snapshot_bad_set(db)
         bad_ids = [r.id for r in snapshot]
         print(f"Found {len(bad_ids)} bad recipes (cal_per_serving > 1500, manual, unverified)")
         print()
+
+        if not args.write:
+            print("Sample of up to 10 recipes that would be processed:")
+            for row in snapshot[:10]:
+                print(f"  id={row.id} cal={row.cal_per_serving} slot={row.slot_type} {row.recipe_name[:40]!r}")
+            print("\nDry run. Re-run with --write to apply passes A-F.")
+            return
 
         await pass_a(db, bad_ids)
         await pass_b(db, bad_ids)

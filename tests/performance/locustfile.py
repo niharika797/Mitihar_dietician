@@ -17,6 +17,11 @@ Spike test:
       --users 50 --spawn-rate 50 --run-time 2m --headless \
       --html tests/performance/reports/spike_test.html
 
+Staging target (point --host at the Cloud Run service URL):
+    locust -f tests/performance/locustfile.py --host https://<staging-service-url> \
+      --users 50 --spawn-rate 5 --run-time 5m --headless \
+      --html tests/performance/reports/ramp_test_staging.html
+
 Scenario notes:
     Scenario A — Ramp: use --spawn-rate 5 --users 50
     Scenario B — Spike: use --spawn-rate 50 --users 50
@@ -77,6 +82,7 @@ class PatientUser(HttpUser):
             self._patient_id = p["patient_id"]
 
         self._token = ""
+        self._combo_entries = []  # [{combo_id, food_item_ids, meal_type, date}]
         r = self.client.post(
             "/api/v1/auth/token",
             data={"username": email, "password": password},
@@ -84,6 +90,29 @@ class PatientUser(HttpUser):
         )
         if r.status_code == 200:
             self._token = r.json().get("access_token", "")
+            r2 = self.client.get(
+                "/api/v1/meal-plan/week",
+                headers={"Authorization": f"Bearer {self._token}"},
+                name="GET /meal-plan/week [setup]",
+            )
+            if r2.status_code == 200:
+                for day in r2.json().get("days", []):
+                    date_str = day.get("date", "")
+                    for meal_type, meal_data in day.get("meals", {}).items():
+                        for combo in meal_data.get("combos", []):
+                            cid = combo.get("combo_id")
+                            fids = [
+                                d["food_item_id"]
+                                for d in combo.get("dishes", [])
+                                if d.get("food_item_id")
+                            ]
+                            if cid and fids and date_str:
+                                self._combo_entries.append({
+                                    "combo_id": cid,
+                                    "food_item_ids": fids,
+                                    "meal_type": meal_type,
+                                    "date": date_str,
+                                })
         else:
             # Auth failed — mark all requests as failed so Locust tracks it
             self._token = ""
@@ -105,16 +134,17 @@ class PatientUser(HttpUser):
 
     @task(1)
     def confirm_combo(self):
-        """Simulate selecting a combo. Uses a plausible combo index."""
-        import datetime
-        today = datetime.date.today().isoformat()
+        if not self._combo_entries:
+            return
+        entry = random.choice(self._combo_entries)
         self.client.post(
             "/api/v1/meal-plan/confirm-choice",
             json={
-                "date": today,
-                "meal_type": "Breakfast",
-                "weekly_combo_id": random.randint(1, 84),
-                "bowl_size": random.choice(["S", "M", "L"]),
+                "date": entry["date"],
+                "meal_type": entry["meal_type"],
+                "weekly_combo_id": entry["combo_id"],
+                "food_item_ids": entry["food_item_ids"],
+                "bowl_size": random.choice(["small", "medium", "large"]),
             },
             headers=self._auth(),
             name="POST /meal-plan/confirm-choice",
@@ -137,7 +167,7 @@ class DoctorUser(HttpUser):
             email = d["email"]
             password = d.get("password", "DoctorTest@2026")
         else:
-            email = "dr.ashok.mehta@mitihar.test"
+            email = "dr.ashok.mehta@mityahar-perf.com"
             password = "DoctorTest@2026"
 
         self._token = ""

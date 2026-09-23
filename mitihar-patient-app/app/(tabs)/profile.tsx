@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { ChevronRight, Edit2, Bell, Info, LogOut, User, RefreshCw, Settings } from "lucide-react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Animated, { FadeInDown, Easing } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { useAuthStore } from "../../store/useAuthStore";
-import { useToast } from "../../components/shared";
+import { useToast, ScreenHeader, Card, Button, AnimatedPressable } from "../../components/shared";
 import { logoutPatient } from "../../services/auth";
 import { requestRenewal, getMyProfile } from "../../services/profile";
 import { computeHealthStats } from "../../utils/calculations";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+import { colors, iconSize, typography } from "../../constants/theme";
+
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+
+// ScreenHeader is already forwardRef (see components/shared/ScreenHeader.tsx)
+// specifically so it stays drop-in compatible with react-native-copilot's
+// walkthroughable(), which needs a ref to measure the target on screen.
+const CopilotScreenHeader = walkthroughable(ScreenHeader);
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -84,37 +96,48 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={s.root} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
       {/* Header */}
-      <View style={s.header}><Text style={s.headerTitle}>Profile</Text></View>
+      <CopilotStep text="Manage your details, subscription, and settings here." order={4} name="profile">
+        <CopilotScreenHeader title="Profile" />
+      </CopilotStep>
 
       <View style={s.body}>
         {/* Avatar card */}
-        <View style={s.avatarCard}>
-          <View style={s.avatar}>
-            <User size={32} color="#fff" />
-          </View>
-          <View style={s.avatarInfo}>
-            <Text style={s.name}>{profile?.name ?? "—"}</Text>
-            <Text style={s.email}>{profile?.email ?? "—"}</Text>
-            {profile?.phone ? <Text style={s.email}>{profile.phone}</Text> : null}
-          </View>
-          <Pressable onPress={() => router.push("/profile/edit-profile")} style={s.editBtn}>
-            <Edit2 size={16} color="#1E7C45" />
-          </Pressable>
-        </View>
+        <Animated.View entering={FadeInDown.duration(400).easing(EASE_OUT)}>
+          <Card style={s.avatarCard}>
+            <View style={s.avatar}>
+              {profile?.profile_picture_url ? (
+                <Image source={{ uri: profile.profile_picture_url }} style={s.avatarImage} contentFit="cover" />
+              ) : (
+                <User size={32} color="#fff" />
+              )}
+            </View>
+            <View style={s.avatarInfo}>
+              <Text style={s.name}>{profile?.name ?? "—"}</Text>
+              <Text style={s.email}>{profile?.email ?? "—"}</Text>
+              {profile?.phone ? <Text style={s.email}>{profile.phone}</Text> : null}
+            </View>
+            <AnimatedPressable onPress={() => router.push("/profile/edit-profile")} style={s.editBtn}>
+              <Edit2 size={iconSize.sm} color={colors.brand[600]} />
+            </AnimatedPressable>
+          </Card>
+        </Animated.View>
 
         {/* Stats grid */}
-        <View style={s.statsGrid}>
+        <Animated.View entering={FadeInDown.delay(80).duration(400).easing(EASE_OUT)} style={s.statsGrid}>
           {STATS.map(st => (
             <View key={st.label} style={s.statCard}>
               <Text style={s.statVal}>{st.value}</Text>
               <Text style={s.statLabel}>{st.label}</Text>
             </View>
           ))}
-        </View>
+        </Animated.View>
 
         {/* Subscription & Token 1 */}
         <Text style={s.sectionLabel}>SUBSCRIPTION</Text>
-        <View style={[s.subCard, token1Active ? (expiringSoon ? s.subExpiring : s.subActive) : s.subInactive]}>
+        <Animated.View
+          entering={FadeInDown.delay(160).duration(400).easing(EASE_OUT)}
+          style={[s.subCard, token1Active ? (expiringSoon ? s.subExpiring : s.subActive) : s.subInactive]}
+        >
           <View style={{ flex: 1 }}>
             <Text style={s.subTitle}>
               {renewalRequested
@@ -138,24 +161,24 @@ export default function ProfileScreen() {
             )}
           </View>
           {!token1Active && (
-            <Pressable onPress={() => router.push("/doctor/activate")} style={s.activateBtn}>
+            <AnimatedPressable onPress={() => router.push("/doctor/activate")} style={s.activateBtn}>
               <Text style={s.activateBtnText}>Activate</Text>
-            </Pressable>
+            </AnimatedPressable>
           )}
-        </View>
+        </Animated.View>
 
         {/* Renewal request button */}
         {showRenewalBtn && (
-          <Pressable
-            onPress={() => renewalMut.mutate()}
+          <AnimatedPressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); renewalMut.mutate(); }}
             disabled={renewalMut.isPending}
             style={[s.renewalBtn, renewalMut.isPending && { opacity: 0.6 }]}
           >
             {renewalMut.isPending
               ? <ActivityIndicator size="small" color="#fff" />
-              : <RefreshCw size={16} color="#fff" />}
+              : <RefreshCw size={iconSize.sm} color="#fff" />}
             <Text style={s.renewalBtnText}>Request Renewal</Text>
-          </Pressable>
+          </AnimatedPressable>
         )}
         {renewalRequested && (
           <View style={s.renewalSentBanner}>
@@ -165,26 +188,28 @@ export default function ProfileScreen() {
 
         {/* Settings menu */}
         <Text style={s.sectionLabel}>SETTINGS</Text>
-        <View style={s.menuCard}>
-          {MENU.map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <Pressable key={item.label} onPress={() => router.push(item.path as any)} style={[s.menuRow, i < MENU.length - 1 && s.menuBorder]}>
-                <View style={s.menuIcon}>
-                  <Icon size={18} color="#374151" />
-                </View>
-                <Text style={s.menuLabel}>{item.label}</Text>
-                <ChevronRight size={16} color="#9CA3AF" />
-              </Pressable>
-            );
-          })}
-        </View>
+        <Animated.View entering={FadeInDown.delay(240).duration(400).easing(EASE_OUT)}>
+          <Card padded={false} style={{ overflow: "hidden" }}>
+            {MENU.map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <AnimatedPressable key={item.label} onPress={() => router.push(item.path as any)} style={[s.menuRow, i < MENU.length - 1 && s.menuBorder]}>
+                  <View style={s.menuIcon}>
+                    <Icon size={iconSize.md} color="#374151" />
+                  </View>
+                  <Text style={s.menuLabel}>{item.label}</Text>
+                  <ChevronRight size={iconSize.sm} color="#9CA3AF" />
+                </AnimatedPressable>
+              );
+            })}
+          </Card>
+        </Animated.View>
 
         {/* Logout */}
-        <Pressable onPress={handleLogout} style={s.logoutBtn}>
-          <LogOut size={18} color="#DC2626" />
+        <AnimatedPressable onPress={handleLogout} style={s.logoutBtn}>
+          <LogOut size={iconSize.md} color="#DC2626" />
           <Text style={s.logoutText}>Log Out</Text>
-        </Pressable>
+        </AnimatedPressable>
       </View>
     </ScrollView>
   );
@@ -193,18 +218,17 @@ export default function ProfileScreen() {
 const s = StyleSheet.create({
   root:          { flex: 1, backgroundColor: "#F9FAFB" },
   scroll:        { paddingBottom: 40 },
-  header:        { backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB", padding: 16 },
-  headerTitle:   { fontSize: 20, fontWeight: "600", color: "#111827" },
   body:          { paddingHorizontal: 20, paddingTop: 20, gap: 16 },
   avatarCard:    { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E5E7EB", padding: 20, flexDirection: "row", alignItems: "center", gap: 16 },
-  avatar:        { width: 72, height: 72, borderRadius: 36, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
+  avatar:        { width: 72, height: 72, borderRadius: 36, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  avatarImage:   { width: 72, height: 72 },
   avatarInfo:    { flex: 1 },
   name:          { fontSize: 18, fontWeight: "700", color: "#111827" },
   email:         { fontSize: 13, color: "#6B7280", marginTop: 2 },
   editBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: "#F0FDF4", alignItems: "center", justifyContent: "center" },
   statsGrid:     { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   statCard:      { flexBasis: "47%", flexGrow: 1, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 14, alignItems: "center" },
-  statVal:       { fontSize: 20, fontWeight: "700", color: "#111827" },
+  statVal:       { ...typography.statValue, fontSize: 20 },
   statLabel:     { fontSize: 12, color: "#6B7280", marginTop: 2 },
   sectionLabel:  { fontSize: 11, fontWeight: "600", color: "#374151", letterSpacing: 1 },
   subCard:       { borderRadius: 12, borderWidth: 1, padding: 14, flexDirection: "row", alignItems: "center" },
@@ -214,7 +238,6 @@ const s = StyleSheet.create({
   subSub:        { fontSize: 12, color: "#6B7280", marginTop: 2 },
   activateBtn:   { height: 34, paddingHorizontal: 14, borderRadius: 99, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
   activateBtnText:{ fontSize: 12, fontWeight: "600", color: "#fff" },
-  menuCard:      { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden" },
   menuRow:       { flexDirection: "row", alignItems: "center", gap: 14, padding: 15 },
   menuBorder:    { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   menuIcon:      { width: 36, height: 36, borderRadius: 10, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },

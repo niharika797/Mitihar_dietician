@@ -1,5 +1,8 @@
 import sys
-sys.path.insert(0, 'C:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician')
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 import inspect
 
 issues   = []
@@ -11,7 +14,7 @@ import subprocess
 result = subprocess.run(
     ['powershell', '-Command',
      'Get-ChildItem -Path app -Filter *.py -Recurse | Select-String -Pattern "models.diet_plan|models/diet_plan"'],
-    cwd='C:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician',
+    cwd=str(PROJECT_ROOT),
     capture_output=True, text=True
 )
 if result.stdout.strip():
@@ -26,7 +29,7 @@ else:
 result2 = subprocess.run(
     ['powershell', '-Command',
      'Get-ChildItem -Path app -Filter *.py -Recurse | Select-String -Pattern "calorie_adjustment"'],
-    cwd='C:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician',
+    cwd=str(PROJECT_ROOT),
     capture_output=True, text=True
 )
 lines = [l for l in result2.stdout.strip().split('\n') if l.strip()]
@@ -61,7 +64,6 @@ if 'clinical_notes' in doctor_rels:
 
 # ── 4. New endpoints import clean ─────────────────────────────────────────
 try:
-    from app.routers.meal_plan import router
     notes.append("PASS: meal_plan.py (with new endpoints) imports clean")
 except Exception as e:
     issues.append(f"FAIL: meal_plan.py import error: {e}")
@@ -104,7 +106,7 @@ else:
     issues.append("FAIL: get_shopping_list doesn't handle both key cases")
 
 # ── 10. AuditLog + ClinicalNote in DB ─────────────────────────────────────
-from app.models.db_models import AuditLog, ClinicalNote, ProgressLog
+from app.models.db_models import AuditLog, ProgressLog
 cols = {c.key for c in ProgressLog.__table__.columns}
 if 'calorie_adjustment' in cols:
     notes.append("PASS: ProgressLog.calorie_adjustment column exists in ORM + DB (migrated)")

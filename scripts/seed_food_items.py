@@ -2,13 +2,14 @@ import os
 import sys
 import re
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Add project root to sys path
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.models.db_models import FoodItem
+from app.services.dish_service import normalize_dish_name
 
 import os
 from dotenv import load_dotenv
@@ -84,7 +85,7 @@ def parse_ingredients(ingredient_str, amount_str) -> list[dict]:
         amounts = [float(amount_str)]
     while len(amounts) < len(names):
         amounts.append(0.0)
-    return [{"name": n, "amount_g": a} for n, a in zip(names, amounts) if n]
+    return [{"name": n, "amount_g": a} for n, a in zip(names, amounts, strict=True) if n]
 
 def parse_serving_weight(df_row) -> float:
     # Handle the fact that Morning_Snack has a double space
@@ -176,12 +177,15 @@ def main():
                 fat = float(row.get('Fat', 0)) if not pd.isna(row.get('Fat')) else 0.0
                 fiber = float(row.get('Fibre', 0)) if not pd.isna(row.get('Fibre')) else 0.0
 
-                # Check existence before insert (Idempotency)
-                # Since regions/meal_tags might be arrays, we do a simple check by recipe_name and diet_type
+                # Check existence before insert (Idempotency). Keyed on
+                # name_normalized + diet_type, not slot_type -- a later
+                # SLOT_MAP edit would otherwise change slot_type and make a
+                # re-run insert a near-duplicate instead of detecting the
+                # row as already seeded.
+                name_normalized = normalize_dish_name(recipe_name)
                 existing = session.query(FoodItem.id).filter(
-                    FoodItem.recipe_name == recipe_name,
+                    FoodItem.name_normalized == name_normalized,
                     FoodItem.diet_type == diet_type,
-                    FoodItem.slot_type == slot_type
                 ).first()
 
                 if existing:
@@ -189,6 +193,7 @@ def main():
 
                 food_item = FoodItem(
                     recipe_name=recipe_name,
+                    name_normalized=name_normalized,
                     slot_type=slot_type,
                     cal_per_serving=cal,
                     protein_per_serving=protein,
@@ -200,7 +205,6 @@ def main():
                     region_tags=region_tags,
                     meal_time_tags=config["meal_time_tags"],
                     ingredients=ingredients,
-                    instructions="",
                     source="excel",
                     is_verified=True, # Verified from excel logic
                 )

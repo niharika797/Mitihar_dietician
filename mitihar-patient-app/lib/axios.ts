@@ -80,6 +80,12 @@ api.interceptors.response.use(
 
       const newAccessToken: string = data.access_token;
       await storage.setItemAsync(SECURE_KEYS.ACCESS_TOKEN, newAccessToken);
+      // Backend rotates the refresh token on every refresh (auth.py returns
+      // refresh_token in the body for mobile clients) — persist it or the old
+      // one dies after 7 days and the user is force-logged-out.
+      if (data.refresh_token) {
+        await storage.setItemAsync(SECURE_KEYS.REFRESH_TOKEN, data.refresh_token);
+      }
 
       processQueue(null, newAccessToken);
       if (originalRequest.headers) {
@@ -92,6 +98,11 @@ api.interceptors.response.use(
       // Wipe tokens — force re-login
       await storage.deleteItemAsync(SECURE_KEYS.ACCESS_TOKEN);
       await storage.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
+      // Flip auth state so AuthGate (the app's single navigator) routes to
+      // /(auth)/login instead of leaving a dead session on screen.
+      // Dynamic import — useAuthStore imports this module, static would cycle.
+      const { useAuthStore } = await import("../store/useAuthStore");
+      useAuthStore.setState({ isAuthenticated: false, profile: null });
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;

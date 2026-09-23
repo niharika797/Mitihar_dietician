@@ -14,6 +14,7 @@ function getBreadcrumbs(pathname: string) {
     '/admin/doctors':       [{ label: 'Admin' }, { label: 'Doctors' }],
     '/admin/patients':      [{ label: 'Admin' }, { label: 'Patients' }],
     '/admin/food-database': [{ label: 'Admin' }, { label: 'Food Database' }],
+    '/admin/data-review':   [{ label: 'Admin' }, { label: 'Data Review' }],
     '/admin/billing':       [{ label: 'Admin' }, { label: 'Codes & Consultations' }],
     '/admin/audit-logs':    [{ label: 'Admin' }, { label: 'Audit Logs' }],
     '/admin/settings':      [{ label: 'Admin' }, { label: 'Settings' }],

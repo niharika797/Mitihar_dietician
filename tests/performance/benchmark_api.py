@@ -19,6 +19,7 @@ Note on "Generate plan" endpoint:
 """
 
 import json
+import os
 import statistics
 import sys
 import time
@@ -26,7 +27,7 @@ from pathlib import Path
 
 import requests
 
-BASE_URL = "http://127.0.0.1:8001"
+BASE_URL = os.environ.get("TEST_BASE_URL", "http://127.0.0.1:8001")
 REPORTS_DIR = Path(__file__).parent / "reports"
 
 DOCTOR_EMAIL = "dr.ashok.mehta@mitihar.test"

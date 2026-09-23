@@ -12,11 +12,16 @@ Keywords use PostgreSQL word-boundary regex (\y) so that:
   - 'sev'    does NOT match "Served rice" (if it existed)  ✓
 """
 import asyncio
+import os
 import sys
+from pathlib import Path
 
 import asyncpg
+from dotenv import load_dotenv
 
-DSN = "postgresql://admin:mityahar_dev@localhost:5432/mityahar_db"
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+DSN = os.environ["DATABASE_URL"].replace("+asyncpg", "")
 
 # Word-boundary regex patterns — achari explicitly excluded by \y boundary
 CONDIMENT_PATTERNS = [

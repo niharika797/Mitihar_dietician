@@ -1,5 +1,6 @@
 import os
 from typing import AsyncGenerator
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -10,15 +11,29 @@ if not DATABASE_URL:
         "Copy .env.example to .env and fill in the database credentials."
     )
 
+# Per-instance connection ceiling is pool_size + max_overflow, and the real
+# limit is that times the max instance count, measured against the server's
+# max_connections. Overridable so a tier with many instances can shrink its
+# per-instance share without changing the defaults everywhere else — unset in
+# dev and prod, where these resolve to the original hardcoded 20/20.
+DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "20"))
+DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "20"))
+
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True,
-    pool_size=20,
-    max_overflow=20,
+    pool_size=DB_POOL_SIZE,
+    max_overflow=DB_MAX_OVERFLOW,
     pool_timeout=30,
     pool_recycle=1800,
     pool_pre_ping=True,
+    connect_args={
+        # Kill any query that runs longer than 30s at the PostgreSQL level.
+        # Prevents runaway queries from holding connections indefinitely.
+        # asyncpg passes server_settings as SET commands on each new connection.
+        "server_settings": {"statement_timeout": "30000"},
+    },
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -35,9 +50,18 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
+            # Postgres treats COMMIT on an already-aborted transaction as a
+            # silent ROLLBACK, with no exception raised. So a statement that
+            # failed deep inside a route/service and was caught there without
+            # an explicit session.rollback() would otherwise make this commit()
+            # "succeed" while discarding the whole transaction -- including
+            # writes that succeeded earlier in the same request -- with the
+            # response still looking like a 200. Empirically confirmed against
+            # a live session: probe with a trivial statement first. Postgres
+            # rejects any command but ROLLBACK/COMMIT on an aborted transaction,
+            # so this surfaces the failure as a real, catchable exception.
+            await session.execute(text("SELECT 1"))
             await session.commit()
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()

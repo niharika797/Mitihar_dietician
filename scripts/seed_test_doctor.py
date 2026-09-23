@@ -154,19 +154,19 @@ async def seed():
             print(f"\n{'='*50}")
             print("✅ Seed complete!")
             print(f"{'='*50}")
-            print(f"\nDoctor Dashboard Login:")
-            print(f"  URL:      http://localhost:5173")
+            print("\nDoctor Dashboard Login:")
+            print("  URL:      http://localhost:5173")
             print(f"  Email:    {DOCTOR['email']}")
-            print(f"  Password: (set via TEST_DOCTOR_PASSWORD env var)")
-            print(f"\nAdmin Dashboard Login:")
-            print(f"  URL:      http://localhost:5173")
+            print("  Password: (set via TEST_DOCTOR_PASSWORD env var)")
+            print("\nAdmin Dashboard Login:")
+            print("  URL:      http://localhost:5173")
             print(f"  Email:    {ADMIN['email']}")
-            print(f"  Password: (set via TEST_ADMIN_PASSWORD env var)")
-            print(f"\nSubscription Codes (use on patient app → Activate):")
+            print("  Password: (set via TEST_ADMIN_PASSWORD env var)")
+            print("\nSubscription Codes (use on patient app → Activate):")
             for c in CODES:
                 print(f"  {c}")
-            print(f"\nPatient App → Find a Doctor → will show 'Dr. Ashok Mehta'")
-            print(f"Patient App → Activate → enter any code above (e.g. ASHOK1)")
+            print("\nPatient App → Find a Doctor → will show 'Dr. Ashok Mehta'")
+            print("Patient App → Activate → enter any code above (e.g. ASHOK1)")
 
 
 if __name__ == "__main__":

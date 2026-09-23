@@ -7,7 +7,7 @@ Updates ingredients.avoid_tags JSONB column in DB.
 Propagates updated tags to food_items via scripts/derive_recipe_tags.py.
 
 Run: python -m scripts.tag_medical_ingredients
-Checkpoint: tag_medical_checkpoint.json
+Checkpoint: data/review/tag_medical_checkpoint.json
 Rollback: UPDATE ingredients SET avoid_tags = '[]' WHERE avoid_tags ?| array['avoid_pcos','avoid_gout'];
 """
 
@@ -17,6 +17,7 @@ import os
 import subprocess
 import time
 from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -24,7 +25,7 @@ load_dotenv()
 from sqlalchemy import text
 from app.core.database import AsyncSessionLocal
 
-CHECKPOINT_FILE = "tag_medical_checkpoint.json"
+CHECKPOINT_FILE = str(Path(__file__).resolve().parent.parent / "data" / "review" / "tag_medical_checkpoint.json")
 BATCH_SIZE = 50
 BATCH_SLEEP = 3
 
@@ -169,9 +170,20 @@ async def main() -> None:
                 prompt = build_tag_prompt(batch)
                 tag_result = call_claude_cli(prompt)
 
+                # A missing key means the LLM's response didn't cover this
+                # ingredient (truncation, malformed JSON, etc.) -- that's NOT
+                # the same as "no tags apply" and must not be checkpointed as
+                # done, or a medical-safety tag silently never gets applied.
+                missing_ids = [i["id"] for i in batch if str(i["id"]) not in tag_result]
+                if missing_ids:
+                    print(f"  WARNING: LLM response missing {len(missing_ids)} id(s): {missing_ids} "
+                          f"-- will retry these next run, not marking as done")
+                covered_batch = [i for i in batch if i["id"] not in missing_ids]
+                covered_ids = [i["id"] for i in covered_batch]
+
                 # Step 4: apply tags — union with existing, write only if changed
                 changed_in_batch = 0
-                for ing in batch:
+                for ing in covered_batch:
                     ing_id = str(ing["id"])
                     new_tags = set(tag_result.get(ing_id, []))
                     if not new_tags:
@@ -200,13 +212,13 @@ async def main() -> None:
                             sample_tagged.append((ing["id"], ing["name"], sorted(new_tags)))
 
                 await db.commit()
-                done_ids.update(batch_ids)
+                done_ids.update(covered_ids)
                 save_checkpoint(done_ids)
-                print(f"  Tagged {changed_in_batch}/{len(batch)} ingredients in this batch")
+                print(f"  Tagged {changed_in_batch}/{len(covered_batch)} ingredients in this batch")
 
                 if batch_start + BATCH_SIZE < len(remaining):
                     print(f"  Sleeping {BATCH_SLEEP}s...")
-                    time.sleep(BATCH_SLEEP)
+                    time.sleep(BATCH_SLEEP)  # noqa: ASYNC251 -- deliberate inter-batch pacing
 
             except Exception as e:
                 print(f"  ERROR on batch starting {batch_ids[0]}: {e}")
@@ -215,7 +227,7 @@ async def main() -> None:
 
     # Step 5: propagate to food_items via derive_recipe_tags.py
     print("\nPropagating to food_items via derive_recipe_tags.py...")
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: ASYNC221 -- one-shot script, blocking subprocess is fine
         ["python", "-m", "scripts.derive_recipe_tags"],
         capture_output=True,
         text=True,

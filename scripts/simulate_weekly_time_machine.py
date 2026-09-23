@@ -82,7 +82,7 @@ async def run():
     WEEK2_START = WEEK1_START + timedelta(days=7)
 
     print(f"\n{'='*60}")
-    print(f"PASS 3: TIME MACHINE — 14-DAY CYCLE SIMULATION")
+    print("PASS 3: TIME MACHINE — 14-DAY CYCLE SIMULATION")
     print(f"  Week 1: {WEEK1_START} -> {WEEK1_END}")
     print(f"  Week 2: {WEEK2_START} -> {WEEK2_START + timedelta(days=6)}")
     print(f"{'='*60}\n")
@@ -326,7 +326,7 @@ async def run():
 
         # ── Summary ───────────────────────────────────────────────────────
         print(f"\n{'='*60}")
-        print(f"PASS 3 COMPLETE")
+        print("PASS 3 COMPLETE")
         print(f"  Week 1 rec_id   : {rec_id}  (week_start={WEEK1_START})")
         print(f"  Week 2 rec_id   : {rec2_id} (week_start={WEEK2_START})")
         print(f"  adherence       : {adherence}%")

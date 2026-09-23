@@ -1,14 +1,100 @@
+import functools
+import inspect
 import ipaddress
 import logging
+import threading
 from typing import List
 
 from fastapi import Request
 from slowapi import Limiter
-from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from .config import settings
 
 _log = logging.getLogger(__name__)
+
+# Fail-open counter — incremented every time the rate limiter bypasses a request
+# due to Redis/storage unavailability. Visible in GCP Cloud Logging as structured
+# WARNING lines (severity >= WARNING is indexed and alertable via log-based metrics).
+_fail_open_lock = threading.Lock()
+_fail_open_count = 0
+
+
+def _increment_fail_open(exc: Exception) -> None:
+    global _fail_open_count
+    with _fail_open_lock:
+        _fail_open_count += 1
+        count = _fail_open_count
+    _log.warning(
+        "RATE_LIMITER_FAIL_OPEN count=%d error=%s: %s",
+        count,
+        type(exc).__name__,
+        exc,
+    )
+
+
+def _is_storage_error(exc: Exception) -> bool:
+    """True only for Redis/storage connectivity failures — not for RateLimitExceeded."""
+    if isinstance(exc, RateLimitExceeded):
+        return False
+    try:
+        import redis.exceptions
+        if isinstance(exc, redis.exceptions.RedisError):
+            return True
+    except ImportError:
+        pass
+    try:
+        from limits.errors import StorageError
+        if isinstance(exc, StorageError):
+            return True
+    except ImportError:
+        pass
+    return False
+
+
+class FailOpenLimiter(Limiter):
+    """
+    slowapi.Limiter subclass: fails open on Redis/storage errors instead of 500.
+
+    When Redis is reachable: rate limiting enforces normally.
+    When Redis goes down mid-flight: logs the error, allows the request through.
+    RateLimitExceeded (Redis is up, limit hit) is always re-raised — never swallowed.
+    """
+
+    def limit(self, *args, **kwargs):
+        original_decorator = super().limit(*args, **kwargs)
+
+        def safe_decorator(func):
+            decorated = original_decorator(func)
+
+            if inspect.iscoroutinefunction(func):
+                @functools.wraps(func)
+                async def async_wrapper(*fargs, **fkwargs):
+                    try:
+                        return await decorated(*fargs, **fkwargs)
+                    except RateLimitExceeded:
+                        raise
+                    except Exception as exc:
+                        if _is_storage_error(exc):
+                            _increment_fail_open(exc)
+                            return await func(*fargs, **fkwargs)
+                        raise
+                return async_wrapper
+            else:
+                @functools.wraps(func)
+                def sync_wrapper(*fargs, **fkwargs):
+                    try:
+                        return decorated(*fargs, **fkwargs)
+                    except RateLimitExceeded:
+                        raise
+                    except Exception as exc:
+                        if _is_storage_error(exc):
+                            _increment_fail_open(exc)
+                            return func(*fargs, **fkwargs)
+                        raise
+                return sync_wrapper
+
+        return safe_decorator
 
 # Parse trusted proxy CIDRs once at startup.
 _trusted_networks: List[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
@@ -57,8 +143,10 @@ def gcp_aware_key(request: Request) -> str:
 if settings.REDIS_URL:
     # Production / multi-worker: shared Redis counter so all uvicorn workers
     # enforce a single rate-limit bucket per IP.
-    limiter = Limiter(key_func=gcp_aware_key, storage_uri=settings.REDIS_URL)
-    _log.info("Rate limiter using Redis storage: %s", settings.REDIS_URL)
+    # FailOpenLimiter: if Redis goes down at runtime, requests are allowed through
+    # (logged as errors) rather than returning 500/502 to clients.
+    limiter = FailOpenLimiter(key_func=gcp_aware_key, storage_uri=settings.REDIS_URL)
+    _log.info("Rate limiter using Redis storage (fail-open on disconnect): %s", settings.REDIS_URL)
 else:
     # Development fallback: in-memory counter. ONLY safe for single-worker dev servers.
     # Set REDIS_URL in .env before running with --workers > 1 in production.
@@ -67,4 +155,4 @@ else:
         "This is UNSAFE for multi-worker deployments. "
         "Set REDIS_URL in .env to enable shared Redis storage."
     )
-    limiter = Limiter(key_func=gcp_aware_key)
+    limiter = FailOpenLimiter(key_func=gcp_aware_key)

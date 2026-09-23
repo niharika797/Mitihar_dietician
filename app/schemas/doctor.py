@@ -1,7 +1,9 @@
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 from typing import Annotated, Literal, Optional
 from datetime import date, datetime
+
+from . import BoundedTagList
 
 class PatientSummary(BaseModel):
     id: int
@@ -185,17 +187,19 @@ class IngredientItem(BaseModel):
     unit:     str = Field(..., min_length=1, max_length=20)
 
 
-# Bounded tag list: max 10 tags, each max 50 chars
-_BoundedTag = Annotated[str, Field(max_length=50)]
-BoundedTagList = Annotated[list[_BoundedTag], Field(max_length=10)]
+
+# Canonical slot_type values -- matches every value actually present in
+# food_items.slot_type (verified against live data), shared by every schema
+# that constrains this field so the set can't drift between them again.
+SlotType = Literal[
+    "accompaniment", "beverage", "condiment", "dal_protein", "grain",
+    "main_dish", "one_pot", "sabzi", "snack_item",
+]
 
 
 class RecipeCreateRequest(BaseModel):
     recipe_name:       str = Field(..., min_length=2, max_length=200)
-    slot_type:         Literal[
-        "grain", "dal_protein", "main_dish", "sabzi",
-        "beverage", "snack_item", "fruit", "egg_dish"
-    ]
+    slot_type:         SlotType
     cal_per_serving:   float = Field(..., gt=0, le=5000)
     protein_per_serving: float = Field(default=0.0, ge=0, le=500)
     carbs_per_serving:   float = Field(default=0.0, ge=0, le=500)
@@ -216,10 +220,6 @@ class RecipeCreateRequest(BaseModel):
     )
 
 
-_VALID_SLOT_TYPES = Literal[
-    "accompaniment", "beverage", "dal_protein", "grain",
-    "main_dish", "one_pot", "sabzi", "snack_item",
-]
 
 
 class AddCustomDishRequest(BaseModel):
@@ -230,7 +230,7 @@ class AddCustomDishRequest(BaseModel):
     fat:         float = Field(default=0.0, ge=0, le=500)
     fiber:       float = Field(default=0.0, ge=0, le=200)
     diet_type:   str = "Vegetarian"
-    slot_type:   _VALID_SLOT_TYPES = "main_dish"  # type: ignore[assignment]
+    slot_type:   SlotType = "main_dish"
     add_to_library:   bool = False
     serving_weight_g: Optional[float] = Field(default=None, gt=0, le=10000)
     combo_index:      int  = Field(default=0, ge=0, le=3)
@@ -257,6 +257,15 @@ class PatchDishRequest(BaseModel):
     custom_dish:         Optional[CustomDishBody] = None  # free-text dish
     flag_for_database:   bool                     = False  # True + custom_dish → submitted_for_review
     slot_type:           Optional[str]            = None  # passed through to new dish if custom
+
+    @model_validator(mode="after")
+    def _check_action_fields(self):
+        if self.action in (DishAction.swap, DishAction.add):
+            if self.replacement_food_id is None and self.custom_dish is None:
+                raise ValueError(
+                    f'action="{self.action.value}" requires replacement_food_id or custom_dish'
+                )
+        return self
 
 
 class RecipeAssignRequest(BaseModel):
@@ -288,7 +297,10 @@ class RecordVisitResponse(BaseModel):
 
 class RenewalApproveResponse(BaseModel):
     message: str
-    token_1: str
+    # Nullable: patients.token_1 is nullable at the DB level (db_models.py:238).
+    # A non-Optional str here made approve_renewal 500 on Pydantic response
+    # validation for any patient whose token_1 was never issued.
+    token_1: Optional[str]
     token_2: str
     token_1_expiry: datetime
 
@@ -314,6 +326,7 @@ class DoctorDashboardStats(BaseModel):
     plans_generated_this_week: int
     inactive_patients: list[dict]
     expiring_soon: list[dict]
+    product_tour_completed_at: Optional[datetime] = None
 
 
 # ── Visit verification schemas ─────────────────────────────────────────────
@@ -322,8 +335,45 @@ class RecordVisitRequest(BaseModel):
     token_2: str = Field(..., min_length=5, max_length=100, description="Token 2 shown by the patient on their app")
 
 
+# Why a patient could not show Token 2. Ordered most- to least-common.
+# Mirrored by ck_pva_reason_code in migration f5a6b7c8d9e0 — change both.
+FLAG_VISIT_REASONS: dict[str, str] = {
+    "phone_not_present": "Phone not with patient",
+    "battery_dead": "Phone battery dead",
+    "app_issue": "App issue — couldn't show Token 2",
+    "signed_out": "Patient signed out / login trouble",
+    "other": "Other",
+}
+
+FlagVisitReason = Literal["phone_not_present", "battery_dead", "app_issue", "signed_out", "other"]
+
+
 class FlagVisitRequest(BaseModel):
-    doctor_note: Optional[str] = Field(None, max_length=1000, description="Optional note for the patient about this flagged visit")
+    """A coded reason, with free text allowed only under "other".
+
+    The note is displayed to the patient beside a request to confirm a
+    chargeable visit, so free text on the preset path would be an unmonitored
+    doctor→patient channel attached to a bill. Restricting it to "other" keeps
+    the escape hatch without making it the default.
+    """
+    reason_code: FlagVisitReason
+    doctor_note: Optional[str] = Field(
+        None, max_length=1000,
+        description='Required when reason_code is "other"; ignored otherwise.',
+    )
+
+    @model_validator(mode="after")
+    def _check_note(self):
+        if self.reason_code == "other":
+            note = (self.doctor_note or "").strip()
+            if not note:
+                raise ValueError('doctor_note is required when reason_code is "other"')
+            self.doctor_note = note
+        else:
+            # Drop rather than reject: a client sending both is not an error,
+            # but the preset reason is what the patient must see.
+            self.doctor_note = None
+        return self
 
 
 class PendingVisitApprovalResponse(BaseModel):
@@ -372,3 +422,10 @@ class WeeklyDishPatchRequest(BaseModel):
     action:       DishAction
     food_item_id: Optional[int] = None
     doctor_note:  Optional[str] = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _check_action_fields(self):
+        if self.action in (DishAction.swap, DishAction.add):
+            if self.food_item_id is None:
+                raise ValueError(f'action="{self.action.value}" requires food_item_id')
+        return self

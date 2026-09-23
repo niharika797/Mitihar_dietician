@@ -1,0 +1,36 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+extend-exclude = ["alembic/versions", "venv"]
+
+[tool.ruff.lint]
+# Correctness-only for now: real bugs (F, B, ASYNC), not style/modernization debt.
+# E (pycodestyle-full), I (import sort), UP (pyupgrade) are pre-existing debt across
+# app/ (~700 hits) — deferred to a dedicated cleanup pass, not bundled into CI setup.
+select = ["E9", "F", "B", "ASYNC"]
+ignore = [
+    "E501",  # line length handled by formatter, not a hard error
+    # --- Deferred backlog, flagged 2026-07-13, ruff is the CI-blocking gate as of
+    # this date so these are excluded rather than silently left failing. Each is a
+    # real finding, not a false positive — needs a deliberate pass, not an autofix:
+    "B904",  # raise-without-from-inside-except — 19 hits, swallows exception context
+    "B005",  # strip-with-multi-characters — 3 hits, likely intent-vs-behavior bug
+    "B007",  # unused-loop-control-variable — 1 hit
+    "F841",  # unused-variable — 1 hit
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's Depends()/Query()/Body() as default args is the framework's own idiom,
+# not the mutable-default-argument bug B008 is meant to catch.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Header", "fastapi.Path", "fastapi.Cookie"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["app"]
+exclude = ["alembic/versions"]
+explicit_package_bases = true
+mypy_path = "."
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true

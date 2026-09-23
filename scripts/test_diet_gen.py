@@ -27,8 +27,8 @@ async def main():
         token = create_access_token(data=token_data)
 
         print("Calling /generate ...")
-        resp = requests.post(
-            "http://127.0.0.1:8000/api/v1/diet-plans/generate",
+        resp = requests.post(  # noqa: ASYNC210 -- one-shot script, blocking HTTP is fine
+            "http://127.0.0.1:8001/api/v1/diet-plans/generate",
             headers={"Authorization": f"Bearer {token}"},
             timeout=120,
         )

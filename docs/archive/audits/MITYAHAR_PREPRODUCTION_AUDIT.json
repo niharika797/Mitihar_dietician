@@ -1,0 +1,1265 @@
+{
+    "metadata": {
+        "title": "Mityahar — Pre-Production Audit Report",
+        "date": "2026-03-31",
+        "stack": [
+            "FastAPI (Python)",
+            "React (Vite/TS)",
+            "React Native (Expo)"
+        ],
+        "auditor": "Full-stack static analysis (no live server required)"
+    },
+    "issues": {
+        "critical": [
+            {
+                "id": "C-1",
+                "title": "API Port Mismatch — All Frontend → Backend Traffic Is Dead by Default",
+                "description": "The backend runs on port 8001 (per MITYAHAR_TESTING_GUIDE.md and project startup docs). Both the doctor web dashboard and the patient mobile app point to port 8000. Every API call from both frontends will receive a connection refused error until this is corrected.",
+                "locations": [
+                    {
+                        "file": "mitihar-frontend/apps/.env",
+                        "line": 4,
+                        "value": "VITE_API_URL=http://localhost:8000/api/v1"
+                    },
+                    {
+                        "file": "mitihar-frontend/apps/src/lib/axios.ts",
+                        "line": 21,
+                        "value": "fallback http://localhost:8000/api/v1"
+                    },
+                    {
+                        "file": "mitihar-patient-app/.env",
+                        "line": 1,
+                        "value": "EXPO_PUBLIC_API_URL=http://192.168.0.100:8000/api/v1"
+                    },
+                    {
+                        "file": "mitihar-patient-app/lib/axios.ts",
+                        "line": 15,
+                        "value": "fallback http://10.0.2.2:8000/api/v1"
+                    }
+                ]
+            },
+            {
+                "id": "C-2",
+                "title": "Mobile App Hardcoded to Developer's Personal LAN IP",
+                "description": "192.168.0.100 is a local machine IP. This value is baked into every Expo build. The app will fail to connect on any device not on the same router. On a physical device over cellular, or on any other developer's machine, the app is non-functional.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/.env",
+                        "line": 1,
+                        "code": "EXPO_PUBLIC_API_URL=http://192.168.0.100:8000/api/v1"
+                    }
+                ]
+            },
+            {
+                "id": "C-3",
+                "title": "Mobile Meal Logging Calls the Wrong Endpoint (404 on Every Log)",
+                "description": "The mobile app sends to /progress/meal — a path that does not exist. Backend defines POST /api/v1/progress/log/meal. Every meal log attempt from the patient app silently fails with a 404.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/services/progress.ts",
+                        "line": 22,
+                        "code": "const { data } = await api.post(\"/progress/meal\", payload);"
+                    },
+                    {
+                        "file": "app/routers/progress.py",
+                        "line": 27,
+                        "note": "Backend defines POST /api/v1/progress/log/meal"
+                    }
+                ]
+            },
+            {
+                "id": "C-4",
+                "title": "Mobile Shopping-List Toggle — Double Mismatch (Wrong Format + Missing Param)",
+                "description": "Two problems: (1) the mobile app sends a JSON body, but the backend reads query parameters; (2) the required at_home boolean is never sent at all. Every toggle call returns HTTP 422 Unprocessable Entity. The shopping-list check-off feature is completely broken on mobile.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/services/meals.ts",
+                        "line": 42,
+                        "code": "await api.post(\"/meal-plan/shopping-list/toggle\", { ingredient_name });"
+                    },
+                    {
+                        "file": "app/routers/meal_plan.py",
+                        "lines": "253–258",
+                        "code": "ingredient_name: str = Query(...),\nat_home: bool = Query(...),       # ← required, not optional"
+                    }
+                ]
+            },
+            {
+                "id": "C-5",
+                "title": "Patient Mobile App Calls a Doctor-Gated Route for Subscription Renewal",
+                "description": "/api/v1/doctor/* is protected by DoctorIsolationMiddleware (app/main.py line 134). Any request arriving with a patient JWT is rejected with HTTP 403 before it reaches the handler. Patients using the renewal flow in the app will get a 403 on every attempt. There is no patient-facing renewal endpoint in app/routers/patients.py.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/services/profile.ts",
+                        "line": 72,
+                        "code": "await api.post(`/doctor/patients/${patientId}/request-renewal`);"
+                    },
+                    {
+                        "file": "app/main.py",
+                        "line": 134,
+                        "note": "DoctorIsolationMiddleware blocks patient JWTs"
+                    }
+                ]
+            },
+            {
+                "id": "C-6",
+                "title": "TodaySummary Type Completely Mismatched with Backend Response",
+                "description": "Fields are nested in the backend response, not flat. No tdee, streak, or top-level calories_consumed exist. The calorie ring, streak pill, and all progress indicators on the home screen always display zero. Users who have logged data will never see it reflected in the UI.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/types/index.ts",
+                        "lines": "162–168",
+                        "code": "interface TodaySummary {\n  tdee: number;\n  calories_consumed: number;\n  water: number;\n  steps: number;\n  streak: number;\n}"
+                    },
+                    {
+                        "file": "app/routers/progress.py",
+                        "lines": "148–162",
+                        "code": "{\n  \"calories\": { \"consumed\": ..., \"target\": ..., \"remaining\": ... },\n  \"water_intake\": { \"glasses\": ..., \"target\": 8 },\n  \"activity\": { \"steps\": ..., \"target_steps\": 10000 },\n}"
+                    },
+                    {
+                        "file": "app/(tabs)/index.tsx",
+                        "lines": "202–205",
+                        "code": "const cals   = today?.calories_consumed ?? 0;   // always 0\nconst streak = today?.streak ?? 0;               // always 0"
+                    }
+                ]
+            },
+            {
+                "id": "C-7",
+                "title": "ALLOW_HARD_DELETE=True Set in Root .env",
+                "description": "This enables DELETE /api/v1/admin/patients/{id}/hard-delete which physically removes the patient row and all associated data. The flag is gated in app/core/config.py with a comment 'MUST be False in production'. It is currently True and anyone with admin access (or whose credentials are leaked) can permanently and irreversibly wipe patient records.",
+                "locations": [
+                    {
+                        "file": "/.env",
+                        "line": 16,
+                        "code": "ALLOW_HARD_DELETE=True"
+                    },
+                    {
+                        "file": "app/core/config.py",
+                        "note": "Comment says 'MUST be False in production'"
+                    }
+                ]
+            },
+            {
+                "id": "C-8",
+                "title": "Nutrition Lookup Endpoint Name Mismatch",
+                "description": "Two issues: the URL path (lookup vs estimate) does not exist, and the field name is wrong (food_name vs dish_name). The Gemini nutrition estimation feature on the Recipes page is completely broken.",
+                "locations": [
+                    {
+                        "file": "mitihar-frontend/apps/src/lib/doctorApi.ts",
+                        "line": 318,
+                        "code": "apiClient.post('/doctor/recipes/lookup', { food_name: dishName })"
+                    },
+                    {
+                        "file": "app/routers/doctor.py",
+                        "line": "~1055",
+                        "note": "Backend defines POST /api/v1/doctor/recipes/estimate with body field dish_name"
+                    }
+                ]
+            }
+        ],
+        "warning": [
+            {
+                "id": "W-1",
+                "title": "CORS Origins Do Not Include Backend's Actual Port",
+                "description": "If the backend runs on port 8001, the CORS list includes port 8000 (legacy) but not 8001. Browsers making cross-origin requests from localhost:5173 (Vite) will be blocked for preflight OPTIONS requests that include an origin not in this list.",
+                "locations": [
+                    {
+                        "file": "/.env",
+                        "line": 41,
+                        "code": "CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173,http://localhost:8000"
+                    }
+                ]
+            },
+            {
+                "id": "W-2",
+                "title": "PlatformStats TypeScript Interface Missing New Backend Fields",
+                "description": "The backend GET /admin/stats now also returns expiring_soon_count, pending_renewals_count, and total_consultations_this_month. AdminOverview.tsx reads these correctly with optional chaining, so there is no runtime crash. But TypeScript will emit type errors, and if strict mode is enforced in CI, builds will fail.",
+                "locations": [
+                    {
+                        "file": "mitihar-frontend/apps/src/lib/adminApi.ts",
+                        "lines": "26–31",
+                        "code": "export interface PlatformStats {\n  total_patients: number;\n  active_subscriptions: number;\n  total_doctors: number;\n  total_plans_generated: number;\n}"
+                    },
+                    {
+                        "file": "app/routers/admin.py",
+                        "lines": "68–84",
+                        "note": "Backend also returns expiring_soon_count, pending_renewals_count, total_consultations_this_month"
+                    }
+                ]
+            },
+            {
+                "id": "W-3",
+                "title": "registerPatient Response Typed with Non-Existent user_id Field",
+                "description": "POST /api/v1/auth/register returns { message, doctor_connected } — no user_id. Any screen consuming user_id from this response receives undefined, which silently becomes NaN when used in arithmetic or API calls.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/services/auth.ts",
+                        "line": 23,
+                        "code": "return data as { message: string; user_id: number; doctor_connected: boolean };"
+                    },
+                    {
+                        "file": "app/routers/auth.py",
+                        "line": "~165",
+                        "note": "Backend returns { message, doctor_connected }"
+                    }
+                ]
+            },
+            {
+                "id": "W-4",
+                "title": "ActivateResponse Type Mismatched with Backend Schema",
+                "description": "POST /api/v1/patients/activate returns ActivationResponse from app/schemas/patients.py, which contains { patient: PatientProfile, access_token, refresh_token }. The frontend type is missing refresh_token and patient, and includes doctor_name which doesn't exist.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/types/index.ts",
+                        "lines": "208–213",
+                        "code": "interface ActivateResponse {\n  message: string;\n  doctor_name?: string;\n  access_token?: string;\n  token_type?: string;\n}"
+                    },
+                    {
+                        "file": "app/schemas/patients.py",
+                        "note": "ActivationResponse contains { patient: PatientProfile, access_token, refresh_token }"
+                    }
+                ]
+            },
+            {
+                "id": "W-5",
+                "title": "ShoppingItem Field Name Mismatch (have_at_home vs at_home)",
+                "description": "The mobile shopping list will never show any item as checked regardless of its stored state.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/types/index.ts",
+                        "line": 152,
+                        "code": "have_at_home: boolean"
+                    },
+                    {
+                        "file": "app/routers/meal_plan.py",
+                        "line": 228,
+                        "note": "Backend item dict uses \"at_home\" key"
+                    }
+                ]
+            },
+            {
+                "id": "W-6",
+                "title": "Dead Code / Unreachable Exception in meal_plan.py",
+                "description": "The HTTPException is unreachable. The endpoint silently returns {} on a missing plan. The frontend handles this, so no crash — but this was clearly meant to be a 404 and the logic was broken during a refactor.",
+                "locations": [
+                    {
+                        "file": "app/routers/meal_plan.py",
+                        "lines": "181–182",
+                        "code": "return {}\nraise HTTPException(status_code=404, detail=\"No active meal plan found\")  # ← never reached"
+                    }
+                ]
+            },
+            {
+                "id": "W-7",
+                "title": "LoginResponse Type Includes refresh_token for Doctor/Admin Login",
+                "description": "Doctor and admin logins return { access_token, token_type } only — the refresh token is placed in an HttpOnly cookie. The frontend never reads refresh_token from the response body for these roles, so there's no functional crash, but the type contract is violated.",
+                "locations": [
+                    {
+                        "file": "mitihar-frontend/apps/src/lib/types.ts",
+                        "line": 14,
+                        "code": "export interface LoginResponse {\n  access_token: string;\n  refresh_token: string;   // ← not returned for doctor/admin\n  token_type: 'bearer';\n}"
+                    }
+                ]
+            },
+            {
+                "id": "W-8",
+                "title": "Rate Limiter Uses In-Memory Storage (Not Production-Safe)",
+                "description": "REDIS_URL is None in app/core/config.py and not set in .env. The in-memory rate limiter state is per-process. Under uvicorn --workers N, every worker has an independent counter — so a client can exceed the rate limit N× before being blocked.",
+                "locations": [
+                    {
+                        "file": "app/main.py",
+                        "line": 111,
+                        "code": "# TODO: Switch to RedisStorage before multi-worker/production deployment\nlimiter = Limiter(key_func=get_remote_address)"
+                    },
+                    {
+                        "file": "app/core/config.py",
+                        "line": 30,
+                        "note": "REDIS_URL is None"
+                    }
+                ]
+            },
+            {
+                "id": "W-9",
+                "title": "print() Used for Error Logging in Production Code",
+                "description": "print() writes to stdout and is invisible in any log aggregation system (Sentry, Loki, CloudWatch). These should use logging.getLogger(__name__).info/error(...) like the rest of the codebase.",
+                "locations": [
+                    {
+                        "file": "app/routers/progress.py",
+                        "lines": "120–121",
+                        "code": "print(\"Auto-regenerated diet plan upon weight update\")\nprint(f\"Failed to auto-generate diet plan: {e}\")"
+                    }
+                ]
+            },
+            {
+                "id": "W-10",
+                "title": "Email Verification Not Enforced",
+                "description": "Email verification tokens are generated on registration and logged to console, but logins are never gated on is_email_verified. Sending real verification emails (Phase 7) and enabling this flag must happen together before production.",
+                "locations": [
+                    {
+                        "file": "app/core/config.py",
+                        "line": 54,
+                        "code": "REQUIRE_EMAIL_VERIFICATION: bool = False"
+                    },
+                    {
+                        "file": "app/routers/auth.py",
+                        "line": "~143",
+                        "note": "Verification tokens logged to console only"
+                    }
+                ]
+            },
+            {
+                "id": "W-11",
+                "title": "PublicDoctorResponse Includes Fields Not on the Doctor Model",
+                "description": "PublicDoctor declares fields experience_years, fee_per_month, rating, review_count, is_accepting. These need to be verified against the Doctor DB model. If these columns don't exist on the table, the API will return 500 on GET /patients/doctors.",
+                "locations": [
+                    {
+                        "file": "mitihar-patient-app/services/profile.ts",
+                        "lines": "56–68",
+                        "note": "PublicDoctor type with potentially non-existent fields"
+                    },
+                    {
+                        "file": "app/schemas/patients.py",
+                        "note": "PublicDoctorResponse schema"
+                    }
+                ]
+            },
+            {
+                "id": "W-12",
+                "title": "Doctor Patient-Progress Endpoint Not Wired in doctorApi.ts",
+                "description": "Backend GET /api/v1/doctor/patients/{id}/progress exists. No matching function in doctorApi.ts. The patient progress chart tab in PatientDetail.tsx likely falls back to empty or mock data.",
+                "locations": [
+                    {
+                        "file": "app/routers/doctor.py",
+                        "line": "~450",
+                        "note": "GET /api/v1/doctor/patients/{id}/progress exists"
+                    },
+                    {
+                        "file": "mitihar-frontend/apps/src/lib/doctorApi.ts",
+                        "note": "No getPatientProgress() function"
+                    }
+                ]
+            },
+            {
+                "id": "W-13",
+                "title": "Sensitive Credentials in Cleartext .env (Gitignored, but Live)",
+                "description": ".gitignore correctly excludes .env, so these are not in git history. However, they are live production-capable keys sitting in a plaintext file on a developer workstation. Any accidental copy, screen share, or backup will expose them.",
+                "secrets_listed": [
+                    "4 live Gemini API keys (GEMINI_API_KEY_1 through _4)",
+                    "Google OAuth client secret (GOOGLE_CLIENT_SECRET)",
+                    "PostgreSQL password (POSTGRES_PASSWORD=mityahar_dev)",
+                    "JWT SECRET_KEY (256-bit hex)"
+                ],
+                "recommendation": "Move secrets to a secrets manager (Doppler, AWS Secrets Manager, or at minimum a password-protected vault) before production."
+            }
+        ],
+        "minor": [
+            {
+                "id": "M-1",
+                "title": "Admin Endpoints Not Surfaced in adminApi.ts",
+                "description": "Backend has GET /admin/consultations, GET /admin/consultations/annual, GET /admin/renewals, and POST /admin/renewals/{id}/override-approve. None are in adminApi.ts. The corresponding admin pages (Billing.tsx) likely show incomplete data."
+            },
+            {
+                "id": "M-2",
+                "title": "Doctor Plan Overrides History Not Wired",
+                "description": "Backend GET /api/v1/doctor/patients/{id}/plan/overrides exists. No matching function in doctorApi.ts. The RL override audit trail is never visible in the UI.",
+                "locations": [
+                    {
+                        "file": "app/routers/doctor.py",
+                        "line": "~290",
+                        "note": "GET /api/v1/doctor/patients/{id}/plan/overrides exists"
+                    }
+                ]
+            },
+            {
+                "id": "M-3",
+                "title": "MacroRow on Home Screen Always Renders 0",
+                "description": "Hardcoded zeros — macros are never computed from the meal plan data. Even when a plan is loaded, macros stay at 0.",
+                "locations": [
+                    {
+                        "file": "app/(tabs)/index.tsx",
+                        "line": "~255",
+                        "code": "<MacroRow protein={0} carbs={0} fat={0} />"
+                    }
+                ]
+            },
+            {
+                "id": "M-4",
+                "title": "hasUnread Notification Badge is Hardcoded true",
+                "description": "The bell icon always shows a red dot, regardless of whether the user has unread notifications. This degrades trust — users will stop reacting to the badge.",
+                "locations": [
+                    {
+                        "file": "app/(tabs)/index.tsx",
+                        "line": 209,
+                        "code": "const hasUnread = true; // static badge — Phase 5 FCM will drive this"
+                    }
+                ]
+            },
+            {
+                "id": "M-5",
+                "title": "ActivateResponse Missing refresh_token on Mobile",
+                "description": "app/routers/patients.py line 264 returns { patient, access_token, refresh_token }. The mobile profile.ts does not store the new refresh_token after activation. The patient's old refresh token will be used until it expires (7 days), at which point the silent refresh fails and the user is logged out.",
+                "locations": [
+                    {
+                        "file": "app/routers/patients.py",
+                        "line": 264,
+                        "note": "Returns { patient, access_token, refresh_token }"
+                    },
+                    {
+                        "file": "mitihar-patient-app/services/profile.ts",
+                        "note": "Does not store refresh_token after activation"
+                    }
+                ]
+            }
+        ]
+    },
+    "api_endpoint_status": [
+        {
+            "endpoint": "/auth/register",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "⚠️ At Risk",
+            "notes": "Response type includes user_id which backend doesn't return (W-3)"
+        },
+        {
+            "endpoint": "/auth/token",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": "Patient login; form-encoded correctly"
+        },
+        {
+            "endpoint": "/auth/doctor/login",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": "Correct form-encoding"
+        },
+        {
+            "endpoint": "/auth/admin/login",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": "Correct form-encoding"
+        },
+        {
+            "endpoint": "/auth/doctor/mfa-login",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/admin/mfa-login",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/doctor/mfa-setup",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/doctor/mfa-confirm",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/doctor/mfa-disable",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/admin/mfa-setup",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/admin/mfa-confirm",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/admin/mfa-disable",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/refresh",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": "✅ OK",
+            "notes": "Web uses cookie; mobile sends body"
+        },
+        {
+            "endpoint": "/auth/google/verify",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/logout",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/auth/verify-email",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Not wired to any frontend yet"
+        },
+        {
+            "endpoint": "/auth/resend-verification",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Not wired to any frontend yet"
+        },
+        {
+            "endpoint": "/users/me",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/users/me",
+            "method": "PUT",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/users/me",
+            "method": "DELETE",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/users/bmi",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/diet-plans/generate",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/patients/onboarding",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/patients/activate",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "⚠️ At Risk",
+            "notes": "Response type mismatch; refresh_token not stored (W-4, M-5)"
+        },
+        {
+            "endpoint": "/patients/request-doctor",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/patients/request-status",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/patients/doctors",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "⚠️ At Risk",
+            "notes": "Extra fields on PublicDoctor may not exist in DB (W-11)"
+        },
+        {
+            "endpoint": "/patients/my-visit",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/patients/disclaimer",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/today",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "❌ Broken",
+            "notes": "Response shape nested; mobile type flat — home screen always shows 0 (C-6)"
+        },
+        {
+            "endpoint": "/progress/log/meal",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "❌ Broken",
+            "notes": "Mobile calls /progress/meal — 404 (C-3)"
+        },
+        {
+            "endpoint": "/progress/log/meal/{id}",
+            "method": "PUT",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/log/meal/{id}",
+            "method": "DELETE",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/log/water",
+            "method": "PUT",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/log/steps",
+            "method": "PUT",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/log/weight",
+            "method": "PUT",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/meal/rate",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/meal/ratings",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/weight-history",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/weekly-report",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/streak",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/progress/adherence/weekly",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Not wired in mobile"
+        },
+        {
+            "endpoint": "/meal-plan/week",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/meal-plan/history",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/meal-plan/shopping-list",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": "✅ OK",
+            "notes": null
+        },
+        {
+            "endpoint": "/meal-plan/shopping-list/toggle",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": "❌ Broken",
+            "notes": "Body vs query-param mismatch; at_home missing (C-4)"
+        },
+        {
+            "endpoint": "/meal-plan/adjust",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Not wired in mobile"
+        },
+        {
+            "endpoint": "/doctor/dashboard",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}",
+            "method": "DELETE",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Exists in backend; not in doctorApi.ts"
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/plan",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/plan",
+            "method": "PUT",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/plan/notes",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/plan/overrides",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Backend exists; not in doctorApi.ts (M-2)"
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/logs",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/progress",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Backend exists; not in doctorApi.ts (W-12)"
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/notes",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/notes",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/record-visit",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/visits",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/request-renewal",
+            "method": "POST",
+            "web_status": "✅ OK (doctor)",
+            "mobile_status": "❌ Broken (patient)",
+            "notes": "Patient JWT blocked by DoctorIsolationMiddleware (C-5)"
+        },
+        {
+            "endpoint": "/doctor/patients/{id}/approve-renewal",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/approve-all-renewals",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/patients/pending-renewals",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/requests",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/requests/{id}/accept",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/requests/{id}/reject",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/subscription-codes",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/subscription-codes",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/recipes",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/recipes",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/recipes/{id}/assign",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/doctor/recipes/estimate",
+            "method": "POST",
+            "web_status": "❌ Broken",
+            "mobile_status": null,
+            "notes": "Frontend calls /recipes/lookup with wrong field name (C-8)"
+        },
+        {
+            "endpoint": "/admin/stats",
+            "method": "GET",
+            "web_status": "⚠️ At Risk",
+            "mobile_status": null,
+            "notes": "TypeScript type missing 3 new fields (W-2)"
+        },
+        {
+            "endpoint": "/admin/doctors",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/doctors",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/doctors/{id}",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Backend exists; not in adminApi.ts"
+        },
+        {
+            "endpoint": "/admin/doctors/{id}/deactivate",
+            "method": "PATCH",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/doctors/{id}",
+            "method": "DELETE",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/patients",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/patients/{id}/subscription/override",
+            "method": "PATCH",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/patients/{id}",
+            "method": "DELETE",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/patients/{id}/hard-delete",
+            "method": "DELETE",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": "ALLOW_HARD_DELETE=True in .env (C-7)"
+        },
+        {
+            "endpoint": "/admin/food",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/food/{id}/approve",
+            "method": "PATCH",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/food/{id}/reject",
+            "method": "PATCH",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/food/{id}",
+            "method": "DELETE",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/billing",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/billing/{id}/mark-paid",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/codes/generate",
+            "method": "POST",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/codes",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/audit-logs",
+            "method": "GET",
+            "web_status": "✅ OK",
+            "mobile_status": null,
+            "notes": null
+        },
+        {
+            "endpoint": "/admin/consultations",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Not wired in adminApi.ts (M-1)"
+        },
+        {
+            "endpoint": "/admin/consultations/annual",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Not wired in adminApi.ts (M-1)"
+        },
+        {
+            "endpoint": "/admin/renewals",
+            "method": "GET",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Not wired in adminApi.ts (M-1)"
+        },
+        {
+            "endpoint": "/admin/renewals/{id}/override-approve",
+            "method": "POST",
+            "web_status": null,
+            "mobile_status": null,
+            "notes": "Not wired in adminApi.ts (M-1)"
+        }
+    ],
+    "pre_production_checklist": {
+        "must_fix_before_any_deployment": [
+            {
+                "issue_id": "C-1",
+                "task": "Fix all VITE_API_URL and EXPO_PUBLIC_API_URL values to match the actual backend port (update both .env files and verify axios.ts fallbacks match)",
+                "completed": false
+            },
+            {
+                "issue_id": "C-2",
+                "task": "Remove hardcoded LAN IP 192.168.0.100 from mitihar-patient-app/.env; use 10.0.2.2 for Android Emulator and the machine's actual LAN IP only as a local override, never committed",
+                "completed": false
+            },
+            {
+                "issue_id": "C-3",
+                "task": "Fix mitihar-patient-app/services/progress.ts line 22: change \"/progress/meal\" → \"/progress/log/meal\"",
+                "completed": false
+            },
+            {
+                "issue_id": "C-4",
+                "task": "Fix mitihar-patient-app/services/meals.ts shopping-list toggle: switch from JSON body to query params and include the at_home boolean; or change the backend to accept a JSON body",
+                "completed": false
+            },
+            {
+                "issue_id": "C-5",
+                "task": "Add a patient-facing renewal-request endpoint to app/routers/patients.py (e.g. POST /patients/request-renewal); remove the /doctor/patients/{id}/request-renewal call from profile.ts",
+                "completed": false
+            },
+            {
+                "issue_id": "C-6",
+                "task": "Align TodaySummary in mitihar-patient-app/types/index.ts with the actual nested backend response, or change the backend to return a flat shape",
+                "completed": false
+            },
+            {
+                "issue_id": "C-7",
+                "task": "Set ALLOW_HARD_DELETE=False in /.env immediately; document it as dev-only",
+                "completed": false
+            },
+            {
+                "issue_id": "C-8",
+                "task": "Fix doctorApi.ts fetchNutritionFromGemini: change URL to /doctor/recipes/estimate and request body field from food_name to dish_name",
+                "completed": false
+            }
+        ],
+        "fix_before_beta_user_testing": [
+            {
+                "issue_id": "W-1",
+                "task": "Add port 8001 to CORS_ORIGINS in /.env (or align backend port to match existing config)",
+                "completed": false
+            },
+            {
+                "issue_id": "W-2",
+                "task": "Add expiring_soon_count, pending_renewals_count, total_consultations_this_month to PlatformStats in adminApi.ts",
+                "completed": false
+            },
+            {
+                "issue_id": "W-3",
+                "task": "Remove user_id from registerPatient return type; check all callers",
+                "completed": false
+            },
+            {
+                "issue_id": "W-4",
+                "task": "Fix ActivateResponse type to match actual backend ActivationResponse schema",
+                "completed": false
+            },
+            {
+                "issue_id": "W-5",
+                "task": "Rename have_at_home → at_home in ShoppingItem (or vice-versa in backend)",
+                "completed": false
+            },
+            {
+                "issue_id": "W-6",
+                "task": "Remove the unreachable raise HTTPException in meal_plan.py after return {}; decide whether an empty plan should be a 200 {} or a 404",
+                "completed": false
+            },
+            {
+                "issue_id": "W-7",
+                "task": "Fix LoginResponse type — remove refresh_token or annotate it as optional for doctor/admin",
+                "completed": false
+            },
+            {
+                "issue_id": "W-8",
+                "task": "Configure Redis (REDIS_URL) before deploying with --workers > 1; see main.py TODO comment",
+                "completed": false
+            },
+            {
+                "issue_id": "W-9",
+                "task": "Replace print() in app/routers/progress.py lines 120–121 with logging.getLogger(__name__)",
+                "completed": false
+            },
+            {
+                "issue_id": "W-10",
+                "task": "Wire real email sending in Phase 7; flip REQUIRE_EMAIL_VERIFICATION=True at the same time",
+                "completed": false
+            },
+            {
+                "issue_id": "W-11",
+                "task": "Verify Doctor DB model has experience_years, fee_per_month, rating, review_count, is_accepting columns before enabling GET /patients/doctors in production",
+                "completed": false
+            },
+            {
+                "issue_id": "W-12",
+                "task": "Add getPatientProgress(id) to doctorApi.ts pointing to /doctor/patients/{id}/progress",
+                "completed": false
+            },
+            {
+                "issue_id": "W-13",
+                "task": "Rotate all secrets currently in /.env to a secrets manager; especially the 4 Gemini API keys and Google OAuth client secret",
+                "completed": false
+            }
+        ],
+        "incomplete_integrations_future_wiring": [
+            {
+                "issue_id": "M-1",
+                "task": "Wire GET /admin/consultations, /admin/consultations/annual, /admin/renewals, POST /admin/renewals/{id}/override-approve into adminApi.ts and relevant admin pages (Billing.tsx, etc.)",
+                "completed": false
+            },
+            {
+                "issue_id": "M-2",
+                "task": "Wire GET /doctor/patients/{id}/plan/overrides into doctorApi.ts and the PatientDetail override history tab",
+                "completed": false
+            },
+            {
+                "issue_id": "M-3",
+                "task": "Compute and pass real macro values to <MacroRow> on the home screen instead of hardcoded 0",
+                "completed": false
+            },
+            {
+                "issue_id": "M-4",
+                "task": "Replace hasUnread = true with real unread-notification state (Phase 5 FCM work)",
+                "completed": false
+            },
+            {
+                "issue_id": "M-5",
+                "task": "Store refresh_token returned by /patients/activate in SecureStore after activation",
+                "completed": false
+            },
+            {
+                "issue_id": null,
+                "task": "Wire GET /auth/verify-email and POST /auth/resend-verification to UI email verification screens (Phase 7)",
+                "completed": false
+            },
+            {
+                "issue_id": null,
+                "task": "Wire GET /progress/adherence/weekly and GET /meal-plan/adjust to mobile screens",
+                "completed": false
+            },
+            {
+                "issue_id": null,
+                "task": "Wire DELETE /doctor/patients/{id} into doctorApi.ts with a confirmation dialog in PatientDetail",
+                "completed": false
+            },
+            {
+                "issue_id": null,
+                "task": "Verify Doctor model schema for public-facing fields before enabling the find-doctor screen",
+                "completed": false
+            },
+            {
+                "issue_id": null,
+                "task": "Remove or replace Phone screens/ directory from the repo (large static assets, no .gitignore exclusion)",
+                "completed": false
+            },
+            {
+                "issue_id": null,
+                "task": "Confirm alembic/versions/ is complete and all migrations are idempotent before first production deploy",
+                "completed": false
+            }
+        ]
+    },
+    "disclaimer": "This report covers static code analysis only. No live network calls were made. All line numbers are approximate (±5) due to the tool's line-windowed reading."
+}

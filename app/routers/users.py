@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +13,7 @@ from ..core.limiter import limiter
 from ..core.security import verify_password
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/me", response_model=PatientProfileResponse)
@@ -54,10 +57,12 @@ async def update_user_profile(
         raise HTTPException(status_code=500, detail="Failed to update profile")
 
     updated = await get_patient_by_id(session, current_user.id)
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Patient row not found after update")
 
     # Auto-recalculate BMI/BMR/TDEE if any body metric changed
     recalc_triggers = {"height_cm", "weight_kg", "activity_level"}
-    diet_triggers = {"height_cm", "weight_kg", "activity_level", "diet_type", "health_condition", "region", "target_weight_kg", "diabetes_status", "gym_goal"}
+    diet_triggers = {"height_cm", "weight_kg", "activity_level", "diet_type", "health_condition", "region", "target_weight_kg"}
     
     if recalc_triggers.intersection(mapped.keys()):
         if updated.date_of_birth:
@@ -94,6 +99,8 @@ async def update_user_profile(
         )
         await session.flush()
         updated = await get_patient_by_id(session, updated.id)
+        if updated is None:
+            raise HTTPException(status_code=500, detail="Patient row not found after update")
 
     if diet_triggers.intersection(mapped.keys()):
         from ..services.diet_plan_service import DietPlanService
@@ -117,17 +124,17 @@ async def update_user_profile(
             "diet": updated.diet_type or "Anything",
             "health_state": updated.health_condition or "Healthy",
             "region": updated.region or "none",
-            "target_weight": float(updated.target_weight_kg) if getattr(updated, "target_weight_kg", None) else None,
-            "activity_level": getattr(updated, "activity_level", "Lightly Active"),
-            "tdee": float(updated.tdee) if getattr(updated, "tdee", None) else 2000.0,
+            "target_weight": float(tw) if (tw := updated.target_weight_kg) else None,
+            "activity_level": updated.activity_level,
+            "tdee": float(tdee_val) if (tdee_val := updated.tdee) else 2000.0,
         }
         
         try:
             new_plan = await diet_service.generate_diet_plan(user_data, session)
-            await diet_service.store_diet_plan(new_plan, session)
-            print("Auto-regenerated diet plan upon profile update")
-        except Exception as e:
-            print(f"Failed to auto-generate diet plan: {e}")
+            await diet_service.store_diet_plan(new_plan, session=session)
+            logger.info("Auto-regenerated diet plan upon profile update for patient %s", updated.id)
+        except Exception:
+            logger.exception("Failed to auto-generate diet plan for patient %s", updated.id)
 
     return updated
 

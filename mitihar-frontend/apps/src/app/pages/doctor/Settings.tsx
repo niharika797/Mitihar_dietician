@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { QRCodeSVG } from 'qrcode.react';
 import { Key, User, Shield, Copy, RefreshCw, Check, Loader2, AlertCircle, QrCode, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
 import { useAuthStore } from '../../../stores/authStore';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 // ── MFA state machine ────────────────────────────────────────────────────────
 type MfaState = 'idle' | 'setting_up' | 'confirming' | 'disabling';
@@ -47,20 +50,16 @@ function MfaSetupPanel() {
     onError: () => { toast.error('Invalid TOTP code — try again'); setCode(''); },
   });
 
-  const qrUrl = totpUri
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(totpUri)}`
-    : '';
-
   // ── Idle state ──────────────────────────────────────────────────────────────
   if (mfaState === 'idle') {
     return (
-      <div className="pt-4 border-t border-[#E5E7EB]">
+      <div className="pt-4 border-t border-border">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-[#111827]">
+            <p className="text-sm font-medium text-foreground">
               Two-Factor Authentication
             </p>
-            <p className="text-xs text-[#6B7280] mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {enabled
                 ? 'Your account is protected with TOTP (Google Authenticator / Authy).'
                 : 'Add an extra layer of security with TOTP authentication.'}
@@ -68,27 +67,31 @@ function MfaSetupPanel() {
           </div>
           {enabled ? (
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="flex items-center gap-1 text-xs text-[#15803d] font-medium">
-                <ShieldCheck size={13} /> Enabled
+              <span className="flex items-center gap-1 text-xs text-brand-700 font-medium">
+                <ShieldCheck size={14} /> Enabled
               </span>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => { setCode(''); setMfaState('disabling'); }}
-                className="h-8 px-3 rounded border border-[#FECACA] text-xs text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
+                className="border-destructive/30 text-destructive hover:bg-red-50 hover:text-destructive"
               >
                 Disable
-              </button>
+              </Button>
             </div>
           ) : (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setupMutation.mutate()}
               disabled={setupMutation.isPending}
-              className="flex items-center gap-1.5 h-8 px-3 rounded border border-[#D1D5DB] bg-white text-xs text-[#374151] hover:bg-[#F9FAFB] transition-colors disabled:opacity-50 flex-shrink-0"
+              className="flex-shrink-0"
             >
               {setupMutation.isPending
-                ? <Loader2 size={12} className="animate-spin" />
-                : <QrCode size={12} />}
+                ? <Loader2 size={14} className="animate-spin" />
+                : <QrCode size={14} />}
               Enable MFA
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -98,26 +101,26 @@ function MfaSetupPanel() {
   // ── QR + confirm state ──────────────────────────────────────────────────────
   if (mfaState === 'confirming') {
     return (
-      <div className="pt-4 border-t border-[#E5E7EB]">
-        <p className="text-sm font-medium text-[#111827] mb-3">Scan with Authenticator App</p>
+      <div className="pt-4 border-t border-border">
+        <p className="text-sm font-medium text-foreground mb-3">Scan with Authenticator App</p>
         <div className="flex gap-5 items-start flex-wrap">
           <div className="flex-shrink-0">
-            <img
-              src={qrUrl}
-              alt="MFA QR code"
-              width={180}
-              height={180}
-              className="rounded border border-[#E5E7EB] p-1 bg-white"
-            />
-            <p className="text-[10px] text-[#9CA3AF] mt-1 text-center">Scan with Google Authenticator</p>
+            <div
+              role="img"
+              aria-label="MFA QR code"
+              className="rounded border border-border p-1 bg-card inline-block"
+            >
+              <QRCodeSVG value={totpUri} size={180} />
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1 text-center">Scan with Google Authenticator</p>
           </div>
           <div className="flex-1 min-w-[200px]">
-            <p className="text-xs text-[#6B7280] mb-3 leading-relaxed">
+            <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
               1. Open Google Authenticator or Authy.<br />
               2. Scan the QR code on the left.<br />
               3. Enter the 6-digit code below to confirm.
             </p>
-            <label htmlFor="totp-code-enable" className="block text-xs font-medium text-[#374151] mb-1.5">
+            <label htmlFor="totp-code-enable" className="block text-xs font-medium text-secondary-foreground mb-1.5">
               Verification Code
             </label>
             <input
@@ -128,25 +131,27 @@ function MfaSetupPanel() {
               value={code}
               onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="000000"
-              className="w-36 h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-base font-mono text-center text-[#111827] tracking-[0.3em] placeholder:text-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+              className="w-36 h-10 px-3 rounded-md border border-border bg-input-background text-base font-mono text-center text-foreground tracking-[0.3em] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <div className="flex gap-2 mt-3">
-              <button
+              <Button
+                variant="primary"
+                size="md"
                 onClick={() => confirmMutation.mutate()}
                 disabled={code.length !== 6 || confirmMutation.isPending}
-                className="flex items-center gap-1.5 h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors disabled:opacity-50"
               >
                 {confirmMutation.isPending
                   ? <Loader2 size={14} className="animate-spin" />
                   : <ShieldCheck size={14} />}
                 Confirm & Enable
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="md"
                 onClick={() => { setMfaState('idle'); setTotpUri(''); setCode(''); }}
-                className="h-9 px-3 rounded border border-[#D1D5DB] text-sm text-[#374151] hover:bg-[#F9FAFB]"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -156,17 +161,17 @@ function MfaSetupPanel() {
 
   // ── Disable state ───────────────────────────────────────────────────────────
   return (
-    <div className="pt-4 border-t border-[#E5E7EB]">
+    <div className="pt-4 border-t border-border">
       <div className="flex items-center gap-2 mb-3">
-        <ShieldOff size={16} className="text-[#DC2626]" />
-        <p className="text-sm font-medium text-[#111827]">Disable Two-Factor Authentication</p>
+        <ShieldOff size={16} className="text-destructive" />
+        <p className="text-sm font-medium text-foreground">Disable Two-Factor Authentication</p>
       </div>
-      <p className="text-xs text-[#6B7280] mb-3">
+      <p className="text-xs text-muted-foreground mb-3">
         Enter your current authenticator code to confirm.
       </p>
       <div className="flex items-end gap-2">
         <div>
-          <label htmlFor="totp-code-disable" className="block text-xs font-medium text-[#374151] mb-1.5">Verification Code</label>
+          <label htmlFor="totp-code-disable" className="block text-xs font-medium text-secondary-foreground mb-1.5">Verification Code</label>
           <input
             id="totp-code-disable"
             type="text"
@@ -175,23 +180,25 @@ function MfaSetupPanel() {
             value={code}
             onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             placeholder="000000"
-            className="w-36 h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-base font-mono text-center text-[#111827] tracking-[0.3em] placeholder:text-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+            className="w-36 h-10 px-3 rounded-md border border-border bg-input-background text-base font-mono text-center text-foreground tracking-[0.3em] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-destructive"
           />
         </div>
-        <button
+        <Button
+          variant="destructive"
+          size="md"
           onClick={() => disableMutation.mutate()}
           disabled={code.length !== 6 || disableMutation.isPending}
-          className="h-10 px-4 rounded-md bg-[#DC2626] text-white text-sm hover:bg-[#B91C1C] transition-colors disabled:opacity-50 flex items-center gap-1.5"
         >
           {disableMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <ShieldOff size={14} />}
           Disable MFA
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="outline"
+          size="md"
           onClick={() => { setMfaState('idle'); setCode(''); }}
-          className="h-10 px-3 rounded border border-[#D1D5DB] text-sm text-[#374151] hover:bg-[#F9FAFB]"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -245,16 +252,16 @@ export function DoctorSettings() {
   };
 
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { id: 'profile',  label: 'Profile',             icon: <User size={15} />   },
-    { id: 'codes',    label: 'Subscription Codes',  icon: <Key size={15} />    },
-    { id: 'security', label: 'Security',            icon: <Shield size={15} /> },
+    { id: 'profile',  label: 'Profile',             icon: <User size={16} />   },
+    { id: 'codes',    label: 'Subscription Codes',  icon: <Key size={16} />    },
+    { id: 'security', label: 'Security',            icon: <Shield size={16} /> },
   ];
 
   return (
     <div className="p-6 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">Settings</h1>
-        <p className="text-sm text-[#6B7280] mt-0.5">Manage your profile, codes, and security</p>
+        <h1 data-tour="tour-settings" className="text-2xl font-semibold text-foreground tracking-tight">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Manage your profile, codes, and security</p>
       </div>
 
       <div className="flex gap-6">
@@ -267,11 +274,11 @@ export function DoctorSettings() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2.5 h-9 px-3 rounded-md text-sm transition-colors text-left ${
                   activeTab === tab.id
-                    ? 'bg-[#DCFCE7] text-[#1E7C45] font-medium'
-                    : 'text-[#374151] hover:bg-[#F3F4F6]'
+                    ? 'bg-brand-100 text-primary font-medium'
+                    : 'text-secondary-foreground hover:bg-accent'
                 }`}
               >
-                <span className={activeTab === tab.id ? 'text-[#1E7C45]' : 'text-[#6B7280]'}>
+                <span className={activeTab === tab.id ? 'text-primary' : 'text-muted-foreground'}>
                   {tab.icon}
                 </span>
                 {tab.label}
@@ -284,40 +291,37 @@ export function DoctorSettings() {
         <div className="flex-1">
           {/* ── Profile tab ─────────────────────────────────────── */}
           {activeTab === 'profile' && (
-            <div className="bg-white border border-[#E5E7EB] rounded-lg p-6">
-              <h2 className="text-base font-medium text-[#111827] mb-5">Profile Information</h2>
+            <Card className="p-6">
+              <h2 className="text-base font-medium text-foreground mb-5">Profile Information</h2>
               <div className="max-w-md space-y-4">
                 <div>
-                  <label htmlFor="profile-name" className="block text-sm font-medium text-[#374151] mb-1.5">Full Name</label>
+                  <label htmlFor="profile-name" className="block text-sm font-medium text-secondary-foreground mb-1.5">Full Name</label>
                   <input
                     id="profile-name"
                     defaultValue={doctorName}
-                    className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
+                    className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
                   />
                 </div>
-                <button
-                  onClick={() => toast.info('Profile update coming soon')}
-                  className="h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors"
-                >
+                <Button variant="primary" size="md" onClick={() => toast.info('Profile update coming soon')}>
                   Save Changes
-                </button>
+                </Button>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* ── Codes tab ───────────────────────────────────────── */}
           {activeTab === 'codes' && (
             <div className="space-y-5">
               {/* Stats + generate */}
-              <div className="bg-white border border-[#E5E7EB] rounded-lg p-5">
-                <h2 className="text-base font-medium text-[#111827] mb-4">Subscription Codes</h2>
+              <Card className="p-5">
+                <h2 className="text-base font-medium text-foreground mb-4">Subscription Codes</h2>
 
                 {codesLoading ? (
                   <div className="flex justify-center py-6">
-                    <Loader2 size={20} className="animate-spin text-[#1E7C45]" />
+                    <Loader2 size={20} className="animate-spin text-primary" />
                   </div>
                 ) : codesError ? (
-                  <div className="flex items-center gap-2 text-[#DC2626] text-sm py-4">
+                  <div className="flex items-center gap-2 text-destructive text-sm py-4">
                     <AlertCircle size={16} />
                     Could not load codes
                   </div>
@@ -325,72 +329,73 @@ export function DoctorSettings() {
                   <>
                     <div className="flex items-center gap-6 mb-5">
                       <div>
-                        <p className="text-3xl font-bold text-[#1E7C45] tabular-nums">{available}</p>
-                        <p className="text-sm text-[#6B7280]">Available</p>
+                        <p className="text-3xl font-bold text-primary tabular-nums">{available}</p>
+                        <p className="text-sm text-muted-foreground">Available</p>
                       </div>
                       <div>
-                        <p className="text-3xl font-bold text-[#6B7280] tabular-nums">{used}</p>
-                        <p className="text-sm text-[#6B7280]">Used</p>
+                        <p className="text-3xl font-bold text-muted-foreground tabular-nums">{used}</p>
+                        <p className="text-sm text-muted-foreground">Used</p>
                       </div>
                       <div>
-                        <p className="text-3xl font-bold text-[#111827] tabular-nums">{codes.length}</p>
-                        <p className="text-sm text-[#6B7280]">Total</p>
+                        <p className="text-3xl font-bold text-foreground tabular-nums">{codes.length}</p>
+                        <p className="text-sm text-muted-foreground">Total</p>
                       </div>
                     </div>
 
                     {/* Generate controls */}
-                    <div className="flex items-center gap-3 p-3 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB] flex-wrap">
-                      <label htmlFor="codes-count" className="text-sm text-[#374151]">Generate:</label>
+                    <div className="flex items-center gap-3 p-3 bg-input-background rounded-lg border border-border flex-wrap">
+                      <label htmlFor="codes-count" className="text-sm text-secondary-foreground">Generate:</label>
                       <select
                         id="codes-count"
                         value={generateCount}
                         onChange={e => setGenerateCount(Number(e.target.value))}
-                        className="h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+                        className="h-8 px-2 rounded border border-border bg-card text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                       >
                         {[5, 10, 15, 20, 25].map(n => (
                           <option key={n} value={n}>{n} codes</option>
                         ))}
                       </select>
-                      <label htmlFor="codes-expiry" className="text-sm text-[#374151]">Expires in:</label>
+                      <label htmlFor="codes-expiry" className="text-sm text-secondary-foreground">Expires in:</label>
                       <select
                         id="codes-expiry"
                         value={expiresInDays}
                         onChange={e => setExpiresInDays(Number(e.target.value))}
-                        className="h-8 px-2 rounded border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+                        className="h-8 px-2 rounded border border-border bg-card text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                       >
                         {[30, 60, 90, 180, 365].map(n => (
                           <option key={n} value={n}>{n} days</option>
                         ))}
                       </select>
-                      <button
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={() => generateMutation.mutate()}
                         disabled={generateMutation.isPending}
-                        className="flex items-center gap-1.5 h-8 px-3 rounded bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors disabled:opacity-50"
                       >
                         {generateMutation.isPending ? (
-                          <Loader2 size={13} className="animate-spin" />
+                          <Loader2 size={14} className="animate-spin" />
                         ) : (
-                          <RefreshCw size={13} />
+                          <RefreshCw size={14} />
                         )}
                         Generate
-                      </button>
+                      </Button>
                     </div>
                   </>
                 )}
-              </div>
+              </Card>
 
               {/* Code list */}
               {!codesLoading && !codesError && codes.length > 0 && (
-                <div className="bg-white border border-[#E5E7EB] rounded-lg overflow-hidden">
-                  <div className="px-5 py-3 bg-[#F9FAFB] border-b border-[#E5E7EB]">
-                    <p className="text-sm font-medium text-[#111827]">All Codes ({codes.length})</p>
+                <Card className="overflow-hidden">
+                  <div className="px-5 py-3 bg-input-background border-b border-border">
+                    <p className="text-sm font-medium text-foreground">All Codes ({codes.length})</p>
                   </div>
                   <div className="max-h-[480px] overflow-y-auto">
                     <table className="w-full">
-                      <thead className="sticky top-0 bg-white">
-                        <tr className="border-b border-[#E5E7EB]">
+                      <thead className="sticky top-0 bg-card">
+                        <tr className="border-b border-border">
                           {['Code', 'Status', 'Expires', 'Issued At', 'Used At', ''].map(h => (
-                            <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#6B7280]">
+                            <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                               {h}
                             </th>
                           ))}
@@ -398,43 +403,40 @@ export function DoctorSettings() {
                       </thead>
                       <tbody>
                         {codes.map(c => (
-                          <tr key={c.id} className="border-b border-[#F3F4F6] last:border-0 hover:bg-[#F9FAFB]">
+                          <tr key={c.id} className="border-b border-border last:border-0 hover:bg-input-background">
                             <td className="px-4 py-3">
-                              <code className="text-sm font-mono text-[#374151]">{c.code}</code>
+                              <code className="text-sm font-mono text-secondary-foreground">{c.code}</code>
                             </td>
                             <td className="px-4 py-3">
                               {c.is_used ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-[#F3F4F6] text-[#6B7280]">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">
                                   Used
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-[#DCFCE7] text-[#15803d]">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-brand-100 text-brand-700">
                                   Available
                                 </span>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-sm text-[#6B7280]">
+                            <td className="px-4 py-3 text-sm text-muted-foreground">
                               {formatDate(c.expires_at)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-[#6B7280]">
+                            <td className="px-4 py-3 text-sm text-muted-foreground">
                               {formatDate(c.created_at)}
                             </td>
-                            <td className="px-4 py-3 text-sm text-[#6B7280]">
+                            <td className="px-4 py-3 text-sm text-muted-foreground">
                               {formatDate(c.used_at)}
                             </td>
                             <td className="px-4 py-3">
                               {!c.is_used && (
-                                <button
-                                  onClick={() => copyCode(c.code)}
-                                  className="flex items-center gap-1 h-7 px-2 rounded border border-[#E5E7EB] text-xs text-[#6B7280] hover:border-[#1E7C45] hover:text-[#1E7C45] transition-colors"
-                                >
+                                <Button variant="outline" size="sm" onClick={() => copyCode(c.code)}>
                                   {copied === c.code ? (
-                                    <Check size={11} className="text-[#1E7C45]" />
+                                    <Check size={14} className="text-primary" />
                                   ) : (
-                                    <Copy size={11} />
+                                    <Copy size={14} />
                                   )}
                                   {copied === c.code ? 'Copied' : 'Copy'}
-                                </button>
+                                </Button>
                               )}
                             </td>
                           </tr>
@@ -442,15 +444,15 @@ export function DoctorSettings() {
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </Card>
               )}
             </div>
           )}
 
           {/* ── Security tab ─────────────────────────────────────── */}
           {activeTab === 'security' && (
-            <div className="bg-white border border-[#E5E7EB] rounded-lg p-6">
-              <h2 className="text-base font-medium text-[#111827] mb-5">Security Settings</h2>
+            <Card className="p-6">
+              <h2 className="text-base font-medium text-foreground mb-5">Security Settings</h2>
               <div className="max-w-md space-y-4">
                 {[
                   { label: 'Current Password', placeholder: '••••••••' },
@@ -458,24 +460,21 @@ export function DoctorSettings() {
                   { label: 'Confirm New Password', placeholder: '••••••••' },
                 ].map(f => (
                   <div key={f.label}>
-                    <label className="block text-sm font-medium text-[#374151] mb-1.5">{f.label}</label>
+                    <label className="block text-sm font-medium text-secondary-foreground mb-1.5">{f.label}</label>
                     <input
                       type="password"
                       placeholder={f.placeholder}
-                      className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
+                      className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
                     />
                   </div>
                 ))}
-                <button
-                  onClick={() => toast.info('Password change coming soon')}
-                  className="h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors"
-                >
+                <Button variant="primary" size="md" onClick={() => toast.info('Password change coming soon')}>
                   Update Password
-                </button>
+                </Button>
 
                 <MfaSetupPanel />
               </div>
-            </div>
+            </Card>
           )}
         </div>
       </div>

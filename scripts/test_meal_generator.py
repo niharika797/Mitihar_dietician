@@ -32,15 +32,15 @@ from collections import defaultdict
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from app.services.meal_generator.meal_generator import MealGenerator
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://admin:mityahar_dev@localhost:5432/mityahar_db"
-)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 # ── Activity level labels ────────────────────────────────────────────────────
 ACTIVITY_LABELS = {
@@ -124,7 +124,7 @@ async def run(args):
     tdee = calculate_tdee(bmr, args.activity)
     protein, carbs, fiber, fat = calculate_macronutrients(tdee, args.plan)
 
-    print(f"\n  📊 CALCULATED TARGETS")
+    print("\n  📊 CALCULATED TARGETS")
     print(f"  BMI    : {bmi:.1f}")
     print(f"  BMR    : {bmr:.0f} kcal")
     print(f"  TDEE   : {tdee:.0f} kcal/day")
@@ -137,7 +137,7 @@ async def run(args):
         "Diabetic-Friendly":{"Breakfast":0.25,"MorningSnacks":0.05,"Lunch":0.35,"EveningSnacks":0.05,"Dinner":0.30},
     }
     pcts = meal_pcts.get(args.plan, meal_pcts["Healthy"])
-    print(f"\n  🎯 MEAL CALORIE TARGETS")
+    print("\n  🎯 MEAL CALORIE TARGETS")
     for meal, pct in pcts.items():
         print(f"  {MEAL_LABELS[meal]:25} → {tdee * pct:>6.0f} kcal  ({int(pct*100)}%)")
 
@@ -222,7 +222,7 @@ async def run(args):
     print(f"  Daily range           : {min(daily_totals):.0f} – {max(daily_totals):.0f} kcal")
 
     # ── Variety analysis ─────────────────────────────────────────────────────
-    print(f"\n  🔁 VARIETY ANALYSIS")
+    print("\n  🔁 VARIETY ANALYSIS")
     repeats = {dish: count for dish, count in repeated.items() if count > 1}
     unique  = len(set(all_dishes))
     total   = len(all_dishes)
@@ -233,21 +233,21 @@ async def run(args):
         for dish, count in sorted(repeats.items(), key=lambda x: -x[1]):
             print(f"    • {dish} — {count}×")
     else:
-        print(f"  ✅ No dishes repeated across the week!")
+        print("  ✅ No dishes repeated across the week!")
 
     # ── Missing meals check ──────────────────────────────────────────────────
     expected = 7 * 5   # 7 days × 5 meals
     missing  = expected - len(meals)
     if missing > 0:
         print(f"\n  ⚠️  MISSING MEALS: {missing} slots were not filled")
-        print(f"     This usually means DB has insufficient items for some slots.")
-        print(f"     Check logs above for '❌ MISSING' entries.")
+        print("     This usually means DB has insufficient items for some slots.")
+        print("     Check logs above for '❌ MISSING' entries.")
     else:
-        print(f"\n  ✅ All 35 meal slots filled successfully")
+        print("\n  ✅ All 35 meal slots filled successfully")
 
     # ── Top 10 ingredients from checklist ────────────────────────────────────
     if checklist:
-        print(f"\n  🛒 TOP 10 SHOPPING LIST ITEMS (by weight)")
+        print("\n  🛒 TOP 10 SHOPPING LIST ITEMS (by weight)")
         items = sorted(checklist, key=lambda x: x.get("Total Amount (g)", 0), reverse=True)[:10]
         for item in items:
             name = item.get("Ingredient", "?")

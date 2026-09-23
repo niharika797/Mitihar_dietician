@@ -1,5 +1,6 @@
 import sys
-sys.path.insert(0, 'C:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 issues   = []  # breaks functionality right now
 warnings = []  # wrong behavior, silent
@@ -12,7 +13,6 @@ notes    = []  # tech debt / performance
 # ALL endpoints using get_current_user — /users/me, /diet-plans/generate,
 # /progress/log/meal etc — will return 402 for every newly registered patient.
 from app.models.db_models import Patient
-from sqlalchemy import inspect as sa_inspect
 col = {c.key: c for c in Patient.__table__.columns}
 default_val = col['subscription_status'].default
 default_arg = default_val.arg if default_val else None
@@ -107,7 +107,7 @@ if '2000.0' in prog_src or '2000' in prog_src:
     )
 
 # ── CHECK 8: middleware order verification ────────────────────────────────
-import importlib, app.main as app_main
+import app.main as app_main
 main_src = pyinspect.getsource(app_main)
 doctor_pos = main_src.find('DoctorIsolationMiddleware')
 sub_pos = main_src.find('SubscriptionCheckMiddleware')

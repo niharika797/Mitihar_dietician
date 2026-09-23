@@ -4,9 +4,7 @@ check_db_state.py
 Quick read-only audit of food_items and meal_templates tables.
 Tells us exactly what data is in the DB right now.
 """
-import sys
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 from sqlalchemy import create_engine, text
@@ -28,28 +26,28 @@ with engine.connect() as conn:
     by_source = conn.execute(text(
         "SELECT source, COUNT(*) as cnt FROM food_items GROUP BY source ORDER BY cnt DESC"
     )).fetchall()
-    print(f"\n  By source:")
+    print("\n  By source:")
     for row in by_source:
         print(f"    {row[0] or 'NULL':<20} {row[1]} rows")
 
     by_diet = conn.execute(text(
         "SELECT diet_type, COUNT(*) as cnt FROM food_items GROUP BY diet_type ORDER BY cnt DESC"
     )).fetchall()
-    print(f"\n  By diet_type:")
+    print("\n  By diet_type:")
     for row in by_diet:
         print(f"    {row[0] or 'NULL':<25} {row[1]} rows")
 
     by_verified = conn.execute(text(
         "SELECT is_verified, COUNT(*) FROM food_items GROUP BY is_verified"
     )).fetchall()
-    print(f"\n  By is_verified:")
+    print("\n  By is_verified:")
     for row in by_verified:
         print(f"    {str(row[0]):<10} {row[1]} rows")
 
     by_slot = conn.execute(text(
         "SELECT slot_type, COUNT(*) FROM food_items GROUP BY slot_type ORDER BY COUNT(*) DESC"
     )).fetchall()
-    print(f"\n  By slot_type:")
+    print("\n  By slot_type:")
     for row in by_slot:
         print(f"    {row[0] or 'NULL':<20} {row[1]} rows")
 
@@ -61,7 +59,7 @@ with engine.connect() as conn:
     sample = conn.execute(text(
         "SELECT recipe_name, source, diet_type, slot_type, cal_per_serving FROM food_items LIMIT 10"
     )).fetchall()
-    print(f"\n  Sample rows (first 10):")
+    print("\n  Sample rows (first 10):")
     for r in sample:
         print(f"    [{r[1]}] {r[0]:<40} | {r[2]:<18} | {r[3]:<15} | {r[4]} kcal")
 
@@ -76,6 +74,6 @@ with engine.connect() as conn:
         by_meal = conn.execute(text(
             "SELECT meal_time, COUNT(*) FROM meal_templates GROUP BY meal_time ORDER BY meal_time"
         )).fetchall()
-        print(f"\n  By meal_time:")
+        print("\n  By meal_time:")
         for row in by_meal:
             print(f"    {row[0]:<20} {row[1]} rows")

@@ -4,13 +4,12 @@ Progress tracking service — pure PostgreSQL via AsyncSession.
 Uses meal_logs and progress_logs ORM models.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..models.db_models import MealLog, ProgressLog, Patient, PatientMealChoice
 
@@ -83,7 +82,7 @@ async def log_meal(
     )
     total_calories_today = float(total_cal_result.scalar() or 0)
     progress_row = await _get_or_create_progress(session, patient_id, today)
-    progress_row.total_calories_consumed = total_calories_today
+    progress_row.total_calories_consumed = Decimal(str(total_calories_today))
     await session.flush()
 
     return entry
@@ -243,7 +242,7 @@ async def get_today_summary(
             PatientMealChoice.date == today,
         )
     )
-    total_calories += float(choice_cal_q.scalar())
+    total_calories += float(choice_cal_q.scalar() or 0)
 
     # Progress row
     prog_q = await session.execute(
@@ -309,8 +308,23 @@ async def calculate_and_store_calorie_adjustment(
     """
     adjustment = round(patient_tdee - today_calories, 2)
     row = await _get_or_create_progress(session, patient_id, date.today())
-    row.calorie_adjustment = adjustment
+    row.calorie_adjustment = Decimal(str(adjustment))
     await session.flush()
+
+
+def _assert_within_edit_window(created_at: Optional[datetime], action: str) -> None:
+    """Raise ValueError if more than 24h have passed since creation.
+
+    A missing created_at (legacy row predating the column's server_default)
+    is treated as outside the window -- fail closed rather than allow an
+    unbounded edit/delete on a row we can't verify the age of.
+    """
+    if created_at is None:
+        raise ValueError(f"{action} window has passed (24 hours)")
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) - created_at > timedelta(hours=24):
+        raise ValueError(f"{action} window has passed (24 hours)")
 
 
 async def get_meal_log_by_id(
@@ -333,19 +347,11 @@ async def update_meal_log(
     Edit a meal log entry. Only allowed within 24 hours of creation.
     Returns None if not found. Raises ValueError if edit window has passed.
     """
-    from datetime import datetime, timezone, timedelta
     log = await get_meal_log_by_id(session, patient_id, log_id)
     if log is None:
         return None
 
-    now = datetime.now(timezone.utc)
-    # created_at may be naive (no tzinfo) — normalise before comparing
-    created = log.created_at
-    if created.tzinfo is None:
-        from datetime import timezone as _tz
-        created = created.replace(tzinfo=_tz.utc)
-    if now - created > timedelta(hours=24):
-        raise ValueError("Edit window has passed (24 hours)")
+    _assert_within_edit_window(log.created_at, "Edit")
 
     field_map = {
         "calories": "calories_consumed",
@@ -371,18 +377,11 @@ async def delete_meal_log(
     Delete a meal log entry. Only allowed within 24 hours of creation.
     Returns False if not found. Raises ValueError if delete window has passed.
     """
-    from datetime import datetime, timezone, timedelta
     log = await get_meal_log_by_id(session, patient_id, log_id)
     if log is None:
         return False
 
-    now = datetime.now(timezone.utc)
-    created = log.created_at
-    if created.tzinfo is None:
-        from datetime import timezone as _tz
-        created = created.replace(tzinfo=_tz.utc)
-    if now - created > timedelta(hours=24):
-        raise ValueError("Delete window has passed (24 hours)")
+    _assert_within_edit_window(log.created_at, "Delete")
 
     await session.delete(log)
     await session.flush()

@@ -11,11 +11,12 @@ Usage:
   python -m scripts.import_ifct --write   # write to DB if rate >= 30%
 """
 import pdfplumber, re, os, sys
-sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
+PROJECT_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, PROJECT_ROOT)
 from dotenv import load_dotenv; load_dotenv()
 from sqlalchemy import create_engine, text
 
-PDF = r"C:\Users\Lenovo\Desktop\Code\2026\Nutria\Mitihar_dietician\IFCT2017.pdf"
+PDF = os.path.join(PROJECT_ROOT, "IFCT2017.pdf")
 MATCH_THRESHOLD = 0.30
 
 # ── 1. Extract Table 1 rows from PDF ────────────────────────────────────────

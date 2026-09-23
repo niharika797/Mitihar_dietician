@@ -1,6 +1,7 @@
 """
 Dish name cleanup pipeline — 4-pass hybrid approach.
-Run with: python -m scripts.clean_dish_names
+Run with: python -m scripts.clean_dish_names            (dry run)
+          python -m scripts.clean_dish_names --write     (apply passes A-C)
 
 Passes:
   A — Soft-delete test artifacts (is_verified=False)
@@ -12,12 +13,14 @@ Safe to re-run: each pass checks state before acting.
 Rollback: UPDATE food_items SET recipe_name = original_name WHERE original_name IS NOT NULL;
 """
 
+import argparse
 import asyncio
 import json
 import os
 import subprocess
 import time
 from datetime import datetime
+from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import text
@@ -38,7 +41,7 @@ TEST_ARTIFACT_NAMES = [
 ]
 
 # Checkpoint file for Pass C (LLM pass) — resume-safe
-LLM_CHECKPOINT_FILE = "clean_dishes_llm_checkpoint.json"
+LLM_CHECKPOINT_FILE = str(Path(__file__).resolve().parent.parent / "data" / "review" / "clean_dishes_llm_checkpoint.json")
 
 # Batch size for LLM pass — small to stay within rate limits
 LLM_BATCH_SIZE = 20
@@ -49,7 +52,7 @@ LLM_BATCH_SLEEP = 3
 
 # ── Pass A — Soft-flag test artifacts ─────────────────────────────────────────
 
-async def pass_a_flag_test_artifacts(db):
+async def pass_a_flag_test_artifacts(db, write: bool):
     print("\n=== PASS A: Soft-flag test artifacts ===")
 
     placeholders = ", ".join(f":name_{i}" for i in range(len(TEST_ARTIFACT_NAMES)))
@@ -66,6 +69,10 @@ async def pass_a_flag_test_artifacts(db):
     if count == 0:
         print("  Nothing to flag — skipping")
         return 0
+
+    if not write:
+        print(f"  Dry run — would flag {count} rows as is_verified=False")
+        return count
 
     # Soft-flag: set is_verified=False so they're excluded from generation pool
     await db.execute(
@@ -84,7 +91,7 @@ async def pass_a_flag_test_artifacts(db):
 
 # ── Pass B — Rule-based Title Case fix ────────────────────────────────────────
 
-async def pass_b_title_case(db):
+async def pass_b_title_case(db, write: bool):
     print("\n=== PASS B: Rule-based Title Case fix ===")
 
     # Count dishes where initcap would change the name
@@ -112,6 +119,10 @@ async def pass_b_title_case(db):
     print("  Sample changes:")
     for row in rows:
         print(f"    [{row.id}] '{row.recipe_name}' → '{row.fixed}'")
+
+    if not write:
+        print(f"  Dry run — would fix {count} dishes")
+        return count
 
     # Apply
     await db.execute(text("""
@@ -170,7 +181,7 @@ Dishes to process:
 
 async def call_claude_cli(prompt: str) -> dict:
     """Call Claude Code CLI in non-interactive mode and return parsed JSON."""
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: ASYNC221 -- one-shot script, blocking subprocess is fine
         ["claude", "-p", prompt, "--output-format", "text"],
         capture_output=True,
         text=True,
@@ -193,13 +204,13 @@ async def call_claude_cli(prompt: str) -> dict:
     return json.loads(raw.strip())
 
 
-async def pass_c_llm_rename(db):
+async def pass_c_llm_rename(db, write: bool):
     print("\n=== PASS C: LLM rename for ambiguous names ===")
 
     # Load checkpoint
     done_ids = set()
-    if os.path.exists(LLM_CHECKPOINT_FILE):
-        with open(LLM_CHECKPOINT_FILE) as f:
+    if os.path.exists(LLM_CHECKPOINT_FILE):  # noqa: ASYNC240 -- one-shot script, blocking I/O is fine
+        with open(LLM_CHECKPOINT_FILE) as f:  # noqa: ASYNC230
             done_ids = set(json.load(f).get("done_ids", []))
         print(f"  Checkpoint: {len(done_ids)} already processed")
 
@@ -224,6 +235,10 @@ async def pass_c_llm_rename(db):
     print(f"  Candidates remaining: {len(candidates)}")
     if not candidates:
         print("  All candidates already processed — skipping")
+        return 0
+
+    if not write:
+        print(f"  Dry run — would send {len(candidates)} dish(es) to the LLM for renaming")
         return 0
 
     total_changed = 0
@@ -258,18 +273,23 @@ async def pass_c_llm_rename(db):
             all_done_ids.extend(batch_ids)
 
             # Save checkpoint after every batch
-            with open(LLM_CHECKPOINT_FILE, "w") as f:
+            with open(LLM_CHECKPOINT_FILE, "w") as f:  # noqa: ASYNC230 -- one-shot script, blocking I/O is fine
                 json.dump({"done_ids": all_done_ids, "last_run": datetime.now().isoformat()}, f)
 
             print(f"    Changed: {changed_in_batch}/{len(batch)}")
 
             if i + LLM_BATCH_SIZE < len(candidates):
                 print(f"    Sleeping {LLM_BATCH_SLEEP}s...")
-                time.sleep(LLM_BATCH_SLEEP)
+                time.sleep(LLM_BATCH_SLEEP)  # noqa: ASYNC251 -- deliberate inter-batch pacing
 
         except Exception as e:
             print(f"  ERROR on batch starting {batch_ids[0]}: {e}")
             print("  Checkpoint saved. Re-run to resume from this batch.")
+            # Own session, own transaction -- roll back explicitly so the
+            # aborted transaction doesn't outlive this function and surface as
+            # a confusing, unrelated failure the next time `db` is used (e.g.
+            # pass_d_report's SELECT, right after this in main()).
+            await db.rollback()
             break
 
     print(f"  Total renamed in Pass C: {total_changed}")
@@ -323,8 +343,14 @@ async def pass_d_report(db, a_count, b_count, c_count):
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 async def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--write", action="store_true", help="apply passes A-C (default is dry-run preview)")
+    args = ap.parse_args()
+
     print(f"Dish name cleanup pipeline — started {datetime.now().isoformat()}")
     print("Rollback if needed: UPDATE food_items SET recipe_name = original_name WHERE original_name IS NOT NULL;\n")
+    if not args.write:
+        print("Dry run — no changes will be written. Re-run with --write to apply.\n")
 
     async with AsyncSessionLocal() as db:
         # Verify snapshot exists
@@ -340,9 +366,9 @@ async def main():
 
         print(f"Snapshot verified: {snapshot_count} rows have original_name set.")
 
-        a = await pass_a_flag_test_artifacts(db)
-        b = await pass_b_title_case(db)
-        c = await pass_c_llm_rename(db)
+        a = await pass_a_flag_test_artifacts(db, args.write)
+        b = await pass_b_title_case(db, args.write)
+        c = await pass_c_llm_rename(db, args.write)
         await pass_d_report(db, a, b, c)
 
     print(f"\nDone — {datetime.now().isoformat()}")

@@ -14,7 +14,6 @@ Notification types:
   renewal_approved  — doctor approved a renewal request
 """
 
-import json
 import logging
 import os
 from typing import Optional

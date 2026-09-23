@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   View, Text, TextInput, Pressable,
-  ScrollView, StyleSheet, ActivityIndicator,
+  ScrollView, StyleSheet, ActivityIndicator, Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ChevronLeft, Eye, EyeOff, Plus } from "lucide-react-native";
@@ -12,6 +12,7 @@ import { useToast } from "../../components/shared";
 import { registerPatient } from "../../services/auth";
 import { loginPatient } from "../../services/auth";
 import { getApiError } from "../../lib/getApiError";
+import { useGoogleSignIn } from "../../lib/useGoogleSignIn";
 
 function getStrength(pw: string): number {
   let s = 0;
@@ -29,6 +30,27 @@ export default function RegisterScreen() {
   const router = useRouter();
   const { setTokens } = useAuthStore();
   const { showToast } = useToast();
+  const { signInWithGoogle } = useGoogleSignIn();
+  const [googlePending, setGooglePending] = useState(false);
+  const [consent, setConsent] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    if (!consent) {
+      showToast("Please agree to the Terms & Privacy Policy first", "error");
+      return;
+    }
+    setGooglePending(true);
+    try {
+      const result = await signInWithGoogle(consent);
+      if (!result.ok && !result.cancelled) {
+        showToast(result.error, "error");
+      }
+    } catch (err) {
+      showToast(getApiError(err, "Google sign-in failed"), "error");
+    } finally {
+      setGooglePending(false);
+    }
+  };
 
   const [name, setName]               = useState("");
   const [email, setEmail]             = useState("");
@@ -38,7 +60,7 @@ export default function RegisterScreen() {
   const [showDrCode, setShowDrCode]   = useState(false);
 
   const strength = getStrength(password);
-  const canSubmit = name.trim().length > 0 && email.trim().length > 0 && password.length >= 8;
+  const canSubmit = name.trim().length > 0 && email.trim().length > 0 && password.length >= 8 && consent;
 
   const registerMut = useMutation({
     mutationFn: async () => {
@@ -46,6 +68,7 @@ export default function RegisterScreen() {
         name: name.trim(),
         email: email.trim(),
         password,
+        gdpr_consent: consent,
         ...(doctorCode.trim() ? { doctor_code: doctorCode.trim() } : {}),
       });
       // Persist code so disclaimer.tsx can activate the subscription after onboarding.
@@ -153,6 +176,19 @@ export default function RegisterScreen() {
           </View>
         )}
 
+        {/* GDPR / data-consent */}
+        <Pressable onPress={() => setConsent(v => !v)} style={s.checkRow}>
+          <View style={[s.checkbox, consent && s.checkboxSel]}>
+            {consent && <Text style={s.checkmark}>✓</Text>}
+          </View>
+          <Text style={s.checkLabel}>
+            I agree to the{" "}
+            <Text style={s.link} onPress={() => Linking.openURL("https://mitihar.com/terms")}>Terms of Service</Text>
+            {" "}and{" "}
+            <Text style={s.link} onPress={() => Linking.openURL("https://mitihar.com/privacy")}>Privacy Policy</Text>
+          </Text>
+        </Pressable>
+
         {/* Create account */}
         <Pressable
           style={[s.primaryBtn, (!canSubmit || registerMut.isPending) && s.primaryBtnDisabled]}
@@ -170,8 +206,14 @@ export default function RegisterScreen() {
         </View>
 
         {/* Google */}
-        <Pressable style={s.googleBtn} onPress={() => showToast("Google sign-in coming soon", "info")}>
-          <Text style={s.googleText}>Continue with Google</Text>
+        <Pressable
+          style={[s.googleBtn, googlePending && s.primaryBtnDisabled]}
+          onPress={handleGoogleSignIn}
+          disabled={googlePending}
+        >
+          {googlePending
+            ? <ActivityIndicator color="#111827" />
+            : <Text style={s.googleText}>Continue with Google</Text>}
         </Pressable>
 
         <View style={s.footerRow}>
@@ -204,6 +246,11 @@ const s = StyleSheet.create({
   hint:               { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
   drCodeLink:         { flexDirection: "row", alignItems: "center", gap: 4 },
   drCodeLinkText:     { fontSize: 14, fontWeight: "500", color: "#1E7C45" },
+  checkRow:           { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  checkbox:           { width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: "#D1D5DB", backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginTop: 1 },
+  checkboxSel:        { borderColor: "#1E7C45", backgroundColor: "#1E7C45" },
+  checkmark:          { color: "#fff", fontSize: 12, lineHeight: 12, fontWeight: "700" },
+  checkLabel:         { flex: 1, fontSize: 13, color: "#374151", lineHeight: 18 },
   primaryBtn:         { height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
   primaryBtnDisabled: { backgroundColor: "#6B7280" },
   primaryBtnText:     { fontSize: 16, fontWeight: "600", color: "#fff" },

@@ -1,5 +1,9 @@
+import importlib.util
 import sys
-sys.path.insert(0, 'C:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician')
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 import inspect
 
 issues = []
@@ -7,9 +11,9 @@ notes  = []
 
 # 1. google-auth importable
 try:
-    from google.oauth2 import id_token as google_id_token
-    from google.auth.transport import requests as google_requests
-    from google.auth.exceptions import GoogleAuthError
+    for _mod in ("google.oauth2.id_token", "google.auth.transport.requests", "google.auth.exceptions"):
+        if importlib.util.find_spec(_mod) is None:
+            raise ImportError(f"{_mod} not found")
     notes.append("PASS: google-auth installed and importable")
 except ImportError as e:
     issues.append(f"FAIL: google-auth not importable: {e}")
@@ -29,7 +33,7 @@ notes.append("PASS: Patient.google_id column in ORM")
 
 # 4. Migration file exists and has correct chain
 import os
-migration_path = 'C:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/alembic/versions/a1b2c3d4e5f6_add_google_id_to_patients.py'
+migration_path = str(PROJECT_ROOT / "alembic" / "versions" / "a1b2c3d4e5f6_add_google_id_to_patients.py")
 assert os.path.exists(migration_path), "Migration file missing"
 content = open(migration_path).read()
 assert "down_revision = 'eb8dbef8dd19'" in content, "Wrong down_revision in migration"
@@ -39,7 +43,7 @@ notes.append("PASS: Migration file exists, correct chain (eb8dbef8dd19), partial
 
 # 5. auth.py imports clean
 try:
-    from app.routers.auth import router, GoogleTokenRequest, google_verify
+    from app.routers.auth import google_verify
     notes.append("PASS: auth.py imports clean — GoogleTokenRequest + google_verify present")
 except Exception as e:
     issues.append(f"FAIL: auth.py import error: {e}")

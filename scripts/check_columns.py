@@ -1,5 +1,6 @@
 import sys
-sys.path.insert(0, r"C:\Users\Lenovo\Desktop\Code\2026\Nutria\Mitihar_dietician")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.models.db_models import FoodItem
 cols = [c.name for c in FoodItem.__table__.columns]
 print("FoodItem columns:", cols)

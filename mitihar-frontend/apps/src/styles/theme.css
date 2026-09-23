@@ -2,7 +2,7 @@
 
 :root {
   --font-size: 16px;
-  --background: #F9FAFB;
+  --background: #FAFAF9;
   --foreground: #111827;
   --card: #ffffff;
   --card-foreground: #111827;
@@ -27,6 +27,7 @@
   --ring: #1E7C45;
 
   /* Brand Verdant Green */
+  --brand-700: #166534;
   --brand-600: #1E7C45;
   --brand-500: #23924F;
   --brand-400: #34B164;
@@ -36,7 +37,9 @@
   /* Slate Neutrals */
   --slate-950: #0C1117;
   --slate-900: #111827;
+  --slate-800: #1F2937;
   --slate-700: #374151;
+  --slate-600: #4B5563;
   --slate-500: #6B7280;
   --slate-300: #D1D5DB;
   --slate-200: #E5E7EB;
@@ -47,6 +50,7 @@
   --red-600:   #DC2626;
   --red-50:    #FEF2F2;
   --amber-500: #F59E0B;
+  --amber-700: #B45309;
   --amber-50:  #FFFBEB;
   --blue-600:  #2563EB;
   --blue-50:   #EFF6FF;
@@ -72,8 +76,18 @@
   --radius: 0.5rem;
 
   /* Shadows */
-  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -8px rgb(0 0 0 / 0.08);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.05), 0 12px 32px -8px rgb(0 0 0 / 0.12);
   --shadow-modal: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Easing */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Font family */
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
   /* Chart vars for recharts */
   --color-chart-1: var(--chart-1);
@@ -81,6 +95,48 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-muted);
+}
+
+.dark {
+  --background: #0B0D10;
+  --foreground: #F5F6F7;
+  --card: #14171B;
+  --card-foreground: #F5F6F7;
+  --popover: #14171B;
+  --popover-foreground: #F5F6F7;
+  --primary: #34B164;
+  --primary-foreground: #0B0D10;
+  --secondary: #1C2026;
+  --secondary-foreground: #D4D7DC;
+  --muted: #1C2026;
+  --muted-foreground: #8B92A0;
+  --accent: #1C2026;
+  --accent-foreground: #F5F6F7;
+  --destructive: #F87171;
+  --destructive-foreground: #0B0D10;
+  --border: #232830;
+  --input: #14171B;
+  --input-background: #14171B;
+  --switch-background: #2A303A;
+  --ring: #34B164;
+  --brand-700: #1F4D37;
+  --brand-600: #1F4D37;
+  --brand-500: #34B164;
+  --brand-400: #52C77A;
+  --brand-100: #16321F;
+  --brand-50: #10241A;
+  --red-50: #2A1515;
+  --amber-50: #2A2113;
+  --amber-700: #FCD34D;
+  --blue-50: #12203A;
+  --chart-1: #34B164;
+  --chart-2: #60A5FA;
+  --chart-3: #FBBF24;
+  --chart-4: #C084FC;
+  --chart-muted: #4B5563;
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px -8px rgb(0 0 0 / 0.4);
+  --shadow-card-hover: 0 1px 0 0 rgb(255 255 255 / 0.06) inset, 0 12px 32px -8px rgb(0 0 0 / 0.5);
+  --shadow-modal: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
@@ -107,6 +163,7 @@
   --color-ring: var(--ring);
 
   /* Brand */
+  --color-brand-700: var(--brand-700);
   --color-brand-600: var(--brand-600);
   --color-brand-500: var(--brand-500);
   --color-brand-400: var(--brand-400);
@@ -116,7 +173,9 @@
   /* Slate */
   --color-slate-950: var(--slate-950);
   --color-slate-900: var(--slate-900);
+  --color-slate-800: var(--slate-800);
   --color-slate-700: var(--slate-700);
+  --color-slate-600: var(--slate-600);
   --color-slate-500: var(--slate-500);
   --color-slate-300: var(--slate-300);
   --color-slate-200: var(--slate-200);
@@ -127,6 +186,7 @@
   --color-red-600:   var(--red-600);
   --color-red-50:    var(--red-50);
   --color-amber-500: var(--amber-500);
+  --color-amber-700: var(--amber-700);
   --color-amber-50:  var(--amber-50);
   --color-blue-600:  var(--blue-600);
   --color-blue-50:   var(--blue-50);
@@ -138,10 +198,17 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-muted);
 
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+
+  --ease-out: var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+  --ease-standard: var(--ease-standard);
 }
 
 /* ── Accessibility: Reduced motion (WCAG 2.3.3) ─────────────────────────────
@@ -161,16 +228,24 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
 
   html {
     font-size: var(--font-size);
+  }
+
+  svg.lucide {
+    stroke-width: 1.5;
+  }
+
+  code, pre, code[class*='language-'] {
+    font-family: var(--font-mono);
   }
 
   h1 {
@@ -207,6 +282,6 @@
     font-size: var(--text-sm);
     font-weight: 400;
     line-height: 1.5;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
 }

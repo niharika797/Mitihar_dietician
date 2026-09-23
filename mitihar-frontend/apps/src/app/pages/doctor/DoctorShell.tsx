@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { Joyride } from 'react-joyride';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { TopBar } from '../../components/layout/TopBar';
 import { CommandPalette } from '../../components/layout/CommandPalette';
 import { useAuthStore } from '../../../stores/authStore';
 import { doctorApi } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
+import { useProductTour } from '../../hooks/useProductTour';
+import { useTheme } from '../../hooks/useTheme';
 
 function getBreadcrumbs(pathname: string) {
   const map: Record<string, { label: string }[]> = {
@@ -14,6 +17,7 @@ function getBreadcrumbs(pathname: string) {
     '/doctor/patients':  [{ label: 'Doctor' }, { label: 'Patients' }],
     '/doctor/requests':  [{ label: 'Doctor' }, { label: 'Requests' }],
     '/doctor/recipes':   [{ label: 'Doctor' }, { label: 'Recipes' }],
+    '/doctor/data-review': [{ label: 'Doctor' }, { label: 'Data Review' }],
     '/doctor/settings':  [{ label: 'Doctor' }, { label: 'Settings' }],
   };
   if (pathname.startsWith('/doctor/patients/')) {
@@ -36,6 +40,32 @@ export function DoctorShell() {
   });
   const pendingCount = requests.filter(r => r.status === 'pending').length;
 
+  // Doctors have no push channel — the Doctor model carries no fcm_token and
+  // every notify_* helper targets patients. So the header bell, which shipped
+  // hardcoded to [], is the only place a patient's answer can reach the doctor.
+  const { data: answered = [] } = useQuery({
+    queryKey: qk.answeredFlaggedVisits,
+    queryFn: () => doctorApi.getFlaggedVisits({ answeredOnly: true, limit: 10 }),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
+  const notifications = answered.map(f => ({
+    id: String(f.id),
+    text:
+      f.status === 'approved'
+        ? `${f.patient_name} confirmed the visit you flagged on ${new Date(f.visit_date).toLocaleDateString('en-IN')}`
+        : `${f.patient_name} denied the visit you flagged on ${new Date(f.visit_date).toLocaleDateString('en-IN')}`,
+    time: f.responded_at ? new Date(f.responded_at).toLocaleDateString('en-IN') : '',
+    // No read/unread store exists, so nothing is marked read — showing them as
+    // unread would leave a badge that can never be cleared.
+    read: true,
+    type: (f.status === 'approved' ? 'request' : 'warning') as 'request' | 'warning',
+  }));
+
+  const tour = useProductTour();
+  const { theme } = useTheme();
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -48,7 +78,7 @@ export function DoctorShell() {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F9FAFB]">
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar
         role="doctor"
         userName={userName}
@@ -58,7 +88,7 @@ export function DoctorShell() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar
           breadcrumbs={getBreadcrumbs(location.pathname)}
-          notifications={[]}
+          notifications={notifications}
           userName={userName}
           userRole="Dietician"
           onSearchOpen={() => setCmdOpen(true)}
@@ -68,6 +98,19 @@ export function DoctorShell() {
         </main>
       </div>
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} role="doctor" />
+      <Joyride
+        run={tour.run}
+        stepIndex={tour.stepIndex}
+        steps={tour.steps}
+        onEvent={tour.onEvent}
+        continuous
+        options={{
+          buttons: ['back', 'close', 'primary', 'skip'],
+          primaryColor: theme === 'dark' ? '#34B164' : '#1E7C45',
+          zIndex: 10000,
+          skipScroll: true,
+        }}
+      />
     </div>
   );
 }

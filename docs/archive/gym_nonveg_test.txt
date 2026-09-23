@@ -1,0 +1,191 @@
+﻿
+═════════════════════════════════════════════════════════════════
+  MITYAHAR MEAL GENERATOR — TEST RUN
+═════════════════════════════════════════════════════════════════
+  Diet         : Non-Vegetarian
+  Region       : North
+  Plan Type    : Gym-Friendly
+  Gender       : Male
+  Age / Weight : 25 yrs / 80.0 kg
+  Height       : 180.0 cm
+  Activity     : Very Active
+═════════════════════════════════════════════════════════════════
+
+  📊 CALCULATED TARGETS
+  BMI    : 24.7
+  BMR    : 1805 kcal
+  TDEE   : 3114 kcal/day
+  Protein: 156g/day  |  Carbs: 428g/day  |  Fat: 86g/day  |  Fiber: 44g/day
+
+  🎯 MEAL CALORIE TARGETS
+  🌅 Breakfast               →    778 kcal  (25%)
+  ☕ Morning Snack           →    156 kcal  (5%)
+  🍱 Lunch                   →   1090 kcal  (35%)
+  🍵 Evening Snack           →    156 kcal  (5%)
+  🌙 Dinner                  →    934 kcal  (30%)
+
+  ⚙️  Generating 7-day plan...
+
+─────────────────────────────────────────────────────────────────
+  DAY 1  —  2026-03-04   |  Total: 2180 kcal  ⚠️  LOW  (70% of target)
+─────────────────────────────────────────────────────────────────
+  🌅 Breakfast                ❌ MISSING
+  ☕ Morning Snack
+    Dishes  : Chicken Pakora Recipe - Chicken Fritters
+    Calories: 156 kcal  (target 156)  ✅ OK   (100% of target)
+    Macros  : Protein 13.5g  |  Carbs 15.4g  |  Fat 10.8g  |  Fiber 1.5g
+  🍱 Lunch
+    Dishes  : Kachi Tikya Recipe  - Chicken In Tomato Gravy With Potatoes + Egg Bhurji + Murg Anardana Recipe - Pomegranate Chicken In Yogurt Gravy + Vegetable raita
+    Calories: 1090 kcal  (target 1090)  ✅ OK   (100% of target)
+    Macros  : Protein 100.0g  |  Carbs 77.8g  |  Fat 53.1g  |  Fiber 23.4g
+  🍵 Evening Snack            ❌ MISSING
+  🌙 Dinner
+    Dishes  : Chicken biryani + Chicken handi + Jhinga Gavar Recipe - Shrimps & Cluster Beans Vegetable + Cucumber Raita
+    Calories: 934 kcal  (target 934)  ✅ OK   (100% of target)
+    Macros  : Protein 64.0g  |  Carbs 86.0g  |  Fat 34.1g  |  Fiber 15.3g
+
+─────────────────────────────────────────────────────────────────
+  DAY 2  —  2026-03-05   |  Total: 2180 kcal  ⚠️  LOW  (70% of target)
+─────────────────────────────────────────────────────────────────
+  🌅 Breakfast                ❌ MISSING
+  ☕ Morning Snack
+    Dishes  : Chicken Pakora Recipe - Chicken Fritters
+    Calories: 156 kcal  (target 156)  ✅ OK   (100% of target)
+    Macros  : Protein 13.5g  |  Carbs 15.4g  |  Fat 10.8g  |  Fiber 1.5g
+  🍱 Lunch
+    Dishes  : Chicken Biryani + Egg Bhurji + Bengali Style Chingri Posto Recipe (Prawns Cooked In Poppy Seed Gravy) + Machher jhol
+    Calories: 1090 kcal  (target 1090)  ✅ OK   (100% of target)
+    Macros  : Protein 78.6g  |  Carbs 101.3g  |  Fat 39.5g  |  Fiber 23.6g
+  🍵 Evening Snack            ❌ MISSING
+  🌙 Dinner
+    Dishes  : Mughlai Style Chicken Changezi Recipe + Chicken curry + Bengali Aam Chingri Recipe - Prawn Mango Curry In Mustard Sauce + Curd bowl
+    Calories: 934 kcal  (target 934)  ✅ OK   (100% of target)
+    Macros  : Protein 53.6g  |  Carbs 49.3g  |  Fat 48.0g  |  Fiber 11.7g
+
+─────────────────────────────────────────────────────────────────
+  DAY 3  —  2026-03-06   |  Total: 2180 kcal  ⚠️  LOW  (70% of target)
+─────────────────────────────────────────────────────────────────
+  🌅 Breakfast                ❌ MISSING
+  ☕ Morning Snack
+    Dishes  : Chicken Pakora Recipe - Chicken Fritters
+    Calories: 156 kcal  (target 156)  ✅ OK   (100% of target)
+    Macros  : Protein 13.5g  |  Carbs 15.4g  |  Fat 10.8g  |  Fiber 1.5g
+  🍱 Lunch
+    Dishes  : Chicken yakhni pulao + Egg Bhurji + Tisrayanche Suke Recipe (Goan Clams Dry) + Buttermilk
+    Calories: 1090 kcal  (target 1090)  ✅ OK   (100% of target)
+    Macros  : Protein 55.9g  |  Carbs 88.3g  |  Fat 38.0g  |  Fiber 12.1g
+  🍵 Evening Snack            ❌ MISSING
+  🌙 Dinner
+    Dishes  : Butter Chicken Recipe - The Classic Indian Chicken Gravy + Tambda rassa + Jhinga Gavar Recipe - Shrimps & Cluster Beans Vegetable + Vegetable raita
+    Calories: 934 kcal  (target 934)  ✅ OK   (100% of target)
+    Macros  : Protein 56.2g  |  Carbs 52.7g  |  Fat 36.7g  |  Fiber 18.5g
+
+─────────────────────────────────────────────────────────────────
+  DAY 4  —  2026-03-07   |  Total: 2180 kcal  ⚠️  LOW  (70% of target)
+─────────────────────────────────────────────────────────────────
+  🌅 Breakfast                ❌ MISSING
+  ☕ Morning Snack
+    Dishes  : Chicken Pakora Recipe - Chicken Fritters
+    Calories: 156 kcal  (target 156)  ✅ OK   (100% of target)
+    Macros  : Protein 13.5g  |  Carbs 15.4g  |  Fat 10.8g  |  Fiber 1.5g
+  🍱 Lunch
+    Dishes  : Chingiri Paturi Recipe + Egg Bhurji + Dherosh Chingri Jhol Recipe (Bengali Style Prawn Curry With Ladies Finger) + Cucumber Raita
+    Calories: 1090 kcal  (target 1090)  ✅ OK   (100% of target)
+    Macros  : Protein 52.7g  |  Carbs 72.8g  |  Fat 61.9g  |  Fiber 26.8g
+  🍵 Evening Snack            ❌ MISSING
+  🌙 Dinner
+    Dishes  : Paratha + Goan chicken curry + Jhinga Gavar Recipe - Shrimps & Cluster Beans Vegetable + Vegetable raita
+    Calories: 934 kcal  (target 934)  ✅ OK   (100% of target)
+    Macros  : Protein 54.4g  |  Carbs 114.5g  |  Fat 24.1g  |  Fiber 14.5g
+
+─────────────────────────────────────────────────────────────────
+  DAY 5  —  2026-03-08   |  Total: 2180 kcal  ⚠️  LOW  (70% of target)
+─────────────────────────────────────────────────────────────────
+  🌅 Breakfast                ❌ MISSING
+  ☕ Morning Snack
+    Dishes  : Chicken Pakora Recipe - Chicken Fritters
+    Calories: 156 kcal  (target 156)  ✅ OK   (100% of target)
+    Macros  : Protein 13.5g  |  Carbs 15.4g  |  Fat 10.8g  |  Fiber 1.5g
+  🍱 Lunch
+    Dishes  : Lau Chingri Recipe (Bottle Gourd And Shrimp Curry) + Egg Bhurji + Murg Anardana Recipe - Pomegranate Chicken In Yogurt Gravy + Cucumber Raita
+    Calories: 1090 kcal  (target 1090)  ✅ OK   (100% of target)
+    Macros  : Protein 113.8g  |  Carbs 91.1g  |  Fat 43.9g  |  Fiber 26.1g
+  🍵 Evening Snack            ❌ MISSING
+  🌙 Dinner
+    Dishes  : Jowar roti + Malvani chicken curry + Jhinga Gavar Recipe - Shrimps & Cluster Beans Vegetable + Vegetable raita
+    Calories: 934 kcal  (target 934)  ✅ OK   (100% of target)
+    Macros  : Protein 58.1g  |  Carbs 108.9g  |  Fat 24.9g  |  Fiber 25.9g
+
+─────────────────────────────────────────────────────────────────
+  DAY 6  —  2026-03-09   |  Total: 2180 kcal  ⚠️  LOW  (70% of target)
+─────────────────────────────────────────────────────────────────
+  🌅 Breakfast                ❌ MISSING
+  ☕ Morning Snack
+    Dishes  : Chicken Pakora Recipe - Chicken Fritters
+    Calories: 156 kcal  (target 156)  ✅ OK   (100% of target)
+    Macros  : Protein 13.5g  |  Carbs 15.4g  |  Fat 10.8g  |  Fiber 1.5g
+  🍱 Lunch
+    Dishes  : Mustard Prawns In Coconut Recipe + Egg Bhurji + Murg Anardana Recipe - Pomegranate Chicken In Yogurt Gravy + Cucumber Raita
+    Calories: 1090 kcal  (target 1090)  ✅ OK   (100% of target)
+    Macros  : Protein 80.7g  |  Carbs 39.9g  |  Fat 75.8g  |  Fiber 12.6g
+  🍵 Evening Snack            ❌ MISSING
+  🌙 Dinner
+    Dishes  : Parshe Macher Jhal Recipe - Mullet In Mustard Sauce + Chicken handi + Jhinga Gavar Recipe - Shrimps & Cluster Beans Vegetable + Vegetable raita
+    Calories: 934 kcal  (target 934)  ✅ OK   (100% of target)
+    Macros  : Protein 48.6g  |  Carbs 64.8g  |  Fat 39.8g  |  Fiber 23.3g
+
+─────────────────────────────────────────────────────────────────
+  DAY 7  —  2026-03-10   |  Total: 2180 kcal  ⚠️  LOW  (70% of target)
+─────────────────────────────────────────────────────────────────
+  🌅 Breakfast                ❌ MISSING
+  ☕ Morning Snack
+    Dishes  : Chicken Pakora Recipe - Chicken Fritters
+    Calories: 156 kcal  (target 156)  ✅ OK   (100% of target)
+    Macros  : Protein 13.5g  |  Carbs 15.4g  |  Fat 10.8g  |  Fiber 1.5g
+  🍱 Lunch
+    Dishes  : Egg pulao + Egg Bhurji + Jhinga Gavar Recipe - Shrimps & Cluster Beans Vegetable + Cucumber Raita
+    Calories: 1090 kcal  (target 1090)  ✅ OK   (100% of target)
+    Macros  : Protein 70.2g  |  Carbs 100.7g  |  Fat 37.5g  |  Fiber 20.3g
+  🍵 Evening Snack            ❌ MISSING
+  🌙 Dinner
+    Dishes  : Pepe Chingri Recipe - Green Papaya Prawn Curry Recipe + Chicken handi + Murg Anardana Recipe - Pomegranate Chicken In Yogurt Gravy + Vegetable raita
+    Calories: 934 kcal  (target 934)  ✅ OK   (100% of target)
+    Macros  : Protein 72.6g  |  Carbs 81.1g  |  Fat 44.8g  |  Fiber 27.0g
+
+═════════════════════════════════════════════════════════════════
+  📋 WEEKLY SUMMARY
+═════════════════════════════════════════════════════════════════
+  Total meals generated : 21 / 35 expected
+  Avg daily calories    : 2180 kcal  (TDEE target: 3114)
+  Weekly calorie total  : 15257 kcal
+  Daily range           : 2180 – 2180 kcal
+
+  🔁 VARIETY ANALYSIS
+  Unique dishes used    : 32 / 63 total slots
+  Repeated dishes (7)  :
+    • Chicken Pakora Recipe - Chicken Fritters — 7×
+    • Egg Bhurji — 7×
+    • Vegetable raita — 6×
+    • Jhinga Gavar Recipe - Shrimps & Cluster Beans Vegetable — 6×
+    • Cucumber Raita — 5×
+    • Murg Anardana Recipe - Pomegranate Chicken In Yogurt Gravy — 4×
+    • Chicken handi — 3×
+
+  ⚠️  MISSING MEALS: 14 slots were not filled
+     This usually means DB has insufficient items for some slots.
+     Check logs above for '❌ MISSING' entries.
+
+  🛒 TOP 10 SHOPPING LIST ITEMS (by weight)
+    • Prawns                             3098 g
+    • Chicken                            3065 g
+    • Boneless chicken                   2921 g
+    • Green chillies                     2794 g
+    • Onion                              2606 g
+    • Gawar phali                        2158 g
+    • Curd                               1540 g
+    • Egg                                1530 g
+    • Shrimps                            1510 g
+    • curd                               1342 g
+
+═════════════════════════════════════════════════════════════════
+

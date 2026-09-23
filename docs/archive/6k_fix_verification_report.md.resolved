@@ -1,0 +1,33 @@
+# 6k Dataset Fix Verification Report
+
+After running [fix_6k_calories.py](file:///c:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician/scripts/fix_6k_calories.py), the following verification queries were executed against the DB.
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| 1 — Avg calorie range | ❌ | avg=428.1, min=3.2*, max=1199.9, median=360.84 |
+| 2 — No zero-cal rows  | ✅ | 0 rows found |
+| 3 — Slot distribution | ✅ | grain: 889, sabzi: 436, snack: 342, dal: 40 |
+| 4 — Diet distribution | ✅ | Veg: 1892, Non-Veg: 46, Egg: 25 |
+| 5 — JSONB ingredients updated | ✅ | first_ingredient examples: `{"name": "Cauliflower", "amount_g": 480}` |
+| 6 — Row counts by source | ✅ | 6k_dataset: 1963, excel: 184 |
+| 7 — Slot calorie ranges | ✅ | No slot average > 600 kcal. Highest is grain at 447 kcal. |
+
+* **Check 1 Failed**: The minimum calorie returned is `3.2` which is below the expected minimum of `30`.
+
+## Failed Query Output
+
+**Check 1:**
+```json
+[
+  {
+    "avg_cal": "428.1",
+    "min_cal": "3.2",
+    "max_cal": "1199.9",
+    "median_cal": 360.84,
+    "total_rows": "1963"
+  }
+]
+```
+
+**Check 7 (Slot Ranges Note):**
+The averages for some slots are a bit higher than the expected target ranges (e.g., `snack_item` avg is 383, target 50-200; `sabzi` avg is 356, target 50-200), however no slot average went above the 600 kcal threshold specified in the pass criteria, so this check technically passes.

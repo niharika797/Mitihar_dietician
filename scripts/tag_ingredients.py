@@ -16,6 +16,7 @@ Threshold: confidence >= 0.85 -> write to DB.
 """
 import asyncio
 import json
+import os
 import re
 import sys
 import time
@@ -23,9 +24,12 @@ from pathlib import Path
 
 import asyncpg
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DSN = "postgresql://admin:mityahar_dev@localhost:5432/mityahar_db"
+DSN = os.environ["DATABASE_URL"].replace("+asyncpg", "")
 LLAMA_URL = "http://localhost:11434/v1/chat/completions"
 LLAMA_MODEL = "gemma"
 REVIEW_PATH = Path(__file__).parent.parent / "docs" / "INGREDIENT_REVIEW.md"

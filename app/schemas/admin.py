@@ -50,6 +50,13 @@ class UpdateDoctorRequest(BaseModel):
     city:           Optional[str] = Field(default=None, max_length=100)
     phone:          Optional[str] = Field(default=None, max_length=20, pattern=r"^\+?[\d\s\-\(\)]{7,20}$")
 
+    @field_validator("name", "specialization", "clinic_name", "city", mode="before")
+    @classmethod
+    def strip_text_fields(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
 
 class PlatformStats(BaseModel):
     total_patients: int
@@ -65,7 +72,6 @@ class DoctorDetailView(DoctorAdminView):
     """Full doctor view with patient count."""
     patient_count: int = 0
     mfa_enabled: bool
-    created_at: datetime
     model_config = {"from_attributes": True}
 
 
@@ -90,7 +96,7 @@ class PaginatedAuditLogs(BaseModel):
 
 
 class GenerateCodesAdminRequest(BaseModel):
-    doctor_id: int
+    doctor_id: int = Field(..., gt=0)
     count: int = Field(..., ge=1, le=100)
     expires_in_days: int = Field(default=30, ge=1, le=365)
 

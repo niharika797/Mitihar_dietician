@@ -24,7 +24,7 @@ import argparse
 import asyncio
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
 
 import httpx
@@ -145,7 +145,7 @@ async def run_scale_check(base_url: str) -> bool:
     for r in results:
         status_counts[r.status] = status_counts.get(r.status, 0) + 1
 
-    print(f"\n  Status distribution:")
+    print("\n  Status distribution:")
     for code, count in sorted(status_counts.items()):
         label = "THROTTLED [FAIL]" if code == 429 else "ok"
         print(f"    HTTP {code}: {count} requests  {label}")

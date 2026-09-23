@@ -1,0 +1,53 @@
+# Mityahar Backend — direct dependencies
+# pip-compile requirements.in --output-file requirements.txt
+# to regenerate the fully-pinned requirements.txt
+
+# Web framework
+fastapi==0.136.0
+uvicorn==0.45.0
+python-multipart==0.0.31
+
+# Database
+sqlalchemy==2.0.49
+asyncpg==0.31.0
+greenlet==3.4.0
+alembic==1.18.4
+psycopg2-binary==2.9.12
+
+# Validation & settings
+pydantic==2.13.3
+pydantic-settings==2.14.2
+email-validator==2.3.0
+annotated-types==0.7.0
+
+# Auth & security
+python-jose[cryptography]==3.5.0
+bcrypt==5.0.0
+
+# Config
+python-dotenv==1.2.2
+
+# Rate limiting
+slowapi==0.1.9
+redis==8.0.1
+
+# MFA (TOTP)
+pyotp==2.9.0
+
+# Firebase push notifications (FCM)
+firebase-admin==7.4.0
+
+# Google OAuth (patient login)
+google-auth==2.49.2
+
+# HTTP client (tests + Gemini API calls in scripts)
+httpx==0.28.1
+requests==2.33.1
+
+# Data processing
+pandas==3.0.2
+numpy==2.4.4
+openpyxl==3.1.5
+
+# One-time data-import scripts only (not required to run the server)
+pdfplumber==0.11.9

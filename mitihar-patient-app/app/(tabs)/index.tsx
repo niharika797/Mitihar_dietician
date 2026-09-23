@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, CalendarClock, ChevronRight, Utensils, Coffee } from "lucide-react-native";
+import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, Easing } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getTodaySummary, logMeal, rateMeal, getMyRatings, getStreak, MealRating } from "../../services/progress"; // Audit C-6: added getStreak
 import { getWeeklyPlan } from "../../services/meals";
@@ -12,8 +14,15 @@ import { getRequestStatus, getMyProfile, getMyVisit } from "../../services/profi
 import { getDailyChoices, getBeverages, type Beverage } from "../../services/meals";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore } from "../../store/useProgressStore";
-import { ProgressRing, MacroRow, BottomSheet, useToast } from "../../components/shared";
+import { ProgressRing, MacroRow, BottomSheet, useToast, ErrorState, Card, Button, AnimatedPressable } from "../../components/shared";
+import PantrySection from "../../components/PantrySection";
+import ShoppingListSection from "../../components/ShoppingListSection";
+import PendingVisitSection from "../../components/PendingVisitSection";
+import { colors, iconSize, typography } from "../../constants/theme";
 import type { Meal, WeeklyPlan } from "../../types";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 
 function greeting() {
   const h = new Date().getHours();
@@ -42,9 +51,28 @@ interface HomeHeaderProps {
   onBellPress: () => void;
 }
 
-function HomeHeader({ firstName, streak, hasUnread, onBellPress }: HomeHeaderProps) {
+// Subtle, restrained pulse — the one "delight tier" animation in this pass.
+function StreakFlame() {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    scale.set(withRepeat(withSequence(withTiming(1.08, { duration: 900 }), withTiming(1, { duration: 900 })), -1, true));
+  }, []);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
+  return <Animated.Text style={[s.streakEmoji, animatedStyle]}>🔥</Animated.Text>;
+}
+
+// forwardRef: react-native-copilot's walkthroughable() attaches a ref to
+// measure this component's position on screen. A plain function component
+// silently drops an incoming ref (nothing forwards it to a real View), which
+// left CopilotStep's measure() polling forever and the tour never appearing.
+// Animated.View forwards a plain ref to its underlying native view same as
+// View does, so it stays measurable by react-native-copilot.
+const HomeHeader = React.forwardRef<Animated.View, HomeHeaderProps>(function HomeHeader(
+  { firstName, streak, hasUnread, onBellPress },
+  ref,
+) {
   return (
-    <View style={s.headerCard}>
+    <Animated.View ref={ref} entering={FadeInDown.duration(400).easing(EASE_OUT)} style={s.headerCard}>
       <View style={s.headerRow}>
         <View>
           <Text style={s.greetingText}>{greeting()}, {firstName} ☀️</Text>
@@ -52,20 +80,21 @@ function HomeHeader({ firstName, streak, hasUnread, onBellPress }: HomeHeaderPro
             {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
           </Text>
         </View>
-        <Pressable onPress={onBellPress} style={s.bellBtn}>
-          <Bell size={20} color="#374151" />
+        <AnimatedPressable onPress={onBellPress} style={s.bellBtn}>
+          <Bell size={iconSize.md} color="#374151" />
           {hasUnread && <View style={s.bellDot} />}
-        </Pressable>
+        </AnimatedPressable>
       </View>
       <View style={s.pillRow}>
         <View style={s.streakPill}>
-          <Text style={s.streakEmoji}>🔥</Text>
+          <StreakFlame />
           <Text style={s.streakText}>{streak} Day Streak</Text>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
-}
+});
+const CopilotHomeHeader = walkthroughable(HomeHeader);
 
 // ── DoctorStatusBanner ─────────────────────────────────────────────────────────
 interface DoctorStatusBannerProps {
@@ -155,7 +184,7 @@ function NextVisitCard({ cycleStart }: { cycleStart: string }) {
   return (
     <View style={[nv.card, { backgroundColor: bgColor, borderColor }]}>
       <View style={nv.iconRow}>
-        <CalendarClock size={18} color={statusColor} />
+        <CalendarClock size={iconSize.sm} color={statusColor} />
         <Text style={[nv.title, { color: statusColor }]}>NEXT FOLLOW-UP</Text>
       </View>
       <Text style={nv.date}>{dateStr}</Text>
@@ -217,10 +246,15 @@ export default function HomeScreen() {
   const [localRatings, setLocalRatings] = useState<Record<string, 1 | -1>>({});
 
   // ── Server data ──────────────────────────────────────────────────────────
-  const { data: today, isLoading: todayLoading } = useQuery({
+  const { data: today, isLoading: todayLoading, isError: todayError, refetch: refetchToday } = useQuery({
     queryKey: QUERY_KEYS.TODAY,
     queryFn: getTodaySummary,
     refetchInterval: 60_000,
+    // 402 (no active subscription) isn't transient — retrying it is pure
+    // noise. Without this, refetchOnWindowFocus re-fires the query on every
+    // focus event, and since it never succeeds for an unsubscribed patient,
+    // isLoading never settles either.
+    retry: (failureCount, error) => (error as any)?.response?.status !== 402 && failureCount < 1,
   });
 
   // Audit C-6: streak lives on its own endpoint — it is NOT part of TodaySummary.
@@ -335,112 +369,140 @@ export default function HomeScreen() {
 
   const firstName = profile?.name?.split(" ")[0] ?? "there";
 
-  if (todayLoading) {
-    return (
-      <View style={s.loader}>
-        <ActivityIndicator size="large" color="#1E7C45" />
-      </View>
-    );
-  }
-
   const selectedMeal = todayMeals.find(m => m["Meal Type"].toLowerCase() === logSheet?.toLowerCase());
 
   return (
     <View style={s.root}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
-        <HomeHeader
-          firstName={firstName}
-          streak={streak}
-          hasUnread={hasUnread}
-          onBellPress={() => router.push("/home/notifications")}
-        />
+        {/* Header renders unconditionally — it must never be gated behind
+            getTodaySummary's loading state. That query 402s for any patient
+            without an active subscription (every fresh signup), and since it
+            never succeeds, refetchOnWindowFocus re-triggers isLoading=true
+            on every focus event indefinitely — gating the header behind it
+            hid it (and everything after it, incl. the product tour) forever
+            for exactly the accounts the tour is meant to greet. */}
+        <CopilotStep text="This is your home — your daily meal plan and progress at a glance." order={1} name="home">
+          <CopilotHomeHeader
+            firstName={firstName}
+            streak={streak}
+            hasUnread={hasUnread}
+            onBellPress={() => router.push("/home/notifications")}
+          />
+        </CopilotStep>
 
-                <View style={s.body}>
+        {todayLoading ? (
+          <View style={s.loader}>
+            <ActivityIndicator size="large" color="#1E7C45" />
+          </View>
+        ) : (
+        <View style={s.body}>
           {/* ── Calories ring ── */}
           <Text style={s.sectionLabel}>TODAY'S CALORIES</Text>
-          <View style={s.card}>
-            <View style={s.calorieRow}>
-              <ProgressRing size={100} percentage={calPercent} color="#1E7C45" />
-              <View style={s.calorieInfo}>
-                <Text style={s.calBig}>{cals.toLocaleString()}</Text>
-                <Text style={s.calSub}>of {dailyTarget.toLocaleString()} target</Text>
-                {plannedKcal > 0 && (
-                  <Text style={s.calPlanned}>Planned: {plannedKcal.toLocaleString()} kcal</Text>
-                )}
-                <View style={{ marginTop: 8 }}>
-                  <MacroRow
-                    protein={today?.macros?.protein ?? 0}
-                    carbs={today?.macros?.carbs ?? 0}
-                    fat={today?.macros?.fat ?? 0}
-                  />
+          <Animated.View entering={FadeInDown.delay(80).duration(400).easing(EASE_OUT)}>
+            <Card style={{ marginBottom: 20 }}>
+              <View style={s.calorieRow}>
+                <ProgressRing size={100} percentage={calPercent} color={colors.brand[600]} />
+                <View style={s.calorieInfo}>
+                  <Text style={s.calBig}>{cals.toLocaleString()}</Text>
+                  <Text style={s.calSub}>of {dailyTarget.toLocaleString()} target</Text>
+                  {plannedKcal > 0 && (
+                    <Text style={s.calPlanned}>Planned: {plannedKcal.toLocaleString()} kcal</Text>
+                  )}
+                  <View style={{ marginTop: 8 }}>
+                    <MacroRow
+                      protein={today?.macros?.protein ?? 0}
+                      carbs={today?.macros?.carbs ?? 0}
+                      fat={today?.macros?.fat ?? 0}
+                    />
+                  </View>
                 </View>
               </View>
-            </View>
-          </View>
+            </Card>
+          </Animated.View>
 
           {/* ── Today's meals ── */}
           <View style={s.sectionHeader}>
             <Text style={s.sectionLabel}>TODAY'S MEALS</Text>
-            <Pressable onPress={() => router.push("/(tabs)/meals")} style={s.seeAllBtn}>
+            <AnimatedPressable onPress={() => router.push("/(tabs)/meals")} style={s.seeAllBtn}>
               <Text style={s.seeAllText}>See All</Text>
-              <ChevronRight size={14} color="#1E7C45" />
-            </Pressable>
+              <ChevronRight size={iconSize.sm} color={colors.brand[600]} />
+            </AnimatedPressable>
           </View>
-          <View style={[s.card, { padding: 0, overflow: "hidden" }]}>
-            {MEAL_ORDER
-              .map(t => todayMeals.find(m => m["Meal Type"] === t))
-              .filter((m): m is Meal => !!m)
-              .map((meal, i, arr) => {
-                const mealType = meal["Meal Type"];
-                const { emoji, time } = MEAL_META[mealType] ?? { emoji: "🍽️", time: "" };
-                const logged = loggedMeals[mealType] ?? false;
-                return (
-                  <View key={mealType} style={[s.mealRow, i < arr.length - 1 && s.mealBorder, logged && s.mealLogged]}>
-                    <View style={s.mealLeft}>
-                      <Text style={s.mealCheck}>{logged ? "✓" : "○"}</Text>
-                      <View>
-                        <Text style={s.mealSlot}>{emoji} {mealType} · {time}</Text>
-                        <Text style={s.mealName} numberOfLines={1}>{meal["Menu Names"]}</Text>
+          <Animated.View entering={FadeInDown.delay(160).duration(400).easing(EASE_OUT)}>
+            <Card padded={false} style={{ overflow: "hidden", marginBottom: 20 }}>
+              {MEAL_ORDER
+                .map(t => todayMeals.find(m => m["Meal Type"] === t))
+                .filter((m): m is Meal => !!m)
+                .map((meal, i, arr) => {
+                  const mealType = meal["Meal Type"];
+                  const { emoji, time } = MEAL_META[mealType] ?? { emoji: "🍽️", time: "" };
+                  const logged = loggedMeals[mealType] ?? false;
+                  return (
+                    <View key={mealType} style={[s.mealRow, i < arr.length - 1 && s.mealBorder, logged && s.mealLogged]}>
+                      <View style={s.mealLeft}>
+                        <Text style={s.mealCheck}>{logged ? "✓" : "○"}</Text>
+                        <View>
+                          <Text style={s.mealSlot}>{emoji} {mealType} · {time}</Text>
+                          <Text style={s.mealName} numberOfLines={1}>{meal["Menu Names"]}</Text>
+                        </View>
+                      </View>
+                      <View style={s.mealRight}>
+                        <Text style={s.mealCal}>{meal["Total Calories"]} cal</Text>
+                        {!logged && (
+                          <AnimatedPressable onPress={() => setLogSheet(mealType)} style={s.logBtn}>
+                            <Text style={s.logBtnText}>Log</Text>
+                          </AnimatedPressable>
+                        )}
                       </View>
                     </View>
-                    <View style={s.mealRight}>
-                      <Text style={s.mealCal}>{meal["Total Calories"]} cal</Text>
-                      {!logged && (
-                        <Pressable onPress={() => setLogSheet(mealType)} style={s.logBtn}>
-                          <Text style={s.logBtnText}>Log</Text>
-                        </Pressable>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-          </View>
+                  );
+                })}
+            </Card>
+          </Animated.View>
 
           {/* ── Quick log ── */}
           {/* Water and Steps tracking deferred — pending native health API integration (HealthKit / Health Connect) */}
           <Text style={s.sectionLabel}>QUICK LOG</Text>
-          <Pressable style={s.snackCard} onPress={() => { setSnackCals("0"); setSnackSheet(true); }}>
-            <View style={s.snackCardLeft}>
-              <Utensils size={22} color="#D97706" />
-              <View style={s.snackCardText}>
-                <Text style={s.snackCardTitle}>Log a Snack</Text>
-                <Text style={s.snackCardSub}>track extras & bites</Text>
+          <Animated.View entering={FadeInDown.delay(240).duration(400).easing(EASE_OUT)}>
+            <AnimatedPressable style={s.snackCard} onPress={() => { setSnackCals("0"); setSnackSheet(true); }}>
+              <View style={s.snackCardLeft}>
+                <View style={[s.iconBadge, { backgroundColor: colors.warm[50] }]}>
+                  <Utensils size={iconSize.md} color={colors.warm[600]} />
+                </View>
+                <View style={s.snackCardText}>
+                  <Text style={s.snackCardTitle}>Log a Snack</Text>
+                  <Text style={s.snackCardSub}>track extras & bites</Text>
+                </View>
               </View>
-            </View>
-            <Text style={s.snackCardArrow}>+</Text>
-          </Pressable>
+              <Text style={s.snackCardArrow}>+</Text>
+            </AnimatedPressable>
 
-          <Pressable style={[s.snackCard, { marginTop: 8 }]} onPress={() => setBeverageSheet(true)}>
-            <View style={s.snackCardLeft}>
-              <Coffee size={22} color="#0E7490" />
-              <View style={s.snackCardText}>
-                <Text style={s.snackCardTitle}>Log a Beverage</Text>
-                <Text style={s.snackCardSub}>tea, coffee, shakes & more</Text>
+            <AnimatedPressable style={[s.snackCard, { marginTop: 8 }]} onPress={() => setBeverageSheet(true)}>
+              <View style={s.snackCardLeft}>
+                <View style={[s.iconBadge, { backgroundColor: "#E0F2FE" }]}>
+                  <Coffee size={iconSize.md} color="#0E7490" />
+                </View>
+                <View style={s.snackCardText}>
+                  <Text style={s.snackCardTitle}>Log a Beverage</Text>
+                  <Text style={s.snackCardSub}>tea, coffee, shakes & more</Text>
+                </View>
               </View>
-            </View>
-            <Text style={s.snackCardArrow}>+</Text>
-          </Pressable>
+              <Text style={s.snackCardArrow}>+</Text>
+            </AnimatedPressable>
+          </Animated.View>
+
+          {/* ── Kitchen ── */}
+          {/* Moved here from the Meals tab's action row so patients can act on
+              pantry / shopping without leaving the dashboard. */}
+          <Text style={s.sectionLabel}>KITCHEN</Text>
+          <PantrySection />
+          <ShoppingListSection />
+
+          {/* Renders nothing unless the doctor flagged a visit awaiting
+              confirmation. Placed above the doctor banner because it is the
+              only card here that blocks a charge on the patient's answer. */}
+          <PendingVisitSection />
 
           <DoctorStatusBanner
             subscriptionStatus={profile?.subscription_status}
@@ -452,7 +514,8 @@ export default function HomeScreen() {
           {visitData?.has_visit && visitData.cycle_start && (
             <NextVisitCard cycleStart={visitData.cycle_start} />
           )}
-                </View>
+        </View>
+        )}
       </ScrollView>
 
       {/* ── Log Meal Sheet ── */}
@@ -469,15 +532,7 @@ export default function HomeScreen() {
             <Text style={{ color: "#6B7280", fontSize: 13 }}>No meal planned for this slot today.</Text>
           )}
           {selectedMeal && (
-            <Pressable
-              style={sh.cta}
-              onPress={() => mealMut.mutate(selectedMeal)}
-              disabled={mealMut.isPending}
-            >
-              {mealMut.isPending
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={sh.ctaText}>✅ Confirm & Log</Text>}
-            </Pressable>
+            <Button label="✅ Confirm & Log" onPress={() => mealMut.mutate(selectedMeal)} loading={mealMut.isPending} haptic />
           )}
         </View>
       </BottomSheet>
@@ -502,9 +557,7 @@ export default function HomeScreen() {
               </Pressable>
             ))}
           </View>
-          <Pressable style={sh.cta} onPress={() => snackMut.mutate(parseInt(snackCals) || 0)} disabled={snackMut.isPending}>
-            {snackMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={sh.ctaText}>Log Snack</Text>}
-          </Pressable>
+          <Button label="Log Snack" onPress={() => snackMut.mutate(parseInt(snackCals) || 0)} loading={snackMut.isPending} haptic />
         </View>
       </BottomSheet>
 
@@ -517,15 +570,15 @@ export default function HomeScreen() {
           ) : (
             <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
               {beverages.map(b => (
-                <Pressable
+                <AnimatedPressable
                   key={b.food_item_id}
                   style={sh.beverageRow}
-                  onPress={() => beverageMut.mutate(b)}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); beverageMut.mutate(b); }}
                   disabled={beverageMut.isPending}
                 >
                   <Text style={sh.beverageName} numberOfLines={1}>{b.recipe_name}</Text>
                   <Text style={sh.beverageCal}>{Math.round(b.calories)} kcal</Text>
-                </Pressable>
+                </AnimatedPressable>
               ))}
             </ScrollView>
           )}
@@ -546,18 +599,17 @@ const s = StyleSheet.create({
   bellBtn:     { width: 40, height: 40, borderRadius: 20, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" },
   bellDot:     { position: "absolute", top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: "#DC2626", borderWidth: 2, borderColor: "#fff" },
   pillRow:     { flexDirection: "row", gap: 8, marginTop: 12 },
-  streakPill:  { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FFFBEB", borderRadius: 99, paddingHorizontal: 14, paddingVertical: 6 },
+  streakPill:  { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.warm[50], borderRadius: 99, paddingHorizontal: 14, paddingVertical: 6 },
   streakEmoji: { fontSize: 16 },
-  streakText:  { fontSize: 14, fontWeight: "600", color: "#92400E" },
+  streakText:  { fontSize: 14, fontWeight: "600", color: colors.warm[700] },
   body:        { paddingHorizontal: 20, paddingTop: 20 },
   sectionLabel:{ fontSize: 11, fontWeight: "600", color: "#374151", letterSpacing: 1, marginBottom: 10 },
   sectionHeader:{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   seeAllBtn:   { flexDirection: "row", alignItems: "center", gap: 2 },
   seeAllText:  { fontSize: 12, fontWeight: "500", color: "#1E7C45" },
-  card:        { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", padding: 16, marginBottom: 20 },
   calorieRow:  { flexDirection: "row", alignItems: "center", gap: 20 },
   calorieInfo: { flex: 1 },
-  calBig:      { fontSize: 28, fontWeight: "700", color: "#111827" },
+  calBig:      { ...typography.displayLarge },
   calSub:      { fontSize: 12, color: "#6B7280" },
   calPlanned:  { fontSize: 12, fontWeight: "500", color: "#1E7C45", marginTop: 2 },
   mealRow:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 },
@@ -573,10 +625,11 @@ const s = StyleSheet.create({
   logBtnText:  { fontSize: 12, fontWeight: "500", color: "#1E7C45" },
   snackCard:      { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#FDE68A", padding: 14, marginBottom: 20 },
   snackCardLeft:  { flexDirection: "row", alignItems: "center", gap: 12 },
+  iconBadge:      { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   snackCardText:  { gap: 2 },
   snackCardTitle: { fontSize: 15, fontWeight: "600", color: "#111827" },
   snackCardSub:   { fontSize: 11, color: "#6B7280" },
-  snackCardArrow: { fontSize: 22, fontWeight: "300", color: "#D97706" },
+  snackCardArrow: { fontSize: 22, fontWeight: "300", color: colors.warm[600] },
   doctorBanner:  { flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#DCFCE7", borderRadius: 12, padding: 14, marginBottom: 8 },
   doctorLabel:   { fontSize: 12, fontWeight: "500", color: "#166534" },
   doctorSub:     { fontSize: 12, color: "#374151", marginTop: 2 },
@@ -596,8 +649,6 @@ const sh = StyleSheet.create({
   title:         { fontSize: 18, fontWeight: "600", color: "#111827" },
   confirm:       { backgroundColor: "#F0FDF4", borderRadius: 8, padding: 12 },
   confirmText:   { fontSize: 12, color: "#166534" },
-  cta:           { height: 52, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  ctaText:       { fontSize: 16, fontWeight: "600", color: "#fff" },
   stepsInput:    { fontSize: 40, fontWeight: "700", color: "#111827", borderWidth: 1.5, borderColor: "#D97706", borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, minWidth: 160, textAlign: "center" },
   stepsBtnRow:   { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   stepPreset:    { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#F9FAFB" },

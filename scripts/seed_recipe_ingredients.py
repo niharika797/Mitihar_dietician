@@ -44,6 +44,7 @@ async def main() -> None:
         matched_refs = 0
         unmatched_names: set[str] = set()
 
+        errors = 0
         for food_id, _, ingredients_json in food_items:
             if not ingredients_json:
                 continue
@@ -53,6 +54,10 @@ async def main() -> None:
                 "DELETE FROM recipe_ingredients WHERE food_item_id = :fid"
             ), {"fid": food_id})
 
+            # Two raw ingredient names can normalize to the same ingredient_id
+            # (e.g. "Onion" / "onion "). Sum their quantities into one row --
+            # inserting both as separate rows would violate uq_recipe_ingredient.
+            by_ing_id: dict[int, float] = {}
             for ing in ingredients_json:
                 name = ing.get("name", "")
                 amount_g = ing.get("amount_g")
@@ -69,18 +74,28 @@ async def main() -> None:
                     unmatched_names.add(name)
                     continue
 
-                await db.execute(text("""
-                    INSERT INTO recipe_ingredients (food_item_id, ingredient_id, quantity_g)
-                    VALUES (:fid, :iid, :qty)
-                """), {"fid": food_id, "iid": ing_id, "qty": float(amount_g)})
-                matched_refs += 1
+                by_ing_id[ing_id] = by_ing_id.get(ing_id, 0.0) + float(amount_g)
 
-        await db.commit()
+            try:
+                for ing_id, qty in by_ing_id.items():
+                    await db.execute(text("""
+                        INSERT INTO recipe_ingredients (food_item_id, ingredient_id, quantity_g)
+                        VALUES (:fid, :iid, :qty)
+                    """), {"fid": food_id, "iid": ing_id, "qty": qty})
+                    matched_refs += 1
+                # Commit per food_item -- a bad dish rolls back only its own
+                # rows, not every other dish already processed in this run.
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                errors += 1
+                print(f"  food_item {food_id}: failed to insert recipe_ingredients ({e})")
 
         match_pct = round(matched_refs * 100 / total_refs, 1) if total_refs else 0
         print(f"\nTotal ingredient references: {total_refs}")
         print(f"Matched:   {matched_refs} ({match_pct}%)")
         print(f"Unmatched: {total_refs - matched_refs} ({round(100 - match_pct, 1)}%)")
+        print(f"Food items with insert errors (rolled back): {errors}")
 
         # Verify row count
         count = await db.execute(text("SELECT COUNT(*) FROM recipe_ingredients"))

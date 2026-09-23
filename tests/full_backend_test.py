@@ -307,7 +307,7 @@ check("POST /progress/log/water returns 200", r.status_code == 200, r.text)
 r = httpx.post(f"{BASE}/progress/log/steps", headers=hdr(patient_token), json={"steps": 4000})
 check("POST /progress/log/steps returns 200", r.status_code == 200, r.text)
 
-r = httpx.post(f"{BASE}/progress/log/weight", headers=hdr(patient_token), json={"weight": 57.8})
+r = httpx.post(f"{BASE}/progress/log/weight", headers=hdr(patient_token), json={"weight": 57.8}, timeout=10)
 check("POST /progress/log/weight returns 200", r.status_code == 200, r.text)
 
 r = httpx.get(f"{BASE}/progress/today", headers=hdr(patient_token))
@@ -388,6 +388,13 @@ print("\n── SECTION 12: Doctor — Recipe Library ──")
 r = httpx.get(f"{BASE}/doctor/recipes", headers=hdr(doctor_token))
 check("GET /doctor/recipes returns 200", r.status_code == 200, r.text)
 
+# Pre-cleanup: delete any "Test Dal Tadka" left over from a prior run so this section is idempotent
+_stale = httpx.get(f"{BASE}/admin/food", headers=hdr(admin_token), params={"source": "doctor", "page_size": 200})
+if _stale.status_code == 200:
+    for _item in _stale.json():
+        if _item.get("recipe_name", "").strip().lower() == "test dal tadka":
+            httpx.delete(f"{BASE}/admin/food/{_item['id']}", headers=hdr(admin_token))
+
 r = httpx.post(f"{BASE}/doctor/recipes", headers=hdr(doctor_token), json={
     "recipe_name": "Test Dal Tadka",
     "slot_type": "dal_protein",
@@ -415,6 +422,9 @@ if r.status_code == 201:
     # Idempotent check
     r3 = httpx.patch(f"{BASE}/admin/food/{new_recipe_id}/approve", headers=hdr(admin_token))
     check("Approving already-verified recipe returns 400", r3.status_code == 400, r3.text)
+
+    # Post-cleanup: delete the recipe so the next run starts fresh (no stale is_verified=True row)
+    httpx.delete(f"{BASE}/admin/food/{new_recipe_id}", headers=hdr(admin_token))
 
 # ─────────────────────────────────────────────
 # SECTION 13 — ADMIN: FOOD MANAGEMENT
@@ -491,6 +501,26 @@ if test_patient_id:
     if r.status_code == 200:
         check("Override returns subscription_status=active", r.json().get("subscription_status") == "active")
         check("Override returns end_date not null", r.json().get("end_date") is not None)
+
+# ─────────────────────────────────────────────
+# SECTION 17 — DOCTOR: PRODUCT TOUR
+# ─────────────────────────────────────────────
+print("\n── SECTION 17: Doctor — Product Tour ──")
+
+r = httpx.get(f"{BASE}/doctor/dashboard", headers=hdr(doctor_token))
+check("Dashboard has product_tour_completed_at", "product_tour_completed_at" in r.json() if r.status_code == 200 else False)
+
+r = httpx.patch(f"{BASE}/doctor/tour-complete", headers=hdr(doctor_token))
+check("PATCH /doctor/tour-complete returns 200 (first call)", r.status_code == 200, r.text)
+first_completed_at = r.json().get("completed_at") if r.status_code == 200 else None
+
+r = httpx.patch(f"{BASE}/doctor/tour-complete", headers=hdr(doctor_token))
+check("PATCH /doctor/tour-complete returns 200 (second call, idempotent)", r.status_code == 200, r.text)
+second_completed_at = r.json().get("completed_at") if r.status_code == 200 else None
+check("Second call's timestamp is not earlier than the first", bool(first_completed_at) and bool(second_completed_at) and second_completed_at >= first_completed_at)
+
+r = httpx.get(f"{BASE}/doctor/dashboard", headers=hdr(doctor_token))
+check("Dashboard reflects product_tour_completed_at set after PATCH", r.status_code == 200 and r.json().get("product_tour_completed_at") is not None, r.text)
 
 # ─────────────────────────────────────────────
 # FINAL SUMMARY

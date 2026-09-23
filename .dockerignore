@@ -1,0 +1,52 @@
+# Version control
+.git
+.gitignore
+
+# Secrets — NEVER bake into image
+.env
+.env.*
+deploy-env-reference.txt
+firebase_service_account.json
+credentials/
+
+# Local virtualenv — deps installed inside container via requirements.lock
+venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Test suite
+tests/
+
+# Frontend apps — not part of the backend container
+mitihar-frontend/
+mitihar-patient-app/
+
+# Large data files not needed at runtime
+data/
+backups/
+db-backups/
+logs/
+IFCT2017.pdf
+
+# Dev artifacts
+graphify-out/
+app/graphify-out/
+*.log
+uvicorn_*.txt
+frontend_*.txt
+clean_dishes_llm_checkpoint.json
+tag_medical_checkpoint.json
+rename_checkpoint.json
+
+# Docs / planning
+docs/
+presentation/
+contract/
+BUILD_TRACKER.md
+VERIFICATION_PLAYBOOK.md
+DEPLOY_CHECKLIST.md
+README.md
+project_report.md

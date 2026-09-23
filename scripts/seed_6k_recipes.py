@@ -24,7 +24,7 @@ import logging
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -398,7 +398,7 @@ def main():
         session.close()
 
     print("\n" + "=" * 55)
-    print(f"  SEED COMPLETE")
+    print("  SEED COMPLETE")
     print(f"  Inserted:           {inserted}")
     print(f"  Skipped (low conf): {skipped_confidence}")
     print(f"  Skipped (zero cal): {skipped_zero_cal}")

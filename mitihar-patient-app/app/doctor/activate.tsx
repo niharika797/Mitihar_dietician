@@ -15,7 +15,7 @@ export default function ActivateScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const { showToast } = useToast();
-  const { setProfile, updateAccessToken } = useAuthStore();
+  const { setProfile, setTokens, updateAccessToken } = useAuthStore();
   const [code, setCode] = useState(["","","","","",""]);
   const refs = useRef<(TextInput | null)[]>([]);
 
@@ -42,7 +42,11 @@ export default function ActivateScreen() {
   const activateMut = useMutation({
     mutationFn: async () => {
       const resp = await activateSubscription(codeStr);
-      if (resp.access_token) {
+      // Audit M-5: activation issues a NEW token pair; persist BOTH or the
+      // stale refresh_token dies in 7 days and forces a re-login.
+      if (resp.access_token && resp.refresh_token) {
+        await setTokens(resp.access_token, resp.refresh_token);
+      } else if (resp.access_token) {
         await updateAccessToken(resp.access_token);
       }
       return getMyProfile();

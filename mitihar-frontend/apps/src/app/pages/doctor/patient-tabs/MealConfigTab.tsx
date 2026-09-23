@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { Loader2, X, Search, CheckCircle, RotateCcw } from 'lucide-react';
 import { doctorApi, DishPreference, FoodItemSummary } from '../../../../lib/doctorApi';
 import { qk } from '../../../../lib/queryKeys';
+import { Button } from '../../../components/ui/Button';
+import { Card } from '../../../components/ui/Card';
 
 interface MealConfigTabProps {
   patientId: number;
@@ -67,36 +69,36 @@ function DishSection({ patientId, type, title, subtext, dishes, emptyMsg, onChan
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-[#111827]">{title}</h2>
-      <p className="text-sm text-[#6B7280] mt-0.5 mb-4">{subtext}</p>
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <p className="text-sm text-muted-foreground mt-0.5 mb-4">{subtext}</p>
 
-      <div className="bg-white border border-[#E5E7EB] rounded-lg mb-3">
+      <Card className="mb-3">
         {dishes.length === 0 ? (
-          <p className="text-sm text-[#9CA3AF] py-5 text-center">{emptyMsg}</p>
+          <p className="text-sm text-muted-foreground py-5 text-center">{emptyMsg}</p>
         ) : (
-          <ul className="divide-y divide-[#F3F4F6]">
+          <ul className="divide-y divide-border">
             {dishes.map(d => (
               <li key={d.food_id} className="flex items-center justify-between px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium text-[#111827]">{d.recipe_name}</p>
-                  <p className="text-xs text-[#6B7280]">{d.calories_per_serving} kcal · {d.slot_type}</p>
+                  <p className="text-sm font-medium text-foreground">{d.recipe_name}</p>
+                  <p className="text-xs text-muted-foreground">{d.calories_per_serving} kcal · {d.slot_type}</p>
                 </div>
                 <button
                   onClick={() => removeMutation.mutate(d.food_id)}
                   disabled={removeMutation.isPending}
-                  className="p-1 text-[#9CA3AF] hover:text-red-500 transition-colors rounded"
+                  className="p-1 text-muted-foreground hover:text-destructive transition-colors rounded"
                 >
-                  <X size={15} />
+                  <X size={14} />
                 </button>
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </Card>
 
       <div className="relative">
-        <div className="flex items-center gap-2 border border-[#D1D5DB] rounded-md px-3 bg-white">
-          <Search size={14} className="text-[#9CA3AF] flex-shrink-0" />
+        <div className="flex items-center gap-2 border border-border rounded-md px-3 bg-card">
+          <Search size={14} className="text-muted-foreground flex-shrink-0" />
           <input
             type="text"
             value={search}
@@ -104,25 +106,25 @@ function DishSection({ patientId, type, title, subtext, dishes, emptyMsg, onChan
             onFocus={() => search.length > 1 && setDropdownOpen(true)}
             onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
             placeholder={`Search and ${type} a dish…`}
-            className="flex-1 h-9 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none bg-transparent"
+            className="flex-1 h-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none bg-transparent"
           />
         </div>
 
         {dropdownOpen && debouncedSearch.length > 1 && visible.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E5E7EB] rounded-lg shadow-md z-10 max-h-48 overflow-y-auto">
+          <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-[var(--shadow-modal)] z-10 max-h-48 overflow-y-auto">
             {visible.map((r: FoodItemSummary) => (
               <button
                 key={r.id}
                 onMouseDown={() => addMutation.mutate(r.id)}
                 disabled={addMutation.isPending}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-[#F0FDF4] transition-colors disabled:opacity-50"
+                className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-brand-50 transition-colors disabled:opacity-50"
               >
                 <div>
-                  <p className="text-sm text-[#111827]">{r.recipe_name}</p>
-                  <p className="text-xs text-[#6B7280]">{r.cal_per_serving} kcal · {r.slot_type}</p>
+                  <p className="text-sm text-foreground">{r.recipe_name}</p>
+                  <p className="text-xs text-muted-foreground">{r.cal_per_serving} kcal · {r.slot_type}</p>
                 </div>
                 {r.is_verified && (
-                  <CheckCircle size={13} className="text-[#1E7C45] flex-shrink-0 ml-2" />
+                  <CheckCircle size={14} className="text-primary flex-shrink-0 ml-2" />
                 )}
               </button>
             ))}
@@ -183,7 +185,7 @@ export function MealConfigTab({ patientId }: MealConfigTabProps) {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <Loader2 size={24} className="animate-spin text-[#1E7C45]" />
+        <Loader2 size={20} className="animate-spin text-primary" />
       </div>
     );
   }
@@ -192,72 +194,73 @@ export function MealConfigTab({ patientId }: MealConfigTabProps) {
     <div className="max-w-2xl space-y-8">
       {/* Section 1: TDEE Split */}
       <div>
-        <h2 className="text-lg font-semibold text-[#111827]">Calorie Distribution</h2>
-        <p className="text-sm text-[#6B7280] mt-0.5 mb-4">
+        <h2 className="text-lg font-semibold text-foreground">Calorie Distribution</h2>
+        <p className="text-sm text-muted-foreground mt-0.5 mb-4">
           Adjusts how daily calories are split. Total must equal 85% — the remaining 15% is the passive buffer.
         </p>
 
-        <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 space-y-4">
+        <Card className="p-5 space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">Breakfast %</label>
+              <label className="block text-xs font-medium text-secondary-foreground mb-1">Breakfast %</label>
               <input
                 type="number"
                 min={1}
                 max={83}
                 value={bfPct}
                 onChange={e => setBfPct(Math.max(1, Math.min(83, Number(e.target.value) || 1)))}
-                className="w-full h-9 px-3 border border-[#D1D5DB] rounded-md text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
+                className="w-full h-9 px-3 border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">Lunch %</label>
+              <label className="block text-xs font-medium text-secondary-foreground mb-1">Lunch %</label>
               <input
                 type="number"
                 min={1}
                 max={83}
                 value={luPct}
                 onChange={e => setLuPct(Math.max(1, Math.min(83, Number(e.target.value) || 1)))}
-                className="w-full h-9 px-3 border border-[#D1D5DB] rounded-md text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
+                className="w-full h-9 px-3 border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#374151] mb-1">Dinner %</label>
+              <label className="block text-xs font-medium text-secondary-foreground mb-1">Dinner %</label>
               <input
                 type="number"
                 min={1}
                 max={83}
                 value={diPct}
                 onChange={e => setDiPct(Math.max(1, Math.min(83, Number(e.target.value) || 1)))}
-                className="w-full h-9 px-3 border border-[#D1D5DB] rounded-md text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
+                className="w-full h-9 px-3 border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
               />
             </div>
           </div>
 
-          <p className={`text-sm font-medium ${isValid ? 'text-[#15803d]' : 'text-red-600'}`}>
+          <p className={`text-sm font-medium ${isValid ? 'text-primary' : 'text-destructive'}`}>
             Total: {total}% + 15% buffer = 100%
             {isValid ? ' ✓ Valid' : ' — Must equal 85%'}
           </p>
 
           <div className="flex items-center gap-4">
-            <button
+            <Button
+              variant="primary"
+              size="md"
               onClick={() => saveMutation.mutate({ Breakfast: bfPct, Lunch: luPct, Dinner: diPct })}
               disabled={!isValid || saveMutation.isPending}
-              className="flex items-center gap-2 h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors disabled:opacity-50"
             >
               {saveMutation.isPending && <Loader2 size={14} className="animate-spin" />}
               Save &amp; Regenerate Plan
-            </button>
+            </Button>
             <button
               onClick={() => saveMutation.mutate(null)}
               disabled={saveMutation.isPending}
-              className="flex items-center gap-1.5 text-sm text-[#6B7280] hover:text-[#374151] transition-colors disabled:opacity-40"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-secondary-foreground transition-colors disabled:opacity-40"
             >
-              <RotateCcw size={13} />
+              <RotateCcw size={14} />
               Reset to Default
             </button>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Section 2: Pinned Dishes */}

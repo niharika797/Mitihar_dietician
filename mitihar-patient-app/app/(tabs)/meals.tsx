@@ -5,12 +5,21 @@ import {
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Sentry from "@sentry/react-native";
+import { Lock, UtensilsCrossed } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
 import { useAuthStore } from "../../store/useAuthStore";
 import { generatePlan, confirmMealChoice, getDailyChoices, getWeeklyPlan } from "../../services/meals";
-import { useToast } from "../../components/shared";
+import { useToast, MacroRow, ScreenHeader, ErrorState, Card, Button, AnimatedPressable } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
-import { MacroRow } from "../../components/shared";
+import { colors, iconSize } from "../../constants/theme";
 import type { Meal, WeeklyComboV2, WeekResponseV2 } from "../../types";
+import { CopilotStep, walkthroughable } from "react-native-copilot";
+
+// ScreenHeader is already forwardRef (see components/shared/ScreenHeader.tsx)
+// specifically so it stays drop-in compatible with react-native-copilot's
+// walkthroughable(), which needs a ref to measure the target on screen.
+const CopilotScreenHeader = walkthroughable(ScreenHeader);
 
 const MEAL_ORDER = ["Breakfast", "Lunch", "Dinner"];
 const MEAL_CALORIE_LABELS: Record<string, string> = {
@@ -63,10 +72,10 @@ function WeekStrip({ days, selected, today, onSelect }: WeekStripProps) {
         const isPast     = d < today;
         const dayNum     = new Date(d + "T12:00:00").getDate();
         return (
-          <Pressable
+          <AnimatedPressable
             key={d}
             style={[s.dayPill, isSelected && s.dayPillSelected, isToday && !isSelected && s.dayPillToday]}
-            onPress={() => onSelect(d)}
+            onPress={() => { Haptics.selectionAsync(); onSelect(d); }}
           >
             <Text style={[s.dayPillLabel, isSelected && s.dayPillLabelSelected, isPast && !isSelected && s.dayPillLabelPast]}>
               {DAY_LABELS[i]}
@@ -74,7 +83,7 @@ function WeekStrip({ days, selected, today, onSelect }: WeekStripProps) {
             <Text style={[s.dayPillNum, isSelected && s.dayPillNumSelected, isPast && !isSelected && s.dayPillNumPast]}>
               {dayNum}
             </Text>
-          </Pressable>
+          </AnimatedPressable>
         );
       })}
     </ScrollView>
@@ -107,9 +116,12 @@ function PastDayView({ date }: { date: string }) {
       {MEAL_ORDER.map((mealType) => {
         const choice = choiceMap[mealType];
         return (
-          <View key={mealType} style={s.pastSlot}>
+          <Card key={mealType} padded={false} style={{ overflow: "hidden" }}>
             <View style={s.slotHeader}>
-              <Text style={s.slotTitle}>{mealType.toUpperCase()}</Text>
+              <View style={s.slotTitleRow}>
+                <UtensilsCrossed size={iconSize.sm} color={colors.gray[500]} />
+                <Text style={s.slotTitle}>{mealType.toUpperCase()}</Text>
+              </View>
             </View>
             {choice ? (
               <View style={s.pastChoice}>
@@ -124,7 +136,7 @@ function PastDayView({ date }: { date: string }) {
                 <Text style={s.pastNoLogText}>— Not logged</Text>
               </View>
             )}
-          </View>
+          </Card>
         );
       })}
     </View>
@@ -144,7 +156,7 @@ interface V2ComboCardProps {
 function V2ComboCard({ combo, onSelect, onCardPress, isPending, isConfirmedThisCombo, isSlotConfirmed }: V2ComboCardProps) {
   const dishNames = combo.dishes.map(d => d.recipe_name).join(" + ");
   return (
-    <Pressable style={[s.suggCard, isConfirmedThisCombo && s.suggCardSelected]} onPress={onCardPress}>
+    <AnimatedPressable style={[s.suggCard, isConfirmedThisCombo && s.suggCardSelected]} onPress={onCardPress}>
       {combo.contains_doctor_pick && (
         <View style={[s.pinBadge, { marginBottom: 6 }]}>
           <Text style={s.pinBadgeText}>🩺 Doctor's pick</Text>
@@ -152,6 +164,18 @@ function V2ComboCard({ combo, onSelect, onCardPress, isPending, isConfirmedThisC
       )}
       <Text style={s.suggName} numberOfLines={3}>{dishNames}</Text>
       <Text style={s.suggCal}>~{Math.round(combo.total_calories)} kcal</Text>
+      {(combo.required_count ?? 0) > 0 && (
+        combo.cookable ? (
+          <View style={s.cookNowBadge}><Text style={s.cookNowText}>✓ Cook now</Text></View>
+        ) : (combo.have_count ?? 0) > 0 ? (
+          <Text style={s.coverageText}>
+            Have {combo.have_count}/{combo.required_count}
+            {combo.missing_ingredients && combo.missing_ingredients.length > 0
+              ? ` · need ${combo.missing_ingredients.slice(0, 2).join(", ")}${combo.missing_ingredients.length > 2 ? ` +${combo.missing_ingredients.length - 2}` : ""}`
+              : ""}
+          </Text>
+        ) : null
+      )}
       <View style={{ gap: 3, marginTop: 4 }}>
         {combo.dishes.map(d => (
           <View key={d.food_item_id} style={[s.slotTag, combo.pinned_dish_ids.includes(d.food_item_id) && s.slotTagPinned]}>
@@ -164,17 +188,17 @@ function V2ComboCard({ combo, onSelect, onCardPress, isPending, isConfirmedThisC
           <Text style={s.selectBtnText}>✓ Chosen</Text>
         </View>
       ) : (
-        <Pressable
+        <AnimatedPressable
           style={[s.selectBtn, (isPending || isSlotConfirmed) && s.selectBtnDisabled]}
-          onPress={e => { e.stopPropagation?.(); onSelect(); }}
+          onPress={e => { e.stopPropagation?.(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onSelect(); }}
           disabled={isPending || isSlotConfirmed}
         >
           {isPending
             ? <ActivityIndicator size="small" color="#fff" />
             : <Text style={s.selectBtnText}>Select</Text>}
-        </Pressable>
+        </AnimatedPressable>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -223,14 +247,14 @@ function TeaserView({ onFindDoctor }: { onFindDoctor: () => void }) {
           />
         </View>
         <View style={s.lockCard}>
-          <Text style={s.lockIcon}>🔒</Text>
+          <View style={s.lockIconBadge}>
+            <Lock size={iconSize.lg} color={colors.brand[600]} />
+          </View>
           <Text style={s.lockTitle}>Your personalised plan is waiting</Text>
           <Text style={s.lockSub}>
             Connect with a dietician to get a meal plan tailored to your health goals, body, and diet.
           </Text>
-          <Pressable onPress={onFindDoctor} style={s.lockCta}>
-            <Text style={s.lockCtaText}>Find a Doctor</Text>
-          </Pressable>
+          <Button label="Find a Doctor" onPress={onFindDoctor} />
         </View>
       </View>
     </ScrollView>
@@ -254,19 +278,13 @@ function EmptyPlan({
         <>
           <Text style={s.emptyTitle}>No meal plan yet</Text>
           <Text style={s.emptySub}>Your plan is being set up. Tap below to generate it now.</Text>
-          <Pressable onPress={handleGenerate} style={s.emptyBtn} disabled={generating}>
-            {generating
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={s.emptyBtnText}>Generate My Plan</Text>}
-          </Pressable>
+          <Button label="Generate My Plan" onPress={handleGenerate} loading={generating} />
         </>
       ) : (
         <>
           <Text style={s.emptyTitle}>No meal plan yet</Text>
           <Text style={s.emptySub}>Connect with a dietician to get a personalised meal plan.</Text>
-          <Pressable onPress={onFindDoctor} style={s.emptyBtn}>
-            <Text style={s.emptyBtnText}>Find a Doctor</Text>
-          </Pressable>
+          <Button label="Find a Doctor" onPress={onFindDoctor} />
         </>
       )}
     </View>
@@ -335,6 +353,9 @@ export default function MealsScreen() {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.TODAY });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.DAILY_CHOICES(vars.date) });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN });
+      // Confirming deducts pantry stock, which moves both of these.
+      qc.invalidateQueries({ queryKey: ["meal-plan", "pantry"] });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.SHOPPING_LIST });
     },
     onError: () => showToast("Failed to confirm choice. Try again.", "error"),
   });
@@ -345,7 +366,7 @@ export default function MealsScreen() {
     autoAttempted.current = true;
     generatePlan()
       .then(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN }))
-      .catch(() => {});
+      .catch((e) => Sentry.captureException(e));
   }, [isSubscribed]);
 
   if (!isSubscribed) {
@@ -360,9 +381,9 @@ export default function MealsScreen() {
 
   return (
     <ScrollView style={s.root} contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-      <View style={s.header}>
-        <Text style={s.headerTitle}>Meal Plan</Text>
-      </View>
+      <CopilotStep text="Your weekly meal plan lives here — browse days and confirm your choices." order={2} name="meals">
+        <CopilotScreenHeader title="Meal Plan" />
+      </CopilotStep>
 
       {/* Week strip */}
       <WeekStrip days={weekDays} selected={selectedDate} today={today} onSelect={setSelectedDate} />
@@ -370,7 +391,9 @@ export default function MealsScreen() {
       <View style={s.body}>
         <Text style={s.dateLabel}>{selDateLabel}</Text>
 
-        {isPastDay ? (
+        {weekPlanQuery.isError ? (
+          <ErrorState message="Could not load your meal plan" onRetry={() => weekPlanQuery.refetch()} />
+        ) : isPastDay ? (
           // Past days: read-only confirmed choices
           <>
             <Text style={s.subLabel}>What you planned for this day</Text>
@@ -401,7 +424,7 @@ export default function MealsScreen() {
                     const isSlotAlreadyConfirmed = (dailyChoices?.choices ?? []).some(c => c.meal_type === mealType);
                     const isSlotConfirmed = confirmedComboId !== undefined || isSlotAlreadyConfirmed;
                     return (
-                      <View key={`v2-${selectedDate}-${mealType}`} style={s.slotContainer}>
+                      <Card key={`v2-${selectedDate}-${mealType}`} padded={false} style={{ overflow: "hidden" }}>
                         <View style={s.slotHeader}>
                           <Text style={s.slotTitle}>{mealType.toUpperCase()}</Text>
                         </View>
@@ -425,7 +448,7 @@ export default function MealsScreen() {
                             />
                           ))}
                         </ScrollView>
-                      </View>
+                      </Card>
                     );
                   })
                 )}
@@ -434,13 +457,12 @@ export default function MealsScreen() {
           })()
         )}
 
+        {/* Pantry + Shopping List moved to the home dashboard (components/
+            PantrySection, ShoppingListSection) — history stays here. */}
         <View style={s.actionRow}>
-          <Pressable onPress={() => router.push("/meals/shopping-list")} style={s.actionBtn}>
-            <Text style={s.actionBtnText}>🛒 Shopping List</Text>
-          </Pressable>
-          <Pressable onPress={() => router.push("/meals/plan-history")} style={s.actionBtn}>
+          <AnimatedPressable onPress={() => router.push("/meals/plan-history")} style={s.actionBtn}>
             <Text style={s.actionBtnText}>📋 Plan History</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
       </View>
     </ScrollView>
@@ -459,8 +481,8 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   subLabel:          { fontSize: 12, color: "#6B7280", marginBottom: 4 },
 
   // Slot
-  slotContainer:     { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden" },
   slotHeader:        { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  slotTitleRow:      { flexDirection: "row", alignItems: "center", gap: 6 },
   slotTitle:         { fontSize: 12, fontWeight: "700", color: "#374151", letterSpacing: 0.8 },
   slotTarget:        { fontSize: 12, fontWeight: "500", color: "#6B7280" },
 
@@ -477,6 +499,9 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   selectedBadgeText: { fontSize: 9, fontWeight: "600", color: "#fff" },
   suggName:          { fontSize: 13, fontWeight: "600", color: "#111827", lineHeight: 17, marginBottom: 2 },
   suggCal:           { fontSize: 12, fontWeight: "700", color: "#1E7C45", marginBottom: 4 },
+  cookNowBadge:      { alignSelf: "flex-start", backgroundColor: "#DCFCE7", borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2, marginBottom: 4 },
+  cookNowText:       { fontSize: 10, fontWeight: "700", color: "#166534" },
+  coverageText:      { fontSize: 11, color: "#6B7280", marginBottom: 4 },
   selectBtn:         { marginTop: 10, height: 32, borderRadius: 8, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
   selectBtnDisabled: { opacity: 0.6 },
   selectBtnText:     { fontSize: 12, fontWeight: "600", color: "#fff" },
@@ -518,7 +543,6 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   // Past day view
   pastLoading:       { paddingVertical: 32, alignItems: "center" },
   pastWrapper:       { gap: 12 },
-  pastSlot:          { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E5E7EB", overflow: "hidden" },
   pastChoice:        { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
   pastCheck:         { fontSize: 18, color: "#1E7C45", marginTop: 1 },
   pastName:          { fontSize: 14, fontWeight: "600", color: "#111827", lineHeight: 18 },
@@ -534,8 +558,6 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   emptyEmoji:        { fontSize: 48, marginBottom: 12 },
   emptyTitle:        { fontSize: 18, fontWeight: "600", color: "#111827", marginBottom: 8 },
   emptySub:          { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 20, marginBottom: 20 },
-  emptyBtn:          { height: 48, paddingHorizontal: 24, borderRadius: 24, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  emptyBtnText:      { fontSize: 14, fontWeight: "600", color: "#fff" },
   actionRow:         { flexDirection: "row", gap: 12 },
   actionBtn:         { flex: 1, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "#E5E7EB", backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   actionBtnText:     { fontSize: 13, fontWeight: "500", color: "#374151" },
@@ -548,10 +570,8 @@ weekBtnDisabled:   { flexDirection: "row", alignItems: "center", gap: 2 },
   // Teaser styles
   teaserContainer:   { position: "relative", overflow: "hidden", maxHeight: 360 },
   teaserGradient:    { position: "absolute", bottom: 0, left: 0, right: 0, height: 200 },
-  lockCard:          { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1.5, borderColor: "#E5E7EB", padding: 24, alignItems: "center", marginTop: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-  lockIcon:          { fontSize: 32, marginBottom: 10 },
+  lockCard:          { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1.5, borderColor: "#E5E7EB", padding: 24, alignItems: "center", marginTop: 8, boxShadow: "0px 2px 8px rgba(0,0,0,0.06)" },
+  lockIconBadge:     { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brand[50], alignItems: "center", justifyContent: "center", marginBottom: 10 },
   lockTitle:         { fontSize: 17, fontWeight: "700", color: "#111827", textAlign: "center", marginBottom: 8 },
   lockSub:           { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 20, marginBottom: 20 },
-  lockCta:           { height: 52, paddingHorizontal: 32, borderRadius: 26, backgroundColor: "#1E7C45", alignItems: "center", justifyContent: "center" },
-  lockCtaText:       { fontSize: 15, fontWeight: "600", color: "#fff" },
 });

@@ -8,6 +8,8 @@ subscription_status and doctor_id are embedded in the JWT at login time.
   2. DoctorIsolationMiddleware   — restricts /doctor routes, injects request.state.doctor_id
 """
 
+import logging
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -28,8 +30,15 @@ def _extract_token(request: Request) -> str | None:
 
 
 def _safe_decode(token: str) -> dict | None:
+    """Decode a JWT for middleware use, or None if invalid/absent.
+
+    Mirrors app.core.security._decode_jwt's refresh-token/sub checks so a
+    presented refresh token can't pass the zero-DB middleware checks (it's
+    still independently re-validated by get_current_doctor/patient/admin,
+    but this closes the same gap at the middleware layer too).
+    """
     try:
-        return jwt.decode(
+        payload = jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=["HS256"],
@@ -37,6 +46,11 @@ def _safe_decode(token: str) -> dict | None:
         )
     except JWTError:
         return None
+    if payload.get("sub") is None:
+        return None
+    if payload.get("token_type") == "refresh":
+        return None
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +76,7 @@ _ONBOARDING_EXCLUSIONS = (
     f"{settings.API_V1_STR}/patients/activate",
     f"{settings.API_V1_STR}/patients/doctors",
     f"{settings.API_V1_STR}/patients/request-doctor",
+    f"{settings.API_V1_STR}/patients/tour-complete",
 )
 
 
@@ -272,7 +287,8 @@ class AdminIPWhitelistMiddleware(BaseHTTPMiddleware):
             if not allowed_ips:
                 return await call_next(request)
 
-            client_ip = request.client.host if request.client else "unknown"
+            from .limiter import gcp_aware_key
+            client_ip = gcp_aware_key(request)
             if client_ip not in allowed_ips:
                 return JSONResponse(
                     status_code=403,
@@ -283,7 +299,6 @@ class AdminIPWhitelistMiddleware(BaseHTTPMiddleware):
                 )
         except Exception:
             # If DB query fails, allow through — don't lock admins out
-            import logging
             logging.getLogger(__name__).warning(
                 "IP whitelist check failed for admin %s — allowing through", admin_id
             )

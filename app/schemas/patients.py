@@ -1,13 +1,8 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Annotated, Optional, Literal
+from typing import Optional, Literal
 from datetime import date, datetime
 from .user import ActivityLevel, DietType, HealthCondition
-
-# Bounded list type: max 20 items, each item max 100 chars.
-# Prevents DoS via oversized payloads and prompt-injection via unbounded strings.
-# Uses explicit Annotated constraints; enforced by field_validator below as defence-in-depth.
-_BoundedStr = Annotated[str, Field(max_length=100)]
-BoundedStrList = Annotated[list[_BoundedStr], Field(max_length=20)]
+from . import BoundedStrList
 
 class OnboardingRequest(BaseModel):
     date_of_birth:        date
@@ -109,6 +104,10 @@ class PatientProfileResponse(BaseModel):
     is_active: bool
     # Onboarding completion gate — used by login to skip re-onboarding
     disclaimer_accepted_at: Optional[datetime] = None
+    # Product tour gate (Phase 1, distinct from disclaimer_accepted_at above)
+    product_tour_completed_at: Optional[datetime] = None
+    # From Google's OIDC 'picture' claim — set on Google Sign-In, null otherwise
+    profile_picture_url: Optional[str] = None
     # Subscription expiry date
     subscription_end_date: Optional[datetime] = None
     # Token 1 — subscription identifier shown to doctor
@@ -143,3 +142,13 @@ class ActivationResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+class RespondVisitRequest(BaseModel):
+    """Patient's response to a doctor-flagged visit.
+
+    Approving is a billing event — it can increment PatientVisit.visit_counter,
+    which is what revenue is summed from — so the action is an explicit literal
+    rather than a bool, to keep the intent unambiguous at the call site.
+    """
+    action: Literal["approve", "reject"]

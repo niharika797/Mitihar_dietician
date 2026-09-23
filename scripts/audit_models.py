@@ -1,9 +1,10 @@
 import sys
-sys.path.insert(0, 'C:/Users/Lenovo/Desktop/Code/2026/Nutria/Mitihar_dietician')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.models.db_models import (
     Patient, MealLog, ProgressLog, Recommendation,
-    Doctor, Admin, PatientRequest, SubscriptionCode, FoodItem
+    Doctor, Admin, PatientRequest, SubscriptionCode
 )
 
 issues = []

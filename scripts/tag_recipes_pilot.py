@@ -5,16 +5,19 @@ Outputs to docs/PILOT_TAGGING_RESULTS.md. Does NOT write to the database.
 """
 import asyncio
 import json
+import os
 import re
-import sys
 import time
 from pathlib import Path
 
 import asyncpg
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DSN = "postgresql://admin:mityahar_dev@localhost:5432/mityahar_db"
+DSN = os.environ["DATABASE_URL"].replace("+asyncpg", "")
 LLAMA_URL = "http://localhost:11434/v1/chat/completions"
 LLAMA_MODEL = "gemma"  # llama-server ignores the model field; any string works
 KB_PATH = Path(__file__).parent.parent / "docs" / "MEDICAL_TAGGING_KB_COMPACT.md"
@@ -285,8 +288,8 @@ def write_results(results: list[dict]) -> None:
         "",
         "## Confidence Distribution",
         "",
-        f"| Range | Count | % |",
-        f"|-------|-------|---|",
+        "| Range | Count | % |",
+        "|-------|-------|---|",
         f"| ≥ 0.8 (auto-accept candidate) | {len(high)} | {100*len(high)//max(len(all_confs),1)}% |",
         f"| 0.5–0.79 (review recommended) | {len(mid)} | {100*len(mid)//max(len(all_confs),1)}% |",
         f"| 0.25–0.49 (low, flag for Claude review) | {len(low)} | {100*len(low)//max(len(all_confs),1)}% |",

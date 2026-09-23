@@ -30,7 +30,7 @@ class ActivityLogCreate(BaseModel):
     activity_type: Optional[str] = Field(default="Walking", max_length=100)
 
 class MealLogUpdate(BaseModel):
-    meal_type: Optional[Literal["Breakfast", "Lunch", "Dinner"]] = None
+    meal_type: Optional[Literal["Breakfast", "Lunch", "Dinner", "Snack"]] = None
     calories: Optional[float] = Field(default=None, ge=0, le=5000)
     protein: Optional[float] = Field(default=None, ge=0, le=500)
     carbs: Optional[float] = Field(default=None, ge=0, le=500)

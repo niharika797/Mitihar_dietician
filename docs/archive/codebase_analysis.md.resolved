@@ -1,0 +1,57 @@
+# Gravity Claw Codebase Analysis
+
+## 1. Overview
+**Gravity Claw** is a sophisticated, modular, and local-first AI agent built with Node.js and TypeScript. It relies primarily on a tool-calling architecture, leveraging LLMs (specifically routed through OpenRouter) to execute tasks autonomously. It incorporates a wide array of Google Workspace integrations, persistent memory systems, and dynamic capabilities like self-improvement and on-the-fly skill creation.
+
+## 2. Core Architecture
+The system is primarily event-driven (likely triggered by Telegram messages or local CLI, based on the `pm2` logs mentioned by the user previously). 
+
+### Key Modules:
+- **[index.ts](file:///D:/Crabity/src/index.ts) \& [agent.ts](file:///D:/Crabity/src/agent.ts)**: The main entry points and the core conversational/agent loop. The LLM acts as the central router, determining which tools to use based on the user's prompt.
+- **Memory System ([memory.ts](file:///D:/Crabity/src/memory.ts), [db.ts](file:///D:/Crabity/src/db.ts), [working-memory.ts](file:///D:/Crabity/src/working-memory.ts))**: 
+  - **Short-Term/Working Memory**: A scratchpad system that allows the agent to maintain intermediate results and goals during a single session.
+  - **Medium-Term Memory**: Conversation history and "core facts" (user preferences) stored locally using `better-sqlite3`.
+  - **Long-Term Semantic Memory ([pinecone.ts](file:///D:/Crabity/src/pinecone.ts), [embeddings.ts](file:///D:/Crabity/src/embeddings.ts))**: Messages and learnings are embedded using the Jina API and stored in a Pinecone vector database. This allows the agent to perform similarity searches and retrieve relevant past context.
+- **Persona System ([persona-manager.ts](file:///D:/Crabity/src/persona-manager.ts))**: The agent supports different "personas" (e.g., standard, 'grok') defined in markdown files. These alter the system prompt and can dictate configuration overrides (e.g., context window size, model choice).
+- **Self-Improvement \& Skills**:
+  - **Learnings ([learnings-manager.ts](file:///D:/Crabity/src/learnings-manager.ts))**: The agent logs its own mistakes and newly discovered facts/patterns using specialized tools.
+  - **Dynamic Skills ([skill-manager.ts](file:///D:/Crabity/src/skill-manager.ts), [skill-security.ts](file:///D:/Crabity/src/skill-security.ts))**: The agent can write new TypeScript tools on the fly (`skill_write`). The codebase employs a security sandbox ([skill-security.ts](file:///D:/Crabity/src/skill-security.ts)) that restricts imports, domains, and disk access to prevent malicious code execution.
+- **Voice \& Audio ([voice.ts](file:///D:/Crabity/src/voice.ts), [tts.ts](file:///D:/Crabity/src/tts.ts))**: Uses Groq Whisper for fast audio transcription and ElevenLabs for realistic Text-to-Speech responses.
+- **Scheduling ([scheduler.ts](file:///D:/Crabity/src/scheduler.ts))**: A cron-based task scheduler using `node-cron` allowing the agent to set delayed actions and daily briefings ([briefing.ts](file:///D:/Crabity/src/briefing.ts)).
+
+## 3. Tool Ecosystem (`src/tools/`)
+The tools directory contains highly specialized integrations exposed to the LLM via standard OpenAI function calling formats.
+
+| Category | Tools | Description |
+| :--- | :--- | :--- |
+| **Google Calendar** | `calendar_create`, `calendar_list`, `calendar_update` | Seamless Google Calendar management. |
+| **Google Gmail** | `gmail_read`, `gmail_send`, `gmail_draft`, `gmail_draft_edit` | Full email triage, drafting, and sending capabilities. |
+| **Google Drive \& Docs** | `drive_search`, `drive_read`, `drive_upload`, `docs_create`, `docs_edit` | Can search workspace files, extract text, upload buffers, and append/write Google Docs. |
+| **Google Contacts \& Photos** | `contacts_search`, `photos_list_albums`, `photos_search` | Read-only access to Google Photos and Contacts. |
+| **Google Tasks** | `tasks_create`, `tasks_list`, `tasks_complete` | Google Tasks integration for to-dos. |
+| **Finance/Sheets** | `expense_add`, `expense_list`, `expense_summary`, `sheets_create`, `sheets_edit` | Uses Google Sheets as a database to track expenses automatically. |
+| **System \& OS** | `file_ops`, `web_search`, `get_current_time`, `mcp_discover` | Allows local file reading/writing (restricted by `allowedFilePaths`), Tavily web search, and discovery of external MCP servers. |
+| **Meta / AI** | `skill_write`, `remember_fact`, `learning_log`, `learning_review`, `schedule_*`, `reply_with_voice` | Tools that allow the agent to manage its own state, memory, and scheduled triggers. |
+
+## 4. Technical Stack
+- **Language**: TypeScript (Node.js)
+- **Database**: SQLite (`better-sqlite3`), Pinecone (Vector DB)
+- **API Clients**: `googleapis` (Google Workspace), `openai` (used as a generic client to connect to OpenRouter), `unpdf` (PDF text extraction), `@pinecone-database/pinecone`.
+- **Authentication**: OAuth 2.0 via `google-auth-library` with local token caching.
+- **Resilience**: A custom `withRetry` wrapper handles rate limits (HTTP 429) uniquely across API calls to ensure stability.
+
+## 5. Security Posture
+- **Local-First Design**: SQLite database and personas are kept locally.
+- **Sandboxed Operations**: 
+  - `file_ops.ts` explicitly restricts read/write access to paths defined in `config.allowedFilePaths`.
+  - `skill-security.ts` prevents the agent from importing arbitrary npm packages or initiating unverified API requests when writing ad-hoc tools.
+- **Incognito Mode**: Supports an `incognito.ts` manager to disable tracking for specific sessions.
+
+## 6. Notable Implementation Patterns
+*   **The "Context Tuning" Paradigm**: The bot injects "Recent Learnings" and "Working Memory" directly into the system prompt continuously, reducing hallucinations and making the agent highly personalized.
+*   **Google API Abstracting**: A unified pattern using `getAuth()` and `withRetry()` makes all Google Workspace scripts clean and fault-tolerant.
+*   **MCP (Model Context Protocol)**: Support for expanding capabilities via external MCP servers is established using the `mcp_discover` tool.
+
+---
+**Conclusion:**
+Gravity Claw acts less like a simple chatbot and more like a local "operating system" for AI. Its tight integration with Google Workspace, recursive self-improving capabilities, and persistent memory make it an advanced, highly personalized local assistant.

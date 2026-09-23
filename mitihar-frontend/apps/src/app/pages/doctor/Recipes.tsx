@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Plus, Search, ChefHat, Flame, Beef, Wheat, Sparkles,
   Loader2, X, AlertCircle, UserPlus, Calendar, Check,
@@ -8,6 +9,9 @@ import {
 import apiClient from '../../../lib/axios';
 import { doctorApi, FoodItemSummary, PatientSummary } from '../../../lib/doctorApi';
 import { qk } from '../../../lib/queryKeys';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { EASE_OUT } from '../../lib/motion-tokens';
 
 const AVOID_TAGS = [
   "avoid_diabetes","avoid_hypertension","avoid_highchol","avoid_pcos",
@@ -70,17 +74,27 @@ function AssignModal({ recipe, onClose }: AssignModalProps) {
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
     );
 
+  const prefersReducedMotion = useReducedMotion();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="button" aria-label="Close dialog" tabIndex={0} />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+      <motion.div className="absolute inset-0 bg-black/40" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="button" aria-label="Close dialog" tabIndex={0}
+        initial={prefersReducedMotion ? undefined : { opacity: 0 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+        transition={{ duration: 0.2 }} />
+      <motion.div className="relative bg-card rounded-xl shadow-[var(--shadow-modal)] w-full max-w-md flex flex-col max-h-[90vh]"
+        initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2, ease: EASE_OUT }}>
         {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-[#E5E7EB]">
+        <div className="flex items-start justify-between p-5 border-b border-border">
           <div>
-            <p className="text-base font-semibold text-[#111827]">Assign Recipe</p>
-            <p className="text-sm text-[#6B7280] mt-0.5 line-clamp-1">{recipe.recipe_name}</p>
+            <p className="text-base font-semibold text-foreground">Assign Recipe</p>
+            <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{recipe.recipe_name}</p>
           </div>
-          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-[#9CA3AF] hover:bg-[#F3F4F6]">
+          <button onClick={onClose} className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -88,38 +102,38 @@ function AssignModal({ recipe, onClose }: AssignModalProps) {
         {/* Body */}
         <div className="overflow-y-auto p-5 flex-1">
           {/* Patients */}
-          <p className="text-xs font-medium text-[#374151] mb-2">
-            Select Patients <span className="text-[#DC2626]">*</span>
+          <p className="text-xs font-medium text-secondary-foreground mb-2">
+            Select Patients <span className="text-destructive">*</span>
           </p>
           {patientsLoading ? (
             <div className="flex justify-center py-6">
-              <Loader2 size={20} className="animate-spin text-[#1E7C45]" />
+              <Loader2 size={20} className="animate-spin text-primary" />
             </div>
           ) : patients.length === 0 ? (
-            <p className="text-sm text-[#9CA3AF] text-center py-4">No patients found</p>
+            <p className="text-sm text-muted-foreground text-center py-4">No patients found</p>
           ) : (
-            <div className="border border-[#E5E7EB] rounded-lg overflow-hidden mb-4 max-h-40 overflow-y-auto">
+            <div className="border border-border rounded-lg overflow-hidden mb-4 max-h-40 overflow-y-auto">
               {patients.map((p: PatientSummary) => (
                 <label
                   key={p.id}
-                  className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#F9FAFB] cursor-pointer border-b border-[#F3F4F6] last:border-0"
+                  className="flex items-center gap-3 px-3 py-2.5 hover:bg-input-background cursor-pointer border-b border-border last:border-0"
                 >
                   <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
                     selectedIds.includes(p.id)
-                      ? 'bg-[#1E7C45] border-[#1E7C45]'
-                      : 'border-[#D1D5DB]'
+                      ? 'bg-primary border-primary'
+                      : 'border-border'
                   }`}>
-                    {selectedIds.includes(p.id) && <Check size={10} className="text-white" />}
+                    {selectedIds.includes(p.id) && <Check size={10} className="text-primary-foreground" />}
                   </div>
                   <input type="checkbox" className="hidden" checked={selectedIds.includes(p.id)} onChange={() => toggle(p.id)} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-[#111827] truncate">{p.name}</p>
-                    <p className="text-xs text-[#9CA3AF] truncate">{p.email}</p>
+                    <p className="text-sm text-foreground truncate">{p.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{p.email}</p>
                   </div>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
                     p.subscription_status === 'active'
-                      ? 'bg-[#DCFCE7] text-[#15803d]'
-                      : 'bg-[#F3F4F6] text-[#6B7280]'
+                      ? 'bg-brand-100 text-brand-700'
+                      : 'bg-muted text-muted-foreground'
                   }`}>{p.subscription_status}</span>
                 </label>
               ))}
@@ -129,12 +143,12 @@ function AssignModal({ recipe, onClose }: AssignModalProps) {
           {/* Meal type */}
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
-              <label htmlFor="assign-meal-type" className="block text-xs font-medium text-[#374151] mb-1.5">Meal Type</label>
+              <label htmlFor="assign-meal-type" className="block text-xs font-medium text-secondary-foreground mb-1.5">Meal Type</label>
               <select
                 id="assign-meal-type"
                 value={mealType}
                 onChange={e => setMealType(e.target.value)}
-                className="w-full h-9 px-2 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+                className="w-full h-9 px-2 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 {['Breakfast', 'Lunch', 'Dinner'].map(t => (
                   <option key={t}>{t}</option>
@@ -142,55 +156,56 @@ function AssignModal({ recipe, onClose }: AssignModalProps) {
               </select>
             </div>
             <div>
-              <label htmlFor="assign-date" className="block text-xs font-medium text-[#374151] mb-1.5">
-                <span className="flex items-center gap-1"><Calendar size={11} /> Date</span>
+              <label htmlFor="assign-date" className="block text-xs font-medium text-secondary-foreground mb-1.5">
+                <span className="flex items-center gap-1"><Calendar size={14} /> Date</span>
               </label>
               <input
                 id="assign-date"
                 type="date"
                 value={mealDate}
                 onChange={e => setMealDate(e.target.value)}
-                className="w-full h-9 px-2 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+                className="w-full h-9 px-2 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
           </div>
 
           {/* Optional note */}
           <div>
-            <label htmlFor="assign-note" className="block text-xs font-medium text-[#374151] mb-1.5">Note for Patient (optional)</label>
+            <label htmlFor="assign-note" className="block text-xs font-medium text-secondary-foreground mb-1.5">Note for Patient (optional)</label>
             <input
               id="assign-note"
               type="text"
               value={note}
               onChange={e => setNote(e.target.value)}
               placeholder="e.g. Take with warm water"
-              className="w-full h-9 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]"
+              className="w-full h-9 px-3 rounded-md border border-border bg-input-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 p-5 border-t border-[#E5E7EB]">
-          <p className="text-xs text-[#9CA3AF]">
+        <div className="flex items-center justify-between gap-3 p-5 border-t border-border">
+          <p className="text-xs text-muted-foreground">
             {selectedIds.length > 0 ? `${selectedIds.length} patient${selectedIds.length > 1 ? 's' : ''} selected` : 'No patients selected'}
           </p>
           <div className="flex gap-2">
-            <button onClick={onClose} className="h-9 px-4 rounded-md border border-[#D1D5DB] text-sm text-[#374151] hover:bg-[#F9FAFB]">
+            <Button variant="outline" size="md" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
               onClick={() => assignMutation.mutate()}
               disabled={selectedIds.length === 0 || !mealDate || assignMutation.isPending}
-              className="flex items-center gap-1.5 h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] disabled:opacity-50 transition-colors"
             >
               {assignMutation.isPending
                 ? <Loader2 size={14} className="animate-spin" />
                 : <UserPlus size={14} />}
               Assign
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -244,10 +259,10 @@ function TagEditPanel({ recipe, onSave, onClose }: TagEditPanelProps) {
   };
 
   return (
-    <div className="mt-3 p-3 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg">
+    <div className="mt-3 p-3 bg-input-background border border-border rounded-lg">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <p className="text-xs font-medium text-[#DC2626] mb-2">Avoid Tags</p>
+          <p className="text-xs font-medium text-destructive mb-2">Avoid Tags</p>
           <div className="flex flex-wrap gap-1">
             {AVOID_TAGS.map(tag => (
               <button
@@ -256,8 +271,8 @@ function TagEditPanel({ recipe, onSave, onClose }: TagEditPanelProps) {
                 onClick={() => toggleAvoid(tag)}
                 className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                   draftAvoid.has(tag)
-                    ? 'bg-[#FEE2E2] border-[#FCA5A5] text-[#DC2626]'
-                    : 'bg-white border-[#E5E7EB] text-[#9CA3AF] hover:border-[#FCA5A5]'
+                    ? 'bg-red-50 border-destructive/40 text-destructive'
+                    : 'bg-card border-border text-muted-foreground hover:border-destructive/40'
                 }`}
               >
                 {formatTag(tag)}
@@ -266,7 +281,7 @@ function TagEditPanel({ recipe, onSave, onClose }: TagEditPanelProps) {
           </div>
         </div>
         <div>
-          <p className="text-xs font-medium text-[#16A34A] mb-2">Prefer Tags</p>
+          <p className="text-xs font-medium text-brand-700 mb-2">Prefer Tags</p>
           <div className="flex flex-wrap gap-1">
             {PREFER_TAGS.map(tag => (
               <button
@@ -275,8 +290,8 @@ function TagEditPanel({ recipe, onSave, onClose }: TagEditPanelProps) {
                 onClick={() => togglePrefer(tag)}
                 className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                   draftPrefer.has(tag)
-                    ? 'bg-[#DCFCE7] border-[#86EFAC] text-[#16A34A]'
-                    : 'bg-white border-[#E5E7EB] text-[#9CA3AF] hover:border-[#86EFAC]'
+                    ? 'bg-brand-100 border-brand-400/50 text-brand-700'
+                    : 'bg-card border-border text-muted-foreground hover:border-brand-400/50'
                 }`}
               >
                 {formatTag(tag)}
@@ -285,24 +300,15 @@ function TagEditPanel({ recipe, onSave, onClose }: TagEditPanelProps) {
           </div>
         </div>
       </div>
-      {error && <p className="text-xs text-[#DC2626] mt-2">{error}</p>}
+      {error && <p className="text-xs text-destructive mt-2">{error}</p>}
       <div className="flex gap-2 mt-3 justify-end">
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-7 px-3 rounded border border-[#D1D5DB] text-xs text-[#374151] hover:bg-white"
-        >
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>
           Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-1 h-7 px-3 rounded bg-[#1E7C45] text-white text-xs hover:bg-[#166534] disabled:opacity-50"
-        >
-          {saving && <Loader2 size={10} className="animate-spin" />}
+        </Button>
+        <Button type="button" variant="primary" size="sm" onClick={handleSave} disabled={saving}>
+          {saving && <Loader2 size={14} className="animate-spin" />}
           Save
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -364,18 +370,18 @@ function RecipeCard({ recipe, onAssign }: RecipeCardProps) {
   const [showTagEdit, setShowTagEdit] = useState(false);
 
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-lg p-4 hover:border-[#D1D5DB] transition-colors flex flex-col">
+    <Card variant="interactive" className="p-4 flex flex-col">
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1 min-w-0">
-          <span className="text-xs text-[#6B7280]">{localRecipe.slot_type} · {localRecipe.diet_type}</span>
-          <p className="text-sm font-medium text-[#111827] mt-0.5">{localRecipe.recipe_name}</p>
+          <span className="text-xs text-muted-foreground">{localRecipe.slot_type} · {localRecipe.diet_type}</span>
+          <p className="text-sm font-medium text-foreground mt-0.5">{localRecipe.recipe_name}</p>
         </div>
         {localRecipe.is_verified ? (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803d] border border-[#BBF7D0] flex-shrink-0 ml-2">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700 border border-brand-400/30 flex-shrink-0 ml-2">
             Verified
           </span>
         ) : (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280] border border-[#E5E7EB] flex-shrink-0 ml-2">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border flex-shrink-0 ml-2">
             Unverified
           </span>
         )}
@@ -383,49 +389,45 @@ function RecipeCard({ recipe, onAssign }: RecipeCardProps) {
       {localRecipe.meal_time_tags.length > 0 && (
         <div className="flex gap-1 mb-2 flex-wrap">
           {localRecipe.meal_time_tags.map(t => (
-            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-[#F3F4F6] text-[#6B7280]">{t}</span>
+            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{t}</span>
           ))}
         </div>
       )}
       {localRecipe.avoid_tags.length > 0 && (
         <div className="flex gap-1 mb-1 flex-wrap">
           {localRecipe.avoid_tags.map(t => (
-            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#FEE2E2] text-[#DC2626]">{formatTag(t)}</span>
+            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-destructive">{formatTag(t)}</span>
           ))}
         </div>
       )}
       {localRecipe.prefer_tags.length > 0 && (
         <div className="flex gap-1 mb-1 flex-wrap">
           {localRecipe.prefer_tags.map(t => (
-            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#DCFCE7] text-[#16A34A]">{formatTag(t)}</span>
+            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700">{formatTag(t)}</span>
           ))}
         </div>
       )}
       <div className="flex items-center gap-3 mt-3 flex-wrap">
-        <span className="flex items-center gap-1 text-xs text-[#DC2626]">
-          <Flame size={11} /><span className="tabular-nums font-medium">{Math.round(localRecipe.cal_per_serving)}</span> kcal
+        <span className="flex items-center gap-1 text-xs text-destructive">
+          <Flame size={14} /><span className="tabular-nums font-medium">{Math.round(localRecipe.cal_per_serving)}</span> kcal
         </span>
-        <span className="flex items-center gap-1 text-xs text-[#2563EB]">
-          <Beef size={11} /><span className="tabular-nums font-medium">{localRecipe.protein_per_serving.toFixed(1)}g</span> P
+        <span className="flex items-center gap-1 text-xs text-blue-600">
+          <Beef size={14} /><span className="tabular-nums font-medium">{localRecipe.protein_per_serving.toFixed(1)}g</span> P
         </span>
-        <span className="flex items-center gap-1 text-xs text-[#F59E0B]">
-          <Wheat size={11} /><span className="tabular-nums font-medium">{localRecipe.carbs_per_serving.toFixed(1)}g</span> C
+        <span className="flex items-center gap-1 text-xs text-amber-500">
+          <Wheat size={14} /><span className="tabular-nums font-medium">{localRecipe.carbs_per_serving.toFixed(1)}g</span> C
         </span>
       </div>
       <div className="flex items-center justify-between mt-3">
-        <p className="text-xs text-[#9CA3AF]">Source: {localRecipe.source}</p>
+        <p className="text-xs text-muted-foreground">Source: {localRecipe.source}</p>
         <div className="flex gap-1.5">
-          <button
-            onClick={() => setShowTagEdit(p => !p)}
-            className="h-7 px-2.5 rounded border border-[#D1D5DB] text-xs text-[#374151] hover:border-[#1E7C45] hover:text-[#1E7C45] hover:bg-[#F0FDF4] transition-colors"
-          >
+          <Button variant="outline" size="sm" onClick={() => setShowTagEdit(p => !p)}>
             {showTagEdit ? 'Close' : 'Edit Tags'}
-          </button>
+          </Button>
           {localRecipe.is_verified && (
-            <button onClick={() => onAssign(localRecipe)}
-              className="flex items-center gap-1 h-7 px-2.5 rounded border border-[#D1D5DB] text-xs text-[#374151] hover:border-[#1E7C45] hover:text-[#1E7C45] hover:bg-[#F0FDF4] transition-colors">
-              <UserPlus size={11} /> Assign
-            </button>
+            <Button variant="outline" size="sm" onClick={() => onAssign(localRecipe)}>
+              <UserPlus size={14} /> Assign
+            </Button>
           )}
         </div>
       </div>
@@ -436,7 +438,7 @@ function RecipeCard({ recipe, onAssign }: RecipeCardProps) {
           onClose={() => setShowTagEdit(false)}
         />
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -500,73 +502,72 @@ function AddRecipeForm({ onSuccess, onCancel }: AddRecipeFormProps) {
   };
 
   const macroInputClass = (highlighted: boolean) =>
-    `w-full h-10 px-3 rounded-md border text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent transition-colors ${
-      highlighted ? 'border-[#F59E0B] bg-[#FFFBEB]' : 'border-[#D1D5DB] bg-white'
+    `w-full h-10 px-3 rounded-md border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors ${
+      highlighted ? 'border-amber-500 bg-amber-50' : 'border-border bg-input-background'
     }`;
 
   return (
-    <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 mb-6">
-      <h2 className="text-base font-medium text-[#111827] mb-4">Add Recipe to Library</h2>
+    <Card className="p-5 mb-6">
+      <h2 className="text-base font-medium text-foreground mb-4">Add Recipe to Library</h2>
       <form onSubmit={(e) => { e.preventDefault(); addMutation.mutate(); }} className="max-w-xl">
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="col-span-2">
-            <label htmlFor="recipe-name" className="block text-sm font-medium text-[#374151] mb-1.5">
-              Recipe Name <span className="text-[#DC2626] ml-0.5">*</span>
+            <label htmlFor="recipe-name" className="block text-sm font-medium text-secondary-foreground mb-1.5">
+              Recipe Name <span className="text-destructive ml-0.5">*</span>
             </label>
             <input id="recipe-name" required value={nameInput} onChange={e => handleNameChange(e.target.value)}
               placeholder="e.g. Moong Dal Cheela"
-              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent" />
+              className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent" />
             {nameInput.trim().length >= 2 && !aiEstimate && (
               <div className="mt-2 flex items-center gap-2">
-                <button type="button" onClick={handleEstimate} disabled={aiLoading}
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-md border border-[#D1D5DB] text-xs font-medium text-[#374151] hover:bg-[#F9FAFB] transition-colors disabled:opacity-50">
-                  {aiLoading ? <><Loader2 size={12} className="animate-spin" /> Estimating…</> : <><Sparkles size={12} className="text-[#F59E0B]" /> Estimate with AI</>}
-                </button>
-                {aiError && <p className="text-xs text-[#DC2626]">{aiError}</p>}
+                <Button type="button" variant="outline" size="sm" onClick={handleEstimate} disabled={aiLoading}>
+                  {aiLoading ? <><Loader2 size={14} className="animate-spin" /> Estimating…</> : <><Sparkles size={14} className="text-amber-500" /> Estimate with AI</>}
+                </Button>
+                {aiError && <p className="text-xs text-destructive">{aiError}</p>}
               </div>
             )}
             {aiEstimate && (
-              <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-[#FFFBEB] border border-[#FDE68A] rounded-md">
-                <Sparkles size={13} className="text-[#F59E0B] mt-0.5 flex-shrink-0" />
+              <div className="mt-2 flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-500/30 rounded-md">
+                <Sparkles size={14} className="text-amber-500 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-[#92400E]">AI estimate applied — please verify before saving</p>
-                  {aiEstimate.serving_description && <p className="text-xs text-[#B45309] mt-0.5">Serving: {aiEstimate.serving_description}</p>}
+                  <p className="text-xs font-medium text-amber-700">AI estimate applied — please verify before saving</p>
+                  {aiEstimate.serving_description && <p className="text-xs text-amber-700 mt-0.5">Serving: {aiEstimate.serving_description}</p>}
                 </div>
-                <button type="button" onClick={() => { setAiEstimate(null); setAiHighlighted(false); }} className="text-[#9CA3AF] hover:text-[#374151]">
-                  <X size={12} />
+                <button type="button" onClick={() => { setAiEstimate(null); setAiHighlighted(false); }} className="text-muted-foreground hover:text-secondary-foreground">
+                  <X size={14} />
                 </button>
               </div>
             )}
           </div>
           <div>
-            <label htmlFor="recipe-slot" className="block text-sm font-medium text-[#374151] mb-1.5">Slot Type</label>
+            <label htmlFor="recipe-slot" className="block text-sm font-medium text-secondary-foreground mb-1.5">Slot Type</label>
             <select id="recipe-slot" value={form.slot_type} onChange={e => setForm(p => ({ ...p, slot_type: e.target.value }))}
-              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]">
+              className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
               {['grain','dal_protein','main_dish','sabzi','beverage','snack','fruit','egg_dish'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor="recipe-diet" className="block text-sm font-medium text-[#374151] mb-1.5">Diet Type</label>
+            <label htmlFor="recipe-diet" className="block text-sm font-medium text-secondary-foreground mb-1.5">Diet Type</label>
             <select id="recipe-diet" value={form.diet_type} onChange={e => setForm(p => ({ ...p, diet_type: e.target.value }))}
-              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]">
+              className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
               {['Vegetarian','Non-Vegetarian','Eggetarian'].map(d => <option key={d}>{d}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor="recipe-meal-time" className="block text-sm font-medium text-[#374151] mb-1.5">Meal Time</label>
+            <label htmlFor="recipe-meal-time" className="block text-sm font-medium text-secondary-foreground mb-1.5">Meal Time</label>
             <select id="recipe-meal-time" value={form.meal_time} onChange={e => setForm(p => ({ ...p, meal_time: e.target.value }))}
-              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]">
+              className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
               {['Breakfast','Lunch','Dinner'].map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label htmlFor="recipe-region" className="block text-sm font-medium text-[#374151] mb-1.5">Region</label>
+            <label htmlFor="recipe-region" className="block text-sm font-medium text-secondary-foreground mb-1.5">Region</label>
             <input id="recipe-region" value={form.region} onChange={e => setForm(p => ({ ...p, region: e.target.value }))} placeholder="e.g. South Indian"
-              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45]" />
+              className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           {(['calories','protein','carbs','fat','fiber'] as const).map((key, i) => (
             <div key={key}>
-              <label htmlFor={`recipe-${key}`} className="block text-sm font-medium text-[#374151] mb-1.5">
+              <label htmlFor={`recipe-${key}`} className="block text-sm font-medium text-secondary-foreground mb-1.5">
                 {['Calories (kcal) *','Protein (g) *','Carbs (g) *','Fat (g) *','Fiber (g)'][i]}
               </label>
               <input id={`recipe-${key}`} required={key !== 'fiber'} type="number" min={0} value={form[key]}
@@ -575,37 +576,35 @@ function AddRecipeForm({ onSuccess, onCancel }: AddRecipeFormProps) {
             </div>
           ))}
           <div>
-            <label htmlFor="recipe-amount-g" className="block text-sm font-medium text-[#374151] mb-1.5">
-              Serving Size (grams) <span className="text-[#DC2626] ml-0.5">*</span>
+            <label htmlFor="recipe-amount-g" className="block text-sm font-medium text-secondary-foreground mb-1.5">
+              Serving Size (grams) <span className="text-destructive ml-0.5">*</span>
             </label>
             <input id="recipe-amount-g" required type="number" min={1} value={form.amount_g}
               onChange={e => setForm(p => ({ ...p, amount_g: e.target.value }))}
               placeholder="e.g. 150"
-              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent" />
+              className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent" />
           </div>
           <div>
-            <label htmlFor="recipe-sodium" className="block text-sm font-medium text-[#374151] mb-1.5">
+            <label htmlFor="recipe-sodium" className="block text-sm font-medium text-secondary-foreground mb-1.5">
               Sodium (mg per serving)
             </label>
             <input id="recipe-sodium" type="number" min={0} value={form.sodium}
               onChange={e => setForm(p => ({ ...p, sodium: e.target.value }))}
               placeholder="0"
-              className="w-full h-10 px-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent" />
+              className="w-full h-10 px-3 rounded-md border border-border bg-input-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent" />
           </div>
         </div>
         <div className="flex gap-3">
-          <button type="submit" disabled={addMutation.isPending}
-            className="h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors disabled:opacity-50 flex items-center gap-2">
-            {addMutation.isPending && <Loader2 size={13} className="animate-spin" />}
+          <Button type="submit" variant="primary" size="md" disabled={addMutation.isPending}>
+            {addMutation.isPending && <Loader2 size={14} className="animate-spin" />}
             Add to Recipe Library
-          </button>
-          <button type="button" onClick={onCancel}
-            className="h-9 px-4 rounded-md border border-[#D1D5DB] bg-white text-[#374151] text-sm hover:bg-[#F9FAFB] transition-colors">
+          </Button>
+          <Button type="button" variant="outline" size="md" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </Card>
   );
 }
 export function Recipes() {
@@ -642,21 +641,18 @@ export function Recipes() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-[#111827] tracking-tight">Recipes</h1>
-          <p className="text-sm text-[#6B7280] mt-0.5">
+          <h1 data-tour="tour-recipes" className="text-2xl font-semibold text-foreground tracking-tight">Recipes</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {isLoading ? 'Loading…' : `${recipes.length} recipes`}
             {isFetching && !isLoading && (
-              <Loader2 size={12} className="inline-block animate-spin ml-2 text-[#1E7C45]" />
+              <Loader2 size={14} className="inline-block animate-spin ml-2 text-primary" />
             )}
           </p>
         </div>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-2 h-9 px-4 rounded-md bg-[#1E7C45] text-white text-sm hover:bg-[#166534] transition-colors"
-        >
-          <Plus size={15} />
+        <Button variant="primary" size="md" onClick={() => setShowAddForm(!showAddForm)}>
+          <Plus size={16} />
           Add Recipe
-        </button>
+        </Button>
       </div>
 
       {/* ── Add recipe form ────────────────────────────────────────── */}
@@ -671,35 +667,35 @@ export function Recipes() {
       <div className="flex flex-col gap-2 mb-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               value={search}
               onChange={e => handleSearch(e.target.value)}
               placeholder="Search recipes…"
-              className="w-52 h-9 pl-9 pr-3 rounded-md border border-[#D1D5DB] bg-white text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E7C45] focus:border-transparent"
+              className="w-52 h-9 pl-9 pr-3 rounded-md border border-border bg-input-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
             />
           </div>
-          <div className="flex items-center gap-0 border border-[#D1D5DB] rounded-md overflow-hidden">
+          <div className="flex items-center gap-0 border border-border rounded-md overflow-hidden">
             {MEAL_TIMES.map(mt => (
               <button
                 key={mt}
                 onClick={() => setMealTimeFilter(mt)}
                 className={`h-9 px-3 text-xs font-medium transition-colors ${
-                  mealTimeFilter === mt ? 'bg-[#1E7C45] text-white' : 'text-[#6B7280] hover:bg-[#F3F4F6]'
+                  mealTimeFilter === mt ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
                 }`}
               >
                 {mt}
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-0 border border-[#D1D5DB] rounded-md overflow-hidden">
+          <div className="flex items-center gap-0 border border-border rounded-md overflow-hidden">
             {VERIFIED_OPTIONS.map(v => (
               <button
                 key={v}
                 onClick={() => setVerifiedFilter(v)}
                 className={`h-9 px-3 text-xs font-medium transition-colors ${
-                  verifiedFilter === v ? 'bg-[#1E7C45] text-white' : 'text-[#6B7280] hover:bg-[#F3F4F6]'
+                  verifiedFilter === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
                 }`}
               >
                 {v}
@@ -712,19 +708,19 @@ export function Recipes() {
       {/* ── Recipe grid ──────────────────────────────────────────── */}
       {isLoading ? (
         <div className="flex justify-center py-20">
-          <Loader2 size={28} className="animate-spin text-[#1E7C45]" />
+          <Loader2 size={20} className="animate-spin text-primary" />
         </div>
       ) : isError ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-lg py-16 text-center">
-          <AlertCircle size={32} className="text-[#DC2626] mx-auto mb-3" />
-          <p className="text-base font-medium text-[#374151]">Could not load recipes</p>
-        </div>
+        <Card className="py-16 text-center">
+          <AlertCircle size={20} className="text-destructive mx-auto mb-3" />
+          <p className="text-base font-medium text-foreground">Could not load recipes</p>
+        </Card>
       ) : recipes.length === 0 ? (
-        <div className="bg-white border border-[#E5E7EB] rounded-lg py-16 text-center">
-          <ChefHat size={36} className="text-[#D1D5DB] mx-auto mb-3" />
-          <p className="text-base font-medium text-[#374151]">No recipes found</p>
-          <p className="text-sm text-[#6B7280] mt-1">Try adjusting your search or add a new recipe</p>
-        </div>
+        <Card className="py-16 text-center">
+          <ChefHat size={20} className="text-muted-foreground mx-auto mb-3" />
+          <p className="text-base font-medium text-foreground">No recipes found</p>
+          <p className="text-sm text-muted-foreground mt-1">Try adjusting your search or add a new recipe</p>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {recipes.map((recipe: FoodItemSummary) => (
@@ -734,12 +730,14 @@ export function Recipes() {
       )}
 
       {/* Assign Recipe Modal */}
-      {assignRecipe && (
-        <AssignModal
-          recipe={assignRecipe}
-          onClose={() => setAssignRecipe(null)}
-        />
-      )}
+      <AnimatePresence>
+        {assignRecipe && (
+          <AssignModal
+            recipe={assignRecipe}
+            onClose={() => setAssignRecipe(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

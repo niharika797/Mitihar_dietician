@@ -1,0 +1,337 @@
+<title>Mitihar Deployment Status</title>
+<style>
+  :root {
+    --bg: #F6F8F7;
+    --surface: #FFFFFF;
+    --surface-2: #EFF4F1;
+    --ink: #16241F;
+    --ink-soft: #4D615A;
+    --ink-faint: #83958F;
+    --border: #DBE5E0;
+    --accent: #0D7A63;
+    --accent-ink: #06392E;
+    --accent-soft: #E3F2EC;
+    --ok-bg: #E4F4E9; --ok-fg: #146C3F; --ok-dot: #1E9E5A;
+    --warn-bg: #FBF0DD; --warn-fg: #8A5A0B; --warn-dot: #C68A1E;
+    --pending-bg: #EDEFF3; --pending-fg: #4B5468; --pending-dot: #8891A6;
+    --bad-bg: #FBE7E5; --bad-fg: #99332A; --bad-dot: #C4443A;
+    --shadow: 0 1px 2px rgba(15,35,28,.04), 0 6px 20px -8px rgba(15,35,28,.12);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101714; --surface: #16201C; --surface-2: #1C2823;
+      --ink: #EAF2EE; --ink-soft: #A9BDB5; --ink-faint: #728179;
+      --border: #2A3B34; --accent: #3FBE9D; --accent-ink: #B6EBDA; --accent-soft: #1B3129;
+      --ok-bg: #163526; --ok-fg: #6FE0A3; --ok-dot: #3FBE7F;
+      --warn-bg: #3A2E12; --warn-fg: #F0C674; --warn-dot: #D9A438;
+      --pending-bg: #232A34; --pending-fg: #B7C0D1; --pending-dot: #8894AA;
+      --bad-bg: #3A1B18; --bad-fg: #F1988C; --bad-dot: #E06356;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -12px rgba(0,0,0,.55);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101714; --surface: #16201C; --surface-2: #1C2823;
+    --ink: #EAF2EE; --ink-soft: #A9BDB5; --ink-faint: #728179;
+    --border: #2A3B34; --accent: #3FBE9D; --accent-ink: #B6EBDA; --accent-soft: #1B3129;
+    --ok-bg: #163526; --ok-fg: #6FE0A3; --ok-dot: #3FBE7F;
+    --warn-bg: #3A2E12; --warn-fg: #F0C674; --warn-dot: #D9A438;
+    --pending-bg: #232A34; --pending-fg: #B7C0D1; --pending-dot: #8894AA;
+    --bad-bg: #3A1B18; --bad-fg: #F1988C; --bad-dot: #E06356;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -12px rgba(0,0,0,.55);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px; line-height: 1.55;
+    padding-block: 32px 64px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; }
+
+  h1, h2, h3 { font-family: 'Fraunces', Georgia, serif; font-weight: 600; color: var(--ink); margin: 0; text-wrap: balance; }
+  .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  /* header */
+  header.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 28px; }
+  header.top .eyebrow { font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
+  header.top h1 { font-size: 34px; }
+  header.top p.sub { color: var(--ink-soft); margin-top: 8px; max-width: 52ch; font-size: 14.5px; }
+  header.top .meta { text-align: right; color: var(--ink-faint); font-size: 12.5px; }
+  header.top .meta .stage-pill { display: inline-block; margin-top: 8px; padding: 5px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; font-size: 12.5px; }
+
+  /* live server answer banner */
+  .answer {
+    background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+    border-radius: 12px; padding: 22px 24px; box-shadow: var(--shadow); margin-bottom: 28px;
+  }
+  .answer .q { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 600; margin-bottom: 8px; }
+  .answer .a { font-size: 15px; color: var(--ink-soft); }
+  .answer .a strong { color: var(--ink); }
+  .answer .a code { background: var(--surface-2); padding: 1px 6px; border-radius: 5px; font-size: 13px; }
+
+  /* status grid */
+  .grid-title { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; margin: 30px 0 12px; }
+  .status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 720px) { .status-grid { grid-template-columns: repeat(2, 1fr); } }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .tile .label { font-size: 12px; color: var(--ink-faint); margin-bottom: 8px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok-fg); } .pill.ok .dot { background: var(--ok-dot); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn-fg); } .pill.warn .dot { background: var(--warn-dot); }
+  .pill.pending { background: var(--pending-bg); color: var(--pending-fg); } .pill.pending .dot { background: var(--pending-dot); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad-fg); } .pill.bad .dot { background: var(--bad-dot); }
+
+  section.block { margin-top: 34px; }
+  section.block h2 { font-size: 20px; margin-bottom: 14px; }
+  section.block h2 .n { color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; font-size: 14px; margin-right: 8px; }
+  section.block > p.lead { color: var(--ink-soft); font-size: 14px; margin: -6px 0 16px; max-width: 68ch; }
+
+  /* architecture diagram */
+  .diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: var(--shadow); overflow-x: auto; }
+  .diagram svg { display: block; margin: 0 auto; width: 100%; height: auto; min-width: 640px; }
+  .dg-box { fill: var(--surface-2); stroke: var(--border); stroke-width: 1; }
+  .dg-box.live { stroke: var(--ok-dot); stroke-width: 1.6; }
+  .dg-box.dead { stroke: var(--bad-dot); stroke-width: 1.4; stroke-dasharray: 4 3; }
+  .dg-label { font-family: 'Inter', sans-serif; font-size: 12px; fill: var(--ink); font-weight: 600; }
+  .dg-sub { font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: var(--ink-faint); }
+  .dg-arrow { stroke: var(--ink-faint); stroke-width: 1.2; fill: none; marker-end: url(#arrow); }
+  .dg-badge { font-family: 'Inter'; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; }
+
+  /* tables */
+  table.report { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
+  table.report th, table.report td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13.5px; vertical-align: top; }
+  table.report th { background: var(--surface-2); color: var(--ink-faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  table.report tr:last-child td { border-bottom: none; }
+  table.report td.evidence { color: var(--ink-faint); font-size: 12.5px; font-family: 'IBM Plex Mono', monospace; }
+  .table-wrap { overflow-x: auto; border-radius: 10px; }
+
+  /* two column lists */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .card h3 { font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .card ul { margin: 0; padding-left: 18px; font-size: 13.5px; color: var(--ink-soft); }
+  .card li { margin-bottom: 6px; }
+  .card.done h3 { color: var(--ok-fg); }
+  .card.missing h3 { color: var(--bad-fg); }
+
+  /* problems */
+  .problem { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow); }
+  .problem .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .problem .title { font-weight: 600; font-size: 13.5px; }
+  .problem .desc { color: var(--ink-soft); font-size: 13px; margin-top: 4px; }
+
+  /* next steps */
+  ol.steps { margin: 0; padding-left: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 8px; }
+  ol.steps li { counter-increment: step; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px 12px 44px; position: relative; font-size: 13.5px; box-shadow: var(--shadow); }
+  ol.steps li::before { content: counter(step); position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+  footer.foot { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--ink-faint); font-size: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="eyebrow">Deployment &amp; Production Status</div>
+      <h1>Mitihar</h1>
+      <p class="sub">Where the dietetics platform actually stands today — backend, clients, database, Redis, and every test that's been run against them, checked against evidence in the repo rather than documentation claims.</p>
+    </div>
+    <div class="meta">
+      Audited 2026&#8209;09&#8209;18<br>
+      <span class="stage-pill">Stage: Cloud Testing / Staging (backend only)</span>
+    </div>
+  </header>
+
+  <div class="answer">
+    <div class="q">Does Mitihar currently have a live application?</div>
+    <div class="a">
+      <strong>Partially.</strong> The FastAPI backend is deployed and publicly reachable on Cloud Run staging at a stable HTTPS URL, backed by a real Cloud SQL database and Redis instance — and it has passed one real load test against that live infrastructure. <strong>Neither client app is deployed</strong> — the web dashboard's Firebase Hosting project has never been pushed to, and the patient app's build config still contains literal placeholder URLs (<code>STAGING-URL-NOT-DEPLOYED-YET</code>). A teammate can call the API directly, but there is currently nothing they can open and use as "Mitihar."
+    </div>
+  </div>
+
+  <div class="grid-title">Status at a glance</div>
+  <div class="status-grid">
+    <div class="tile"><div class="label">Deployment stage</div><span class="pill warn"><span class="dot"></span>Staging (BE only)</span></div>
+    <div class="tile"><div class="label">Web dashboard</div><span class="pill bad"><span class="dot"></span>Not deployed</span></div>
+    <div class="tile"><div class="label">Patient app</div><span class="pill bad"><span class="dot"></span>Dev-only</span></div>
+    <div class="tile"><div class="label">Backend API</div><span class="pill ok"><span class="dot"></span>Live, running</span></div>
+    <div class="tile"><div class="label">Database</div><span class="pill warn"><span class="dot"></span>Live, backups unverified</span></div>
+    <div class="tile"><div class="label">Redis</div><span class="pill warn"><span class="dot"></span>Live, plaintext transit</span></div>
+    <div class="tile"><div class="label">Testing</div><span class="pill warn"><span class="dot"></span>Passed once, 6wk stale</span></div>
+    <div class="tile"><div class="label">Production readiness</div><span class="pill bad"><span class="dot"></span>Not ready</span></div>
+  </div>
+
+  <section class="block">
+    <h2><span class="n">01</span>Architecture — what's actually running</h2>
+    <p class="lead">Solid outline + green = deployed and running. Dashed red = configured in code but never deployed.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 900 430" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--ink-faint)"/></marker>
+        </defs>
+
+        <!-- clients -->
+        <rect class="dg-box dead" x="40" y="20" width="230" height="56" rx="8"/>
+        <text class="dg-label" x="56" y="44">Web Dashboard (React)</text>
+        <text class="dg-sub" x="56" y="60">Firebase Hosting — configured only</text>
+        <text class="dg-badge" x="56" y="48" fill="var(--bad-fg)" style="display:none"></text>
+
+        <rect class="dg-box dead" x="290" y="20" width="230" height="56" rx="8"/>
+        <text class="dg-label" x="306" y="44">Patient App (Expo/RN)</text>
+        <text class="dg-sub" x="306" y="60">EAS placeholders — dev-only</text>
+
+        <!-- gap marker -->
+        <line x1="155" y1="76" x2="155" y2="110" class="dg-arrow" stroke-dasharray="3 3"/>
+        <line x1="405" y1="76" x2="480" y2="110" class="dg-arrow" stroke-dasharray="3 3"/>
+
+        <!-- backend -->
+        <rect class="dg-box live" x="330" y="118" width="260" height="70" rx="8"/>
+        <text class="dg-label" x="346" y="142">Cloud Run · mityahar&#8209;api</text>
+        <text class="dg-sub" x="346" y="158">asia-south1 · FastAPI/uvicorn</text>
+        <text class="dg-sub" x="346" y="172">public ingress · HTTPS</text>
+
+        <line x1="460" y1="188" x2="460" y2="218" class="dg-arrow"/>
+        <text class="dg-sub" x="466" y="208">Direct VPC Egress</text>
+
+        <!-- db + redis -->
+        <rect class="dg-box live" x="290" y="226" width="200" height="64" rx="8"/>
+        <text class="dg-label" x="306" y="250">Cloud SQL · mityahar-pg</text>
+        <text class="dg-sub" x="306" y="266">private IP · db-custom-4-15360</text>
+        <text class="dg-sub" x="306" y="280">pool 20/20, pre-ping</text>
+
+        <rect class="dg-box live" x="520" y="226" width="200" height="64" rx="8"/>
+        <text class="dg-label" x="536" y="250">Memorystore Redis</text>
+        <text class="dg-sub" x="536" y="266">Basic tier · AUTH on</text>
+        <text class="dg-sub" x="536" y="280" fill="var(--warn-fg)">transit encryption off</text>
+
+        <line x1="490" y1="258" x2="518" y2="258" class="dg-arrow"/>
+
+        <!-- scheduler -->
+        <rect class="dg-box live" x="330" y="320" width="260" height="66" rx="8"/>
+        <text class="dg-label" x="346" y="344">Cloud Scheduler — 3 jobs</text>
+        <text class="dg-sub" x="346" y="360">flag/deactivate patients · daily</text>
+        <text class="dg-sub" x="346" y="374">complete-expired-plans · Mondays</text>
+
+        <line x1="460" y1="320" x2="460" y2="290" class="dg-arrow"/>
+        <text class="dg-sub" x="466" y="308">X-Cron-Secret header</text>
+
+        <!-- external -->
+        <rect class="dg-box live" x="640" y="118" width="220" height="70" rx="8"/>
+        <text class="dg-label" x="656" y="142">Gemini API</text>
+        <text class="dg-sub" x="656" y="158">nutrition-lookup fallback</text>
+        <text class="dg-sub" x="656" y="172">4-key rotation</text>
+        <line x1="640" y1="150" x2="592" y2="150" class="dg-arrow"/>
+
+        <!-- legend -->
+        <rect x="40" y="400" width="12" height="12" rx="3" class="dg-box live"/>
+        <text class="dg-sub" x="58" y="410">deployed &amp; running</text>
+        <rect x="190" y="400" width="12" height="12" rx="3" class="dg-box dead"/>
+        <text class="dg-sub" x="208" y="410">configured, not deployed</text>
+      </svg>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="n">02</span>GCP deployment overview</h2>
+    <div class="table-wrap">
+      <table class="report">
+        <thead><tr><th>Service</th><th>Role</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Cloud Run — <span class="mono">mityahar-api</span></td><td>FastAPI backend, asia-south1, public ingress</td><td><span class="pill ok"><span class="dot"></span>Running</span></td></tr>
+          <tr><td>Cloud SQL — <span class="mono">mityahar-pg</span></td><td>Postgres, private IP, <span class="mono">db-custom-4-15360</span></td><td><span class="pill ok"><span class="dot"></span>Running, load-verified</span></td></tr>
+          <tr><td>Memorystore — <span class="mono">mityahar-redis</span></td><td>Rate-limit storage, AUTH on</td><td><span class="pill warn"><span class="dot"></span>Running, plaintext transit</span></td></tr>
+          <tr><td>Cloud Scheduler</td><td>3 HTTP cron jobs → <span class="mono">/internal/cron/*</span></td><td><span class="pill ok"><span class="dot"></span>Running</span></td></tr>
+          <tr><td>Secret Manager</td><td><span class="mono">SECRET_KEY, CRON_SECRET, GEMINI_API_KEY_1, DATABASE_URL, REDIS_URL</span></td><td><span class="pill ok"><span class="dot"></span>Configured</span></td></tr>
+          <tr><td>Cloud Build / CI deploy</td><td>Automated deploy pipeline</td><td><span class="pill bad"><span class="dot"></span>Not implemented — manual script only</span></td></tr>
+          <tr><td>Firebase Hosting</td><td>Web dashboard static hosting</td><td><span class="pill bad"><span class="dot"></span>Configured, never deployed</span></td></tr>
+          <tr><td>Horizontal autoscaling</td><td>Multi-instance Cloud Run under load</td><td><span class="pill bad"><span class="dot"></span>Never tested</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="n">03</span>Testing overview</h2>
+    <p class="lead">Evidence-based, not script-existence-based. Full detail and citations in the companion audit document.</p>
+    <div class="table-wrap">
+      <table class="report">
+        <thead><tr><th>Test</th><th>Status</th><th>Key result</th><th>Evidence</th></tr></thead>
+        <tbody>
+          <tr><td>Unit tests (CI)</td><td><span class="pill ok"><span class="dot"></span>Completed</span></td><td>3 of ~14 files wired into CI</td><td class="evidence">ci.yml</td></tr>
+          <tr><td>Full integration suite</td><td><span class="pill ok"><span class="dot"></span>Completed</span></td><td>94/94 steps, 10/10 error cases — off-CI</td><td class="evidence">BUILD_TRACKER.md</td></tr>
+          <tr><td>Load test, 100 users (local)</td><td><span class="pill ok"><span class="dot"></span>Completed</span></td><td>29.6 req/s, 0 errors; auth p99 = 5.8s</td><td class="evidence">pass5_stress_stats.csv</td></tr>
+          <tr><td>Load test, staging Cloud Run+SQL</td><td><span class="pill warn"><span class="dot"></span>Completed, stale</span></td><td>3 fails → 1 pass after tuning (0.0088% err)</td><td class="evidence">BUILD_TRACKER.md, 08-07</td></tr>
+          <tr><td>Horizontal autoscaling @ 1000 users</td><td><span class="pill bad"><span class="dot"></span>Not completed</span></td><td>Open, unchecked</td><td class="evidence">DEPLOY_CHECKLIST.md</td></tr>
+          <tr><td>Chaos (Redis kill / DB terminate)</td><td><span class="pill ok"><span class="dot"></span>Completed</span></td><td>~0% failure, fail-open confirmed</td><td class="evidence">chaos_report.json</td></tr>
+          <tr><td>Rate limiting, multi-IP</td><td><span class="pill warn"><span class="dot"></span>Local only</span></td><td>50 spoofed IPs, correct 401s; real GCLB unverified</td><td class="evidence">VERIFICATION_PLAYBOOK.md</td></tr>
+          <tr><td>E2E (Playwright)</td><td><span class="pill warn"><span class="dot"></span>Completed, failing</span></td><td>6 passed / 5 failed, untriaged</td><td class="evidence">playwright-compiled-report</td></tr>
+          <tr><td>Meal-plan medical-safety checks</td><td><span class="pill bad"><span class="dot"></span>Broken</span></td><td>"50/50 pass" — checks silently no-op (JSONB key bug)</td><td class="evidence">TEST_SUITE_AUDIT.md</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="n">04</span>Current problems</h2>
+    <div class="problem"><div class="row"><span class="title">Meal-plan quality checks silently no-op</span><span class="pill bad"><span class="dot"></span>Open</span></div><div class="desc">Checks query JSONB keys the generator never writes (<span class="mono">food_item_id</span>/<span class="mono">name</span> vs. actual <span class="mono">food_id</span>/<span class="mono">recipe_name</span>) — the reported "50/50 pass" proves nothing about medical safety.</div></div>
+    <div class="problem"><div class="row"><span class="title">Load-test evidence is 6+ weeks stale</span><span class="pill warn"><span class="dot"></span>Open</span></div><div class="desc">Last full run: 2026-08-07. Several features have merged since (pantry planning, dish-tag locking, a new data-change-request model) with no re-test.</div></div>
+    <div class="problem"><div class="row"><span class="title">Known DB query hotspot unaddressed</span><span class="pill warn"><span class="dot"></span>Open</span></div><div class="desc"><span class="mono">/meal-plan/week</span>'s <span class="mono">selectinload</span> pattern was ~77% of top-5 query time in the Aug 7 test — still unfixed as of the last session note (2026-09-11).</div></div>
+    <div class="problem"><div class="row"><span class="title">MFA QR fix — deploy status unknown</span><span class="pill pending"><span class="dot"></span>Unverified</span></div><div class="desc">TOTP secret was leaking to a third-party QR API; a client-side fix is noted in session logs, but whether it's committed and live is unconfirmed.</div></div>
+    <div class="problem"><div class="row"><span class="title">Cloud Scheduler fired on the wrong day</span><span class="pill ok"><span class="dot"></span>Fixed &amp; verified</span></div><div class="desc"><span class="mono">complete-expired-plans</span> ran Sundays instead of Mondays against Monday-based week math. Fixed 2026-08-06.</div></div>
+  </section>
+
+  <section class="block">
+    <h2><span class="n">05</span>Done vs. missing</h2>
+    <div class="cols">
+      <div class="card done">
+        <h3>What's actually done</h3>
+        <ul>
+          <li>Backend live on Cloud Run staging, real URL, HTTPS</li>
+          <li>Cloud SQL + Memorystore provisioned, private-IP, VPC egress</li>
+          <li>Cloud Scheduler cron replacing in-process APScheduler</li>
+          <li>JWT + cookie auth, Google OAuth, TOTP MFA — all real</li>
+          <li>One successful tuned load test against live infra (Aug 7)</li>
+          <li>Chaos testing confirms fail-open Redis + DB pool recovery</li>
+          <li>CI running lint + unit tests on every push</li>
+        </ul>
+      </div>
+      <div class="card missing">
+        <h3>What's missing</h3>
+        <ul>
+          <li>Web dashboard never deployed to its own Firebase project</li>
+          <li>Patient app never built — EAS URLs are still placeholders</li>
+          <li>No CI/CD deploy automation — manual script only</li>
+          <li>Horizontal autoscaling never tested</li>
+          <li>No automated, tested Cloud SQL backup/restore</li>
+          <li>Redis transit encryption disabled — self-flagged, unreviewed</li>
+          <li>No monitoring/alerting pipeline in the repo</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2><span class="n">06</span>Recommended next steps</h2>
+    <ol class="steps">
+      <li>Reconfirm CI is green and the Cloud Run config still matches the Aug 7 passing setup before trusting existing test evidence.</li>
+      <li>Fix the broken meal-plan medical-safety check (JSONB key mismatch) — currently masking whether that logic works at all.</li>
+      <li>Deploy the web dashboard to the already-configured Firebase Hosting project and smoke-test against staging.</li>
+      <li>Re-run the full load / chaos / E2E suite against current <span class="mono">main</span>.</li>
+      <li>Fix the <span class="mono">/meal-plan/week</span> query hotspot identified in the last load test.</li>
+      <li>Fill in real EAS URLs and ship an internal-distribution build of the patient app.</li>
+      <li>Only then: formal production-readiness review — monitoring, backups, cost controls, Redis transit encryption.</li>
+    </ol>
+  </section>
+
+  <footer class="foot">
+    <span>Full evidence, citations, and file:line references in the companion detailed audit document.</span>
+    <span>Read-only audit — no infrastructure was modified.</span>
+  </footer>
+
+</div>

@@ -135,7 +135,7 @@ async def main() -> None:
             print(f"  Matched and saved: {matched}/{len(batch)}")
 
             # Brief pause to avoid GPU thermal throttle
-            time.sleep(0.5)
+            time.sleep(0.5)  # noqa: ASYNC251 -- deliberate pacing, one-shot script
 
         print(f"\nDone. Total saved: {done}/{total}")
         if failed_names:

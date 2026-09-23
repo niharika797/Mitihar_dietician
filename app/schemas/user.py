@@ -24,44 +24,6 @@ class HealthCondition(str, Enum):
     GYM = "Gym-Friendly"
 
 
-class UserBase(BaseModel):
-    email: EmailStr
-    name: str = Field(..., min_length=1, max_length=100)
-    age: Optional[int] = Field(None, gt=0, le=120)
-    gender: str = Field(..., max_length=20)
-    height: float = Field(..., gt=0, le=300)
-    weight: float = Field(..., gt=0, le=500)
-    activity_level: ActivityLevel
-    diet: DietType
-    health_condition: HealthCondition
-    diabetes_status: Optional[str] = Field(default=None, max_length=50)
-    gym_goal: Optional[str] = Field(default=None, max_length=50)
-    region: Optional[str] = Field(default=None, max_length=100)
-
-    @field_validator("name", "gender", "region", mode="before")
-    @classmethod
-    def strip_text_fields(cls, v):
-        if isinstance(v, str):
-            return v.strip()
-        return v
-
-    @field_validator("diabetes_status", mode="before")
-    @classmethod
-    def check_diabetes_status(cls, v, info):
-        if info.data.get("health_condition") == HealthCondition.DIABETIC:
-            if v not in ["controlled", "uncontrolled"]:
-                raise ValueError("If diabetic, diabetes_status must be 'controlled' or 'uncontrolled'")
-        return v
-
-    @field_validator("gym_goal", mode="before")
-    @classmethod
-    def check_gym_goal(cls, v, info):
-        if info.data.get("health_condition") == HealthCondition.GYM:
-            if v not in ["weight_loss", "muscle_gain", "maintenance"]:
-                raise ValueError("If gym-friendly, gym_goal must be 'weight_loss', 'muscle_gain', or 'maintenance'")
-        return v
-
-
 class UserCreate(BaseModel):
     """
     Registration schema — only email/name/password are required.
