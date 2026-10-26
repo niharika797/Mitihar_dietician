@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from fastapi import HTTPException
 from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -198,6 +199,28 @@ async def log_weight(session: AsyncSession, patient_id: int, weight: float) -> N
     row = await _get_or_create_progress(session, patient_id, date.today())
     row.weight_kg = Decimal(str(weight))
     await session.flush()
+
+
+WEIGHT_UPDATE_GAP_DAYS = 28  # ~4 weeks: a real change must clear day-to-day scale noise (1-2 kg)
+
+
+async def check_weight_update_allowed(session: AsyncSession, patient: Patient) -> None:
+    """409 unless the last weight entry (log or profile edit; signup if none) is 28+ days old.
+
+    A second entry on the same day as the last one is allowed, so typos can be corrected.
+    """
+    last = await session.scalar(
+        select(sa_func.max(ProgressLog.log_date)).where(
+            ProgressLog.patient_id == patient.id, ProgressLog.weight_kg.isnot(None)
+        )
+    ) or (patient.created_at.date() if patient.created_at else None)
+    today = date.today()
+    if last and last != today and (today - last).days < WEIGHT_UPDATE_GAP_DAYS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Weight can be updated once every {WEIGHT_UPDATE_GAP_DAYS} days. "
+                   f"Next update: {last + timedelta(days=WEIGHT_UPDATE_GAP_DAYS)}.",
+        )
 
 
 async def log_activity(session: AsyncSession, patient_id: int, data: dict) -> None:

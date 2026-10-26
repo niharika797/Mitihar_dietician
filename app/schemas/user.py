@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, EmailStr, field_validator, ConfigDict, Field
 from typing import Optional
 from enum import Enum
 from datetime import date
@@ -77,7 +77,8 @@ class UserUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     age: Optional[int] = Field(None, gt=0, le=120)
     height: Optional[float] = Field(None, gt=0, le=300)
-    weight: Optional[float] = Field(None, gt=0, le=500)
+    # the patient app sends weight_kg (as in PatientProfile); without the alias it was silently dropped
+    weight: Optional[float] = Field(None, gt=0, le=500, validation_alias=AliasChoices("weight", "weight_kg"))
     activity_level: Optional[ActivityLevel] = None
     diet: Optional[DietType] = None
     health_condition: Optional[HealthCondition] = None

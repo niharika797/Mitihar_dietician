@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..services.user_service import get_current_user, update_patient, get_patient_by_id
+from ..services.progress_service import check_weight_update_allowed, log_weight
 from ..models.db_models import Patient
 from ..schemas.user import UserUpdate
 from ..schemas.patients import PatientProfileResponse
@@ -52,6 +53,15 @@ async def update_user_profile(
     }
     mapped = {field_map.get(k, k): v for k, v in data.items()}
 
+    # A changed weight follows the same once-per-28-days rule as the weight log and is recorded in it.
+    weight_changed = (
+        mapped.get("weight_kg") is not None
+        and float(mapped["weight_kg"]) != float(current_user.weight_kg or 0)
+    )
+    if weight_changed:
+        await check_weight_update_allowed(session, current_user)
+        await log_weight(session, current_user.id, float(mapped["weight_kg"]))
+
     success = await update_patient(session, current_user.id, mapped)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to update profile")
@@ -62,7 +72,7 @@ async def update_user_profile(
 
     # Auto-recalculate BMI/BMR/TDEE if any body metric changed
     recalc_triggers = {"height_cm", "weight_kg", "activity_level"}
-    diet_triggers = {"height_cm", "weight_kg", "activity_level", "diet_type", "health_condition", "region", "target_weight_kg"}
+    diet_triggers = {"height_cm", "activity_level", "diet_type", "health_condition", "region", "target_weight_kg"}
     
     if recalc_triggers.intersection(mapped.keys()):
         if updated.date_of_birth:

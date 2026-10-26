@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -13,7 +12,7 @@ from ..services.progress_service import (
     calculate_and_store_calorie_adjustment,
     update_meal_log, delete_meal_log,
     get_weight_history, get_weekly_report, calculate_and_store_streak,
-    calculate_adherence,
+    calculate_adherence, check_weight_update_allowed,
 )
 from ..schemas.progress import (
     MealLogCreate, WaterLogCreate, StepsLogCreate,
@@ -25,10 +24,6 @@ from ..models.db_models import Patient
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Background diet-plan-regen tasks keep a strong reference here so the event
-# loop can't GC them mid-run (asyncio only holds a weak reference otherwise).
-_background_tasks: set = set()
 
 
 @router.post("/log/meal")
@@ -84,21 +79,6 @@ async def post_log_steps(
     return {"message": "Steps logged successfully"}
 
 
-async def _regen_diet_plan_background(user_data: dict) -> None:
-    """Regenerate diet plan after weight update. Opens its own DB session; never blocks the request."""
-    from ..core.database import AsyncSessionLocal
-    from ..services.diet_plan_service import DietPlanService
-    async with AsyncSessionLocal() as session:
-        try:
-            diet_service = DietPlanService()
-            new_plan = await diet_service.generate_diet_plan(user_data, session)
-            await diet_service.store_diet_plan(new_plan, session=session)
-            await session.commit()
-            logger.info("Auto-regenerated diet plan upon weight update for patient %s", user_data.get("id"))
-        except Exception:
-            logger.exception("Failed to auto-generate diet plan for patient %s", user_data.get("id"))
-
-
 async def _handle_weight_change(session: AsyncSession, current_user: Patient, new_weight: float):
     from sqlalchemy import update as sa_update
     from ..models.db_models import Patient as PatientModel
@@ -130,23 +110,7 @@ async def _handle_weight_change(session: AsyncSession, current_user: Patient, ne
         )
     )
     await session.flush()
-
-    user_data = {
-        "id": current_user.id,
-        "age": age,
-        "gender": current_user.gender,
-        "weight": float(new_weight),
-        "height": height,
-        "diet": current_user.diet_type or "Anything",
-        "health_state": current_user.health_condition or "Healthy",
-        "region": current_user.region or "none",
-        "target_weight": float(tw) if (tw := current_user.target_weight_kg) else None,
-        "activity_level": activity,
-        "tdee": round(new_tdee, 2),
-    }
-    task = asyncio.create_task(_regen_diet_plan_background(user_data))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    # The approved plan is kept: only the targets (BMI/BMR/TDEE) follow the new weight.
 
 
 @router.post("/log/weight")
@@ -157,7 +121,8 @@ async def post_log_weight(
     current_user: Patient = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Log current weight."""
+    """Log current weight (once per 28 days; same-day corrections allowed)."""
+    await check_weight_update_allowed(session, current_user)
     await log_weight(session, current_user.id, weight.weight)
     await _handle_weight_change(session, current_user, weight.weight)
     return {"message": "Weight logged successfully"}
@@ -317,7 +282,8 @@ async def update_weight_log(
     current_user: Patient = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    """Overwrite today's logged weight."""
+    """Overwrite today's logged weight (once per 28 days; same-day corrections allowed)."""
+    await check_weight_update_allowed(session, current_user)
     from ..services.progress_service import _get_or_create_progress
     from datetime import date as _date
     from decimal import Decimal

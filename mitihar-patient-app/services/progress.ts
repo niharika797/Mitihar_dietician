@@ -50,7 +50,7 @@ export async function logSteps(steps: number) {
 
 // ── PUT /progress/log/weight ──────────────────────────────────────────────
 export async function logWeight(weight_kg: number) {
-  const { data } = await api.put("/progress/log/weight", { weight_kg });
+  const { data } = await api.put("/progress/log/weight", { weight: weight_kg });
   return data;
 }
 
