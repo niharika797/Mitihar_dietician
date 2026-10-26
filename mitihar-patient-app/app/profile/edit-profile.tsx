@@ -9,6 +9,7 @@ import { updateProfile } from "../../services/profile";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useToast } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
+import { getApiError } from "../../lib/getApiError";
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -41,7 +42,7 @@ export default function EditProfileScreen() {
       showToast("Profile updated! ✅", "success");
       router.back();
     },
-    onError: () => showToast("Failed to save changes", "error"),
+    onError: (err) => showToast(getApiError(err, "Failed to save changes"), "error"),
   });
 
   return (

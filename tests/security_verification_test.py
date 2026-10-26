@@ -517,7 +517,7 @@ def test_progress_validation():
 
     r = httpx.post(f"{BASE}/progress/log/weight", headers=hdr(tok),
                    json={"weight": 57.8})
-    check("T4-4: weight=57.8 (valid) returns 200", r.status_code == 200, r.text)
+    check("T4-4: weight=57.8 (valid) returns 200 (or 409 inside the 28-day window)", r.status_code in (200, 409), r.text)
 
     # Progress reads
     r = httpx.get(f"{BASE}/progress/today", headers=hdr(tok))

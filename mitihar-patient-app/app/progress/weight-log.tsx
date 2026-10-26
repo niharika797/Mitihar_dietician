@@ -10,6 +10,7 @@ import { getWeightHistory, logWeight } from "../../services/progress";
 import { useProgressStore } from "../../store/useProgressStore";
 import { useToast } from "../../components/shared";
 import { QUERY_KEYS } from "../../lib/queryKeys";
+import { getApiError } from "../../lib/getApiError";
 import type { WeightEntry } from "../../types";
 
 export default function WeightLogScreen() {
@@ -36,7 +37,7 @@ export default function WeightLogScreen() {
       setInput("");
       setShowModal(false);
     },
-    onError: () => showToast("Failed to log weight", "error"),
+    onError: (err) => showToast(getApiError(err, "Failed to log weight"), "error"),
   });
 
   const canLog = !!input && parseFloat(input) > 20 && parseFloat(input) < 300;

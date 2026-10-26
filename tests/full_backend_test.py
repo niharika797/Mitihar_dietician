@@ -308,7 +308,8 @@ r = httpx.post(f"{BASE}/progress/log/steps", headers=hdr(patient_token), json={"
 check("POST /progress/log/steps returns 200", r.status_code == 200, r.text)
 
 r = httpx.post(f"{BASE}/progress/log/weight", headers=hdr(patient_token), json={"weight": 57.8}, timeout=10)
-check("POST /progress/log/weight returns 200", r.status_code == 200, r.text)
+# 409 = the reused test patient already logged weight within the 28-day window
+check("POST /progress/log/weight returns 200 (or 409 inside the 28-day window)", r.status_code in (200, 409), r.text)
 
 r = httpx.get(f"{BASE}/progress/today", headers=hdr(patient_token))
 check("GET /progress/today returns 200", r.status_code == 200, r.text)

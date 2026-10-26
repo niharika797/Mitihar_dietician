@@ -14,6 +14,7 @@ import { useAuthStore } from "../../store/useAuthStore";
 import { useProgressStore } from "../../store/useProgressStore";
 import { BottomSheet, useToast, ScreenHeader, ErrorState, Card, Button, AnimatedPressable } from "../../components/shared";
 import { colors, spacing, iconSize, typography } from "../../constants/theme";
+import { getApiError } from "../../lib/getApiError";
 import type { WeightEntry } from "../../types";
 import { CopilotStep, walkthroughable } from "react-native-copilot";
 
@@ -86,7 +87,7 @@ export default function ProgressScreen() {
       setWeightSheet(false);
       showToast("Weight logged! ⚖️", "success");
     },
-    onError: () => showToast("Failed to log weight", "error"),
+    onError: (err) => showToast(getApiError(err, "Failed to log weight"), "error"),
   });
 
   const STREAK_DOTS = [true, true, true, true, false, true, true];
