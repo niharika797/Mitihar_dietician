@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Dict
 from ..services.diet_plan_service import DietPlanService
 from ..services.user_service import get_current_user
-from ..models.db_models import Patient
+from ..models.db_models import Patient, Recommendation
 from ..schemas.diet_plan import DietPlanResponse as DietPlan
 from ..core.exceptions import DietPlanNotFoundException
 from ..services.meal_generator.meal_generator import meal_generator  # Use singleton
 from datetime import datetime
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.database import get_db
 
@@ -167,6 +168,19 @@ async def generate_diet_plan(
     generator returns a structurally invalid plan. Returns HTTP 503 if
     all attempts fail — never HTTP 500.
     """
+    # Serialise calls for this patient until commit, then reuse the active plan while
+    # today is within its 7-day window (design: docs/designs/idempotent-generate.md).
+    await session.execute(select(func.pg_advisory_xact_lock(current_user.id)))
+    week_start = await session.scalar(
+        select(Recommendation.week_start_date)
+        .where(Recommendation.patient_id == current_user.id, Recommendation.is_active.is_(True))
+        .order_by(Recommendation.created_at.desc())
+        .limit(1)
+    )
+    if week_start is not None and 0 <= (date.today() - week_start).days <= 6:
+        logger.info(f"Reused active plan for patient {current_user.id}")
+        return await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
+
     # Block if user already has an active plan
     existing_plan = await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
     if existing_plan:

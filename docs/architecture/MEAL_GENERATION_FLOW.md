@@ -79,7 +79,8 @@ on the `patients` row, then persists all inputs:
 ### 1.2 Entry points that build `user_data`
 
 The primary patient-facing entry point is `POST /api/v1/diet-plans/generate`
-(`app/routers/diet_plans.py:156-203`). It reads the stored `Patient` row and builds the
+(`app/routers/diet_plans.py:156-203`). A plan is reused while today is within 6 days of
+its `week_start_date`; otherwise a new plan is generated. It reads the stored `Patient` row and builds the
 `user_data` dict the generator expects:
 
 ```python
