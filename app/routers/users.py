@@ -72,7 +72,9 @@ async def update_user_profile(
 
     # Auto-recalculate BMI/BMR/TDEE if any body metric changed
     recalc_triggers = {"height_cm", "weight_kg", "activity_level"}
-    diet_triggers = {"height_cm", "activity_level", "diet_type", "health_condition", "region", "target_weight_kg"}
+    # Height/activity only shift TDEE (recalculated above); like a weight change they keep the approved plan.
+    # Only changes to which foods are allowed regenerate it.
+    diet_triggers = {"diet_type", "health_condition", "region"}
     
     if recalc_triggers.intersection(mapped.keys()):
         if updated.date_of_birth:
