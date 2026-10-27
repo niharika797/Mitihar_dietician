@@ -361,20 +361,14 @@ async def get_shopping_list(
                WeeklyCombo.slot_date >= today)
     )).all()
 
-    required: dict[int, float] = {}
-
-    async def _add(food_ids: list[int], factor: float) -> None:
-        for iid, grams in (await _dish_ingredient_grams(session, food_ids, factor)).items():
-            required[iid] = required.get(iid, 0.0) + grams
-
+    slots: list[tuple[list[int], float]] = []
     for slot_date, meal_type, dishes in combo_rows:
         key = (slot_date, meal_type)
         if key in chosen:
             continue   # the confirmed choice wins; added below
-        ids = [fid for d in (dishes or []) if (fid := (d.get("food_id") or d.get("food_item_id")))]
-        await _add(ids, 1.0)
-    for entry in chosen.values():
-        await _add(entry["ids"], entry["factor"])
+        slots.append(([fid for d in (dishes or []) if (fid := (d.get("food_id") or d.get("food_item_id")))], 1.0))
+    slots.extend((entry["ids"], entry["factor"]) for entry in chosen.values())
+    required = await _slots_ingredient_grams(session, slots)
 
     if not required:
         return {"total_items": 0, "grouped": {}}
@@ -566,6 +560,29 @@ async def _dish_ingredient_grams(
         if is_staple(name):
             continue
         out[iid] = out.get(iid, 0.0) + float(grams or 0) * scale
+    return out
+
+
+async def _slots_ingredient_grams(
+    session: AsyncSession, slots: list[tuple[list[int], float]],
+) -> dict[int, float]:
+    """_dish_ingredient_grams summed over many (food_item_ids, scale) slots with one query."""
+    all_ids = {fid for ids, _ in slots for fid in ids}
+    if not all_ids:
+        return {}
+    per_food: dict[int, list[tuple[int, float]]] = {}
+    for fid, iid, name, grams in await session.execute(
+        select(RecipeIngredient.food_item_id, RecipeIngredient.ingredient_id, Ingredient.name, RecipeIngredient.quantity_g)
+        .join(Ingredient, Ingredient.id == RecipeIngredient.ingredient_id)
+        .where(RecipeIngredient.food_item_id.in_(all_ids))
+    ):
+        if not is_staple(name):
+            per_food.setdefault(fid, []).append((iid, float(grams or 0)))
+    out: dict[int, float] = {}
+    for ids, scale in slots:
+        for fid in set(ids):
+            for iid, grams in per_food.get(fid, ()):
+                out[iid] = out.get(iid, 0.0) + grams * scale
     return out
 
 

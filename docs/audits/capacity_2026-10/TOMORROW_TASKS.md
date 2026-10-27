@@ -18,7 +18,7 @@ Working branch: `feature/api-remediation-v0.2` (d5dcf5e). `main` and the 3 workt
 
 ## 3. Fixes, in priority order
 1. [x] Profile edit: height and activity no longer regenerate the plan (done 2026-10-28, uncommitted in `app/routers/users.py`). Diet type, health condition and region still regenerate inline on purpose. Target weight is not in the profile update schema at all (see item 9).
-2. [ ] N+1 queries: weekly-summary (79 queries), shopping-list (28), streak.
+2. [x] N+1 queries fixed 2026-10-28: weekly-summary 92 -> 7 queries, shopping-list 23 -> 6, streak up to 15 -> 2. Output identical to the old code on the rig DB.
 3. [ ] Weekly cron `complete-expired-plans` takes ~58 s.
 4. [ ] `weekly_combos` growth and retention.
 5. [ ] `/meal-plan/adjust` times out at 10 s. Cause not traced.

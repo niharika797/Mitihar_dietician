@@ -535,16 +535,14 @@ async def calculate_and_store_streak(
     check_date = today
     MAX_STREAK_DAYS = 365
 
-    while streak < MAX_STREAK_DAYS:
-        result = await session.execute(
-            select(sa_func.count(MealLog.id)).where(
-                MealLog.patient_id == patient_id,
-                MealLog.logged_date == check_date,
-            )
-        )
-        count = result.scalar()
-        if count == 0:
-            break
+    logged_days = set((await session.execute(
+        select(MealLog.logged_date).where(
+            MealLog.patient_id == patient_id,
+            MealLog.logged_date > today - timedelta(days=MAX_STREAK_DAYS),
+            MealLog.logged_date <= today,
+        ).distinct()
+    )).scalars())
+    while streak < MAX_STREAK_DAYS and check_date in logged_days:
         streak += 1
         check_date = check_date - timedelta(days=1)
 

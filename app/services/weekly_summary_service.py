@@ -229,45 +229,45 @@ async def _compute(db: AsyncSession, patient_id: int, week_start: "date | None")
                 """),
                 {"rec_id": recommendation_id},
             )
-            for row in offered_result.all():
-                fid = row.food_item_id
-                if fid is None:
-                    continue
+            offered = [(r.food_item_id, int(r.times_offered)) for r in offered_result.all() if r.food_item_id is not None]
+            missing = [fid for fid, _ in offered if fid not in dish_freq]
+            names = {}
+            if missing:
+                names = dict((await db.execute(
+                    select(FoodItem.id, FoodItem.recipe_name).where(FoodItem.id.in_(missing))
+                )).all())
+            for fid, times_offered in offered:
                 if fid not in dish_freq:
-                    fi_result = await db.execute(
-                        select(FoodItem.recipe_name).where(FoodItem.id == fid)
-                    )
-                    name = fi_result.scalar_one_or_none() or f"dish_{fid}"
                     dish_freq[fid] = {
                         "food_item_id": fid,
-                        "recipe_name": name,
+                        "recipe_name": names.get(fid) or f"dish_{fid}",
                         "times_selected": 0,
-                        "times_offered": int(row.times_offered),
+                        "times_offered": times_offered,
                         "bowl_sizes": [],
                     }
                 else:
-                    dish_freq[fid]["times_offered"] = int(row.times_offered)
+                    dish_freq[fid]["times_offered"] = times_offered
         except Exception as exc:
             _log.warning("compute_weekly_summary: times_offered query failed: %s", exc)
 
     # 6c. bowl_sizes per dish from confirmed combos
-    for c in choices:
-        combo_id = getattr(c, "weekly_combo_id", None)
-        if not combo_id:
-            continue
+    combo_ids = {getattr(c, "weekly_combo_id", None) for c in choices} - {None}
+    if combo_ids:
         try:
-            combo_result = await db.execute(
-                select(WeeklyCombo.dishes).where(WeeklyCombo.id == combo_id)
-            )
-            combo_dishes = combo_result.scalar_one_or_none() or []
-            bowl = getattr(c, "bowl_size", None)
-            if bowl:
-                for dish in combo_dishes:
+            combo_dishes_by_id = dict((await db.execute(
+                select(WeeklyCombo.id, WeeklyCombo.dishes).where(WeeklyCombo.id.in_(combo_ids))
+            )).all())
+            for c in choices:
+                bowl = getattr(c, "bowl_size", None)
+                combo_id = getattr(c, "weekly_combo_id", None)
+                if not (combo_id and bowl):
+                    continue
+                for dish in combo_dishes_by_id.get(combo_id) or []:
                     fid = dish.get("food_id")
                     if fid and fid in dish_freq:
                         dish_freq[fid]["bowl_sizes"].append(bowl)
         except Exception as exc:
-            _log.warning("compute_weekly_summary: bowl_sizes query failed combo_id=%s: %s", combo_id, exc)
+            _log.warning("compute_weekly_summary: bowl_sizes query failed: %s", exc)
 
     dish_frequency = sorted(
         dish_freq.values(),
