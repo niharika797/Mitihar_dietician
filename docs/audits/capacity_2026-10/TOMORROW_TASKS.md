@@ -25,7 +25,7 @@ Working branch: `feature/api-remediation-v0.2` (d5dcf5e). `main` and the 3 workt
 6. [ ] DB pool: code default is 20+20; the 5+5 was the rig's assumed setting (env DB_POOL_SIZE/DB_MAX_OVERFLOW). Needs the real staging value before any change.
 7. [x] Gemini: both doctor endpoints already had timeouts (20 s, 15 s). Fixed a timeout on /doctor/recipes/lookup returning 500 instead of 502. No Gemini calls exist outside doctor.py.
 8. [ ] 19 endpoints never timed.
-9. [ ] Profile screen sends `target_weight_kg` and `phone`, which the backend ignores.
+9. [x] Profile update now saves `target_weight_kg` and `phone` (validated; phone also returned by GET /users/me). Verified by replaying the app request.
 
 ## 4. Testing gaps
 - [ ] Expo web app freezes on the first real click (cause unknown). The backend `/docs` page takes clicks fine.

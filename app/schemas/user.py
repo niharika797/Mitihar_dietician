@@ -85,8 +85,11 @@ class UserUpdate(BaseModel):
     diabetes_status: Optional[str] = Field(default=None, max_length=50)
     gym_goal: Optional[str] = Field(default=None, max_length=50)
     region: Optional[str] = Field(default=None, max_length=100)
+    # the patient app's Edit Profile screen sends both; without them they were silently dropped
+    target_weight_kg: Optional[float] = Field(None, gt=0, le=500)
+    phone: Optional[str] = Field(default=None, max_length=20, pattern=r"^\+?[\d\s\-\(\)]{7,20}$")
 
-    @field_validator("name", "diabetes_status", "gym_goal", "region", mode="before")
+    @field_validator("name", "diabetes_status", "gym_goal", "region", "phone", mode="before")
     @classmethod
     def strip_text_fields(cls, v):
         if isinstance(v, str):

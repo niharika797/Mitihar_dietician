@@ -91,6 +91,7 @@ class PatientProfileResponse(BaseModel):
     food_allergies: list
     dietary_preferences: list
     target_weight_kg: Optional[float]
+    phone: Optional[str] = None
     meals_per_day: int
     sleep_hours: Optional[float]
     water_glasses: int
