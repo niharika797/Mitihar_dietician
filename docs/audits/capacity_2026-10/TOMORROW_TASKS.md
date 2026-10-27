@@ -19,11 +19,11 @@ Working branch: `feature/api-remediation-v0.2` (d5dcf5e). `main` and the 3 workt
 ## 3. Fixes, in priority order
 1. [x] Profile edit: height and activity no longer regenerate the plan (done 2026-10-28, uncommitted in `app/routers/users.py`). Diet type, health condition and region still regenerate inline on purpose. Target weight is not in the profile update schema at all (see item 9).
 2. [x] N+1 queries fixed 2026-10-28: weekly-summary 92 -> 7 queries, shopping-list 23 -> 6, streak up to 15 -> 2. Output identical to the old code on the rig DB.
-3. [ ] Weekly cron `complete-expired-plans` takes ~58 s.
+3. [x] Weekly cron `complete-expired-plans`: ~58 s -> 7.8-8.4 s for 1,000 patients (0 failed) on the rig, just from the N+1 fix. Still blocks the single event loop for ~8 s while it runs.
 4. [ ] `weekly_combos` growth and retention.
-5. [ ] `/meal-plan/adjust` times out at 10 s. Cause not traced.
-6. [ ] DB pool of 5+5 saturates under load.
-7. [ ] Gemini endpoints have no timeout.
+5. [x] `/meal-plan/adjust`: not a hang. It runs a full plan generation inline: 12.8 s cold, 5.9 s warm on the dev machine. The old "timeout" was the test client's 10 s limit; the app's own limit is 30 s. Moving generation off the request is a bigger change, left for a decision.
+6. [ ] DB pool: code default is 20+20; the 5+5 was the rig's assumed setting (env DB_POOL_SIZE/DB_MAX_OVERFLOW). Needs the real staging value before any change.
+7. [x] Gemini: both doctor endpoints already had timeouts (20 s, 15 s). Fixed a timeout on /doctor/recipes/lookup returning 500 instead of 502. No Gemini calls exist outside doctor.py.
 8. [ ] 19 endpoints never timed.
 9. [ ] Profile screen sends `target_weight_kg` and `phone`, which the backend ignores.
 

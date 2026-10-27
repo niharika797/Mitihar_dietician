@@ -2759,7 +2759,10 @@ async def gemini_recipe_lookup(
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
     async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(url, json=payload)
+        try:
+            resp = await client.post(url, json=payload)
+        except httpx.RequestError:
+            raise HTTPException(status_code=502, detail="Could not reach Gemini API")
 
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Gemini API error — try again")
