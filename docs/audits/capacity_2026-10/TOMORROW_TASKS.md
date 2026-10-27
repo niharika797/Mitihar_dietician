@@ -34,6 +34,7 @@ Working branch: `feature/api-remediation-v0.2` (d5dcf5e). `main` and the 3 workt
 
 ## 4b. Must do before the project is complete (needs GCP / Google Cloud console, not available now)
 - [ ] Google sign-in on a real Android build. `lib/useGoogleSignIn.ts` uses one web-type client ID (`EXPO_PUBLIC_GOOGLE_CLIENT_ID`) with a `mitihar://` redirect. Google usually rejects custom-scheme redirects for web clients, so it will probably fail in a Play Store build. Fix: create an Android OAuth client (package `com.mitihar.patient` + SHA-1 of the Play signing key) or switch to Google's native sign-in library; keep the server's `/auth/google/verify` audience in step. Not tested; code-read only (2026-10-28).
+- [ ] Before the first real deployment: turn off `/docs`, `/redoc` and `/openapi.json` outside development (`app/main.py`: `docs_url=None, redoc_url=None, openapi_url=None` unless `ENVIRONMENT == "development"`). Left on for now by choice (2026-10-28).
 - [ ] Refresh tokens are not revoked after use: `/auth/refresh` issues new tokens but the old one stays valid until it expires (7 days). Needs a token store (Redis or DB) if we want single-use rotation.
 - [ ] Create the Monday `prune-old-combos` Cloud Scheduler job (script is updated, job not created).
 - [ ] Find the real staging DB pool values (item 3.6).

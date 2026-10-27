@@ -1,2 +1,6 @@
 allowBuilds:
   '@sentry/cli': true
+overrides:
+  # build-tool-only advisories (Expo CLI / RN devtools); keep within the major line each tool expects
+  shell-quote: '>=1.8.4'
+  '@xmldom/xmldom': '^0.8.15'
