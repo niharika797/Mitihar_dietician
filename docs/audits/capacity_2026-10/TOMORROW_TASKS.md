@@ -24,7 +24,7 @@ Working branch: `feature/api-remediation-v0.2` (d5dcf5e). `main` and the 3 workt
 5. [x] `/meal-plan/adjust`: not a hang. It runs a full plan generation inline: 12.8 s cold, 5.9 s warm on the dev machine. The old "timeout" was the test client's 10 s limit; the app's own limit is 30 s. Moving generation off the request is a bigger change, left for a decision.
 6. [ ] DB pool: code default is 20+20; the 5+5 was the rig's assumed setting (env DB_POOL_SIZE/DB_MAX_OVERFLOW). Needs the real staging value before any change.
 7. [x] Gemini: both doctor endpoints already had timeouts (20 s, 15 s). Fixed a timeout on /doctor/recipes/lookup returning 500 instead of 502. No Gemini calls exist outside doctor.py.
-8. [ ] 19 endpoints never timed.
+8. [x] 19 endpoints never timed: 3 now timed in the full retest (2026-10-28, `RETEST_2026-10-28.md`); the other 16 need email, Google or Firebase, or would break test data, so they stay untimed.
 9. [x] Profile update now saves `target_weight_kg` and `phone` (validated; phone also returned by GET /users/me). Verified by replaying the app request.
 
 ## 4. Testing gaps
