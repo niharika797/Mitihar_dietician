@@ -1647,7 +1647,7 @@ async def browse_recipes(
     request: Request,
     diet_type: Optional[str] = Query(default=None),
     meal_time: Optional[str] = Query(default=None),
-    search: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None, max_length=100),
     is_verified: Optional[bool] = Query(default=None, description="Filter by verification status"),
     my_library: bool = Query(default=False, description="True = show only this doctor's personal library items"),
     page: int = Query(default=1, ge=1),

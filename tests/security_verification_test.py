@@ -695,12 +695,11 @@ def test_doctor_recipes_and_idor():
     r = httpx.get(f"{BASE}/doctor/recipes", headers=hdr(tok2))
     check("GET /doctor/recipes (global) returns 200", r.status_code == 200, r.text)
 
-    # T4-14: /doctor/recipes search has no max_length (unlike /doctor/patients and /admin/patients);
-    # a 101-char search is accepted and just matches nothing.
+    # T4-14: search param max_length
     r = httpx.get(f"{BASE}/doctor/recipes",
                   headers=hdr(tok2), params={"search": "x" * 101})
-    check("T4-14: /doctor/recipes search > 100 chars returns 200 with no matches",
-          r.status_code == 200 and not r.json(), r.text)
+    check("T4-14: /doctor/recipes search > 100 chars rejected (422)",
+          r.status_code == 422, r.text)
 
     # T4-10: RecipeCreateRequest validation — bad slot_type
     r = httpx.post(f"{BASE}/doctor/recipes", headers=hdr(tok2), json={

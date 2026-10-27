@@ -132,6 +132,8 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               secureTextEntry={!showPw}
               autoCapitalize="none"
+              returnKeyType="go"
+              onSubmitEditing={() => { if (canSubmit && !loginMut.isPending) loginMut.mutate(); }}
             />
             <Pressable onPress={() => setShowPw(v => !v)} style={s.eyeBtn} hitSlop={8}>
               {showPw
