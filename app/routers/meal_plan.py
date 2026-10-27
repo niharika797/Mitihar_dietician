@@ -213,7 +213,7 @@ async def get_week_plan(
     # "Your usual": options containing an ingredient the patient has kept choosing. Needs 3+ weeks of
     # summaries; the pantry alone does not set it (it already drives `coverage`).
     habits = await load_habits(session, current_user.id)
-    usual_names = habits.summary_names if habits.weeks >= 3 else frozenset()
+    usual_names = habits.usual_names if habits.weeks >= 3 else frozenset()
 
     all_food_ids = {
         fid

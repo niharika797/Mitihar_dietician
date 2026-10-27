@@ -1,0 +1,29 @@
+patient 1 diet=Vegetarian allergies=[] habit ingredient='paneer'
+
+== 1. Before: no history, empty pantry ==
+[before] combos=84 time=3.28s statements=660 breakfast combo1 with habit=0/7 all breakfast combos with habit=0/28
+
+== 2. Patient eats a habit breakfast every day for 4 weeks ==
+weeks of summaries=4 habit ingredients=['gawar phali', 'green gram dal', 'honey', 'paneer', 'ragi flour', 'rajma', 'ripe bananas', 'whole wheat bread crumbs']
+weekly job re-run gives identical ingredient_intake: True
+one week's nutrient totals: {'protein_g': 380.82, 'fibre_g': 216.87, 'iron_mg': 45.18, 'calcium_mg': 2872.98, 'calories': 8194.68} | protein mostly from: ['paneer', 'instant oats', 'green gram dal'] | ingredients without nutrient data: 0
+
+== 3. After 4 weeks of history ==
+[after ] combos=84 time=3.11s statements=655 breakfast combo1 with habit=7/7 all breakfast combos with habit=10/28
+breakfast combo 0 (health baseline) unchanged on 0 of 7 days
+
+== 4. is_usual in /meal-plan/week ==
+options flagged 'Your usual': 16 of 84
+
+== 5. Generation cost (RUNS runs each, median) ==
+habits on: median 3.16s, 655 statements
+habits off: median 3.00s, 658 statements
+habits add +5% time (spec limit about +10%)
+
+== 6. Safety ==
+[paneer allergy] combos=84 time=3.12s statements=655 breakfast combo1 with habit=0/7 all breakfast combos with habit=0/28
+   habit dishes served to a patient allergic to it: 0 (must be 0)
+[all dishes avoided (thin pool)] combos=84 time=18.21s statements=659 breakfast combo1 with habit=0/7 all breakfast combos with habit=0/28
+   still produced all 84 combos: True
+
+(old script message; the script commits, rig DB was reset afterwards)

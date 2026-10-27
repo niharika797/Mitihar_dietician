@@ -42,6 +42,17 @@ def test_preferred_and_avoided_dishes_sum_over_all_weeks():
     assert h.preferred_food_ids == frozenset({1}) and h.avoided_food_ids == frozenset({2})
 
 
+def test_usual_names_are_the_top_three():
+    h = aggregate_habits([_s({"a": 9, "b": 8, "c": 7, "d": 6}), _s({"a": 9, "b": 8, "c": 7, "d": 6})], set())
+    assert h.usual_names == frozenset({"a", "b", "c"}) and h.usual_names <= h.summary_names
+
+
 def test_no_data_is_empty():
     h = aggregate_habits([], set())
     assert not (h.names or h.summary_names or h.preferred_food_ids or h.avoided_food_ids) and h.weeks == 0
+
+
+def test_excluded_ubiquitous_names_never_become_habits():
+    h = aggregate_habits([_s({"onion": 9, "eggs": 3}), _s({"onion": 9, "eggs": 3})], {"onion", "paneer"},
+                         exclude=frozenset({"onion"}))
+    assert h.summary_names == frozenset({"eggs"}) and h.names == frozenset({"eggs", "paneer"})

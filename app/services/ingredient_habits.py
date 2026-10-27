@@ -8,14 +8,15 @@ Ingredient-habit learning (design: docs/superpowers/specs/2026-10-28-ingredient-
   - load_habits(): reads the last WEEKS summaries + in-stock pantry and returns the Habits the
     meal generator and /meal-plan/week use. Habits only ever re-order candidates; they never filter.
 """
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_models import (
-    Ingredient, PatientMealChoiceDish, PatientPantry,
+    FoodItem, Ingredient, PatientMealChoiceDish, PatientPantry,
     RecipeIngredient, WeeklyPatientSummary,
 )
 from app.services.meal_generator.meal_generator import is_staple
@@ -25,6 +26,8 @@ DECAY = 0.8        # weight of a week n weeks back = DECAY ** n
 TOP_N = 8          # habit ingredients taken from summaries
 MIN_WEEKS = 2      # summaries needed before summary-derived habits are used
 PANTRY_CAP = 30    # bound on pantry ingredients fed to the generator
+USUAL_N = 3         # ingredients that earn the 'Your usual' badge (few, or the badge means nothing)
+UBIQUITOUS = 0.15  # an ingredient in more than this share of verified dishes (onion, tomato...) says nothing about taste
 
 
 def norm_name(s: str) -> str:
@@ -34,28 +37,33 @@ def norm_name(s: str) -> str:
 @dataclass(frozen=True)
 class Habits:
     names: frozenset            # summary habits + in-stock pantry (generator boost)
-    summary_names: frozenset    # summary habits only (drives is_usual)
+    summary_names: frozenset    # summary habits only
+    usual_names: frozenset      # top USUAL_N summary habits (drives is_usual)
     preferred_food_ids: frozenset
     avoided_food_ids: frozenset
     weeks: int                  # summaries available
 
 
-def aggregate_habits(summaries: list, pantry_names: set, *, top_n: int = TOP_N, decay: float = DECAY) -> Habits:
-    """summaries: summary_data dicts, newest first."""
+def aggregate_habits(summaries: list, pantry_names: set, *, top_n: int = TOP_N, decay: float = DECAY,
+                     exclude: frozenset = frozenset(), idf: dict | None = None) -> Habits:
+    """summaries: summary_data dicts, newest first. `exclude`: ingredient names to ignore (too common to mean
+    anything). `idf`: name -> weight, so a rare ingredient eaten daily outranks a common one eaten daily."""
+    idf = idf or {}
     score: dict = defaultdict(float)
     sel: dict = defaultdict(int)
     off: dict = defaultdict(int)
     for i, s in enumerate(summaries):
         for name, v in (s.get("ingredient_intake") or {}).items():
-            score[name] += float(v.get("meals", 0)) * decay ** i
+            score[name] += float(v.get("meals", 0)) * decay ** i * idf.get(name, 1.0)
         for d in s.get("dish_frequency") or []:
             sel[d["food_item_id"]] += d.get("times_selected", 0)
             off[d["food_item_id"]] += d.get("times_offered", 0)
-    ranked = [n for n, sc in sorted(score.items(), key=lambda kv: -kv[1]) if sc > 0]
+    ranked = [n for n, sc in sorted(score.items(), key=lambda kv: -kv[1]) if sc > 0 and n not in exclude]
     summary_names = frozenset(ranked[:top_n]) if len(summaries) >= MIN_WEEKS else frozenset()
     return Habits(
-        names=summary_names | frozenset(sorted(pantry_names)[:PANTRY_CAP]),
+        names=summary_names | frozenset(sorted(pantry_names - exclude)[:PANTRY_CAP]),
         summary_names=summary_names,
+        usual_names=frozenset(ranked[:USUAL_N]) if summary_names else frozenset(),
         preferred_food_ids=frozenset(f for f, n in sel.items() if n >= 2),
         avoided_food_ids=frozenset(f for f, n in off.items() if n >= 3 and sel[f] == 0),
         weeks=len(summaries),
@@ -78,7 +86,29 @@ async def load_habits(session: AsyncSession, patient_id: int) -> Habits:
             or_(PatientPantry.quantity_g.is_(None), PatientPantry.quantity_g > 0),   # same rule as routers/meal_plan._PANTRY_IN_STOCK
         )
     )
-    return aggregate_habits(summaries, {norm_name(r[0]) for r in pantry if not is_staple(r[0])})
+    pantry_names = {norm_name(r[0]) for r in pantry if not is_staple(r[0])}
+    candidates = pantry_names | {n for s in summaries for n in (s.get("ingredient_intake") or {})}
+    common, idf = await _dish_rarity(session, candidates)
+    return aggregate_habits(summaries, pantry_names, exclude=common, idf=idf)
+
+
+async def _dish_rarity(session: AsyncSession, names: set) -> tuple:
+    """(names in more than UBIQUITOUS of the verified dishes, name -> ln(dishes / dishes containing it))."""
+    if not names:
+        return frozenset(), {}
+    verified = FoodItem.is_verified == True, FoodItem.deleted_at.is_(None)  # noqa: E712
+    total = (await session.execute(select(func.count(FoodItem.id)).where(*verified))).scalar() or 1
+    key = func.lower(func.trim(Ingredient.name))
+    rows = await session.execute(
+        select(key, func.count(func.distinct(RecipeIngredient.food_item_id)))
+        .join(RecipeIngredient, RecipeIngredient.ingredient_id == Ingredient.id)
+        .join(FoodItem, FoodItem.id == RecipeIngredient.food_item_id)
+        .where(key.in_(names), *verified)
+        .group_by(key)
+    )
+    counts = {n: c for n, c in rows}
+    return (frozenset(n for n, c in counts.items() if c / total > UBIQUITOUS),
+            {n: math.log(total / c) for n, c in counts.items()})
 
 
 _NUTRIENTS = (  # summary key, Ingredient column
