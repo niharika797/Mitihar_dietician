@@ -25,6 +25,7 @@ Patients shop and cook from a fairly stable set of ingredients week to week. The
 - 3-day plans / twice-weekly doctor review. Separate decision.
 - Changing 4 options to 3 (would change both apps).
 - Any model training. Counting with decay only.
+- The patient and doctor **nutrient report** (ingredient and nutrient intake against goals, for discussion in a visit). v1 only stores the data it needs; the report screens are a follow-up design.
 - Showing the learned profile to the doctor in v1.
 
 ## Anti-goals (failure even if it works)
@@ -37,9 +38,11 @@ Patients shop and cook from a fairly stable set of ingredients week to week. The
 
 ### 1. Capture: ingredient counts in the weekly summary (no new table)
 
-`compute_weekly_summary` already walks the week's confirmed choices and their dishes. Add `summary_data["ingredient_frequency"]`: for each non-staple ingredient, the number of confirmed meals containing it (join `patient_meal_choice_dishes` to `recipe_ingredients`; skip `is_staple`). One extra batched query, in the same style as the batching done on 2026-10-28.
+`compute_weekly_summary` already walks the week's confirmed choices and their dishes. Add `summary_data["ingredient_intake"]`: for each non-staple ingredient, the **meals** containing it, the **grams** eaten (`recipe_ingredients.quantity_g` x the confirmed bowl factor, `BOWL_FACTORS` in `routers/meal_plan.py`), and the nutrients that gram amount supplied (grams / 100 x the per-100g values already on `ingredients`: protein, fibre, iron, calcium, calories). Also a `nutrient_totals` block for the week (protein, fibre, iron, calcium) with the top contributing ingredients for each. Join `patient_meal_choice_dishes` to `recipe_ingredients` and `ingredients`; skip `is_staple`. One extra batched query, in the same style as the batching done on 2026-10-28.
 
-Because it lives in the per-week summary row, recompute is idempotent (the cron overwrites the same week) and old weeks age out naturally.
+The doctor cares about what reached the patient's goal, not which dish carried it. If a patient needs more protein, the summary should say "protein 62 g/day against a target of 80 g; mostly from dal and curd; eggs fell from 5 days to 1", not "dish X was served".
+
+Because it lives in the per-week summary row, recompute is idempotent (the cron overwrites the same week) and old weeks age out naturally. Ingredients with no nutrient data (about 104 of 950 have NULL) are counted for meals and grams but add nothing to nutrient totals; the summary lists how many were skipped so nothing looks complete when it isn't.
 
 ### 2. Memory: last 6 weeks, decayed
 
@@ -64,7 +67,10 @@ In `_find_food_item` (`meal_generator.py:523-552`):
 
 ### 5. Retention
 
-New cron endpoint `POST /internal/cron/prune-old-combos`, same `X-Cron-Secret` guard as the others, run after the Monday summary job. Deletes `weekly_combos` whose recommendation `week_start_date` is older than 8 weeks and which is not the active plan. Guard: `compute_weekly_summary` for a week older than the cutoff returns the stored summary instead of recomputing from pruned rows. Needs a new Cloud Scheduler job in `infra/cloud_scheduler_jobs.sh`.
+Two different windows (disk: combos ~5.8 GB per 1,000 patients per year, summaries ~200 MB):
+
+- **Meal options (`weekly_combos`): 8 weeks.** New cron endpoint `POST /internal/cron/prune-old-combos`, same `X-Cron-Secret` guard as the others, run after the Monday summary job. Deletes `weekly_combos` whose recommendation `week_start_date` is older than 8 weeks and which is not the active plan.
+- **Weekly summaries (`weekly_patient_summary`): 6 months or longer, never pruned in v1.** Patient and doctor reports read from these, so they must outlive the options. Guard: `compute_weekly_summary` for a week older than the cutoff returns the stored summary instead of recomputing from pruned rows. Needs a new Cloud Scheduler job in `infra/cloud_scheduler_jobs.sh`.
 
 ## Constraints
 
