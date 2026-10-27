@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withDelay, withTiming, runOnJS } from "react-native-reanimated";
-import { CheckCircle, XCircle, Info } from "lucide-react-native";
+import { CheckCircle, XCircle, Info } from "../../lib/icons";
 
 type ToastType = "success" | "error" | "info";
 

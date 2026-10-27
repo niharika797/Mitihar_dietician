@@ -4,7 +4,7 @@ import {
   ActivityIndicator, LayoutAnimation, UIManager, Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { ChevronLeft, ChevronDown } from "lucide-react-native";
+import { ChevronLeft, ChevronDown } from "../../lib/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { confirmMealChoice, getDailyChoices, getComboDetails } from "../../services/meals";

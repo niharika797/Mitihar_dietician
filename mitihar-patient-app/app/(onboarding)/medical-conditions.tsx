@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import { Check } from "lucide-react-native";
+import { Check } from "../../lib/icons";
 import { OnboardingShell, ChipGrid } from "../../components/shared";
 import { useOnboardingStore } from "../../store/useOnboardingStore";
 

@@ -6,7 +6,7 @@ import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Sentry from "@sentry/react-native";
-import { Lock, UtensilsCrossed } from "lucide-react-native";
+import { Lock, UtensilsCrossed } from "../../lib/icons";
 import * as Haptics from "expo-haptics";
 import { useAuthStore } from "../../store/useAuthStore";
 import { generatePlan, confirmMealChoice, getDailyChoices, getWeeklyPlan } from "../../services/meals";

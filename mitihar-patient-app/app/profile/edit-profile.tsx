@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft } from "../../lib/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateProfile } from "../../services/profile";
 import { useAuthStore } from "../../store/useAuthStore";

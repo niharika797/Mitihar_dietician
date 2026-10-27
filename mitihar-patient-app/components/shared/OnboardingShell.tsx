@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft } from "../../lib/icons";
 import { useRouter } from "expo-router";
 
 interface OnboardingShellProps {

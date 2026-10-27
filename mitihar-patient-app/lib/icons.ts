@@ -1,0 +1,42 @@
+// Only the icons the app uses, imported from their own files.
+// `import { X } from "lucide-react-native"` loads the package barrel, which makes Metro bundle all ~3,100 icons
+// (minute-long bundles, a 4 GB heap crash and EMFILE on Windows). Add new icons here, not via the barrel.
+export { default as AlertTriangle } from "lucide-react-native/dist/esm/icons/triangle-alert";
+export { default as BarChart2 } from "lucide-react-native/dist/esm/icons/chart-no-axes-column";
+export { default as Bell } from "lucide-react-native/dist/esm/icons/bell";
+export { default as CalendarClock } from "lucide-react-native/dist/esm/icons/calendar-clock";
+export { default as Check } from "lucide-react-native/dist/esm/icons/check";
+export { default as CheckCircle } from "lucide-react-native/dist/esm/icons/circle-check-big";
+export { default as CheckCircle2 } from "lucide-react-native/dist/esm/icons/circle-check";
+export { default as ChevronDown } from "lucide-react-native/dist/esm/icons/chevron-down";
+export { default as ChevronLeft } from "lucide-react-native/dist/esm/icons/chevron-left";
+export { default as ChevronRight } from "lucide-react-native/dist/esm/icons/chevron-right";
+export { default as ChevronUp } from "lucide-react-native/dist/esm/icons/chevron-up";
+export { default as Coffee } from "lucide-react-native/dist/esm/icons/coffee";
+export { default as Copy } from "lucide-react-native/dist/esm/icons/copy";
+export { default as Edit2 } from "lucide-react-native/dist/esm/icons/pen";
+export { default as ExternalLink } from "lucide-react-native/dist/esm/icons/external-link";
+export { default as Eye } from "lucide-react-native/dist/esm/icons/eye";
+export { default as EyeOff } from "lucide-react-native/dist/esm/icons/eye-off";
+export { default as Fingerprint } from "lucide-react-native/dist/esm/icons/fingerprint";
+export { default as Flag } from "lucide-react-native/dist/esm/icons/flag";
+export { default as Home } from "lucide-react-native/dist/esm/icons/house";
+export { default as Info } from "lucide-react-native/dist/esm/icons/info";
+export { default as KeyRound } from "lucide-react-native/dist/esm/icons/key-round";
+export { default as Lock } from "lucide-react-native/dist/esm/icons/lock";
+export { default as LogOut } from "lucide-react-native/dist/esm/icons/log-out";
+export { default as MapPin } from "lucide-react-native/dist/esm/icons/map-pin";
+export { default as Plus } from "lucide-react-native/dist/esm/icons/plus";
+export { default as RefreshCcw } from "lucide-react-native/dist/esm/icons/refresh-ccw";
+export { default as RefreshCw } from "lucide-react-native/dist/esm/icons/refresh-cw";
+export { default as Search } from "lucide-react-native/dist/esm/icons/search";
+export { default as Settings } from "lucide-react-native/dist/esm/icons/settings";
+export { default as Shield } from "lucide-react-native/dist/esm/icons/shield";
+export { default as Star } from "lucide-react-native/dist/esm/icons/star";
+export { default as ThumbsDown } from "lucide-react-native/dist/esm/icons/thumbs-down";
+export { default as ThumbsUp } from "lucide-react-native/dist/esm/icons/thumbs-up";
+export { default as Trash2 } from "lucide-react-native/dist/esm/icons/trash-2";
+export { default as User } from "lucide-react-native/dist/esm/icons/user";
+export { default as Utensils } from "lucide-react-native/dist/esm/icons/utensils";
+export { default as UtensilsCrossed } from "lucide-react-native/dist/esm/icons/utensils-crossed";
+export { default as XCircle } from "lucide-react-native/dist/esm/icons/circle-x";

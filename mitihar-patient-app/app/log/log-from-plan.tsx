@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft } from "../../lib/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { logMeal } from "../../services/progress";
 import { getWeeklyPlan } from "../../services/meals";

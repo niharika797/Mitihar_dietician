@@ -4,7 +4,7 @@ import {
   StyleSheet, ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, MapPin, Search, Star, RefreshCcw } from "lucide-react-native";
+import { ChevronLeft, MapPin, Search, Star, RefreshCcw } from "../../lib/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { requestDoctor, listDoctors, PublicDoctor } from "../../services/profile";
 import { useToast } from "../../components/shared";

@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronDown, ChevronUp } from "lucide-react-native";
+import { ChevronLeft, ChevronDown, ChevronUp } from "../../lib/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { logMeal } from "../../services/progress";
 import { useToast } from "../../components/shared";

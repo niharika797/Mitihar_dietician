@@ -4,7 +4,7 @@ import {
   ScrollView, StyleSheet, ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Eye, EyeOff } from "lucide-react-native";
+import { Eye, EyeOff } from "../../lib/icons";
 import { useMutation } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useToast } from "../../components/shared";

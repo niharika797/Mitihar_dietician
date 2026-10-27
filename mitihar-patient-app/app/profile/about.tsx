@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, Linking } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ExternalLink } from "lucide-react-native";
+import { ChevronLeft, ExternalLink } from "../../lib/icons";
 
 const APP_VERSION = "1.0.0";
 

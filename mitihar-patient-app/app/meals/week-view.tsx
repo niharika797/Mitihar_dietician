@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft } from "../../lib/icons";
 import { useQuery } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getWeeklyPlan } from "../../services/meals";

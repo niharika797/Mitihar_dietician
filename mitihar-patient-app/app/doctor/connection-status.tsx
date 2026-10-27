@@ -10,7 +10,7 @@ try {
   Clipboard = null;
 }
 import { useRouter } from "expo-router";
-import { ChevronLeft, Copy, CheckCircle2 } from "lucide-react-native";
+import { ChevronLeft, Copy, CheckCircle2 } from "../../lib/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getRequestStatus, getMyVisit } from "../../services/profile";

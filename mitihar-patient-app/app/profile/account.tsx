@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet, Alert, Switch, Modal, TextInput, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, ChevronRight, Trash2, Shield, LogOut, Fingerprint, Eye, EyeOff, KeyRound } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Trash2, Shield, LogOut, Fingerprint, Eye, EyeOff, KeyRound } from "../../lib/icons";
 import { useMutation } from "@tanstack/react-query";
 import { logoutPatient } from "../../services/auth";
 import { deleteMyAccount, activateSubscription } from "../../services/profile";

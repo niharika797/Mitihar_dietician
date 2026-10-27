@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
 import { discovery as googleDiscovery } from "expo-auth-session/providers/google";
@@ -27,16 +27,17 @@ export function useGoogleSignIn() {
   const loginSuccess = useAuthStore(s => s.loginSuccess);
   const setTokens = useAuthStore(s => s.setTokens);
 
-  const [request, , promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "",
-      redirectUri,
-      scopes: ["openid", "profile", "email"],
-      responseType: AuthSession.ResponseType.IdToken,
-      extraParams: { nonce: makeNonce() },
-    },
-    googleDiscovery,
-  );
+  // One nonce and one config object per screen instance. A fresh nonce on every render made
+  // useAuthRequest rebuild its AuthRequest (crypto + state update) on every render, which re-rendered
+  // the login screen again: an endless loop that froze the page on the first keystroke.
+  const config = useMemo(() => ({
+    clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "",
+    redirectUri,
+    scopes: ["openid", "profile", "email"],
+    responseType: AuthSession.ResponseType.IdToken,
+    extraParams: { nonce: makeNonce() },
+  }), []);
+  const [request, , promptAsync] = AuthSession.useAuthRequest(config, googleDiscovery);
 
   // Optional: only matters for first-time signup (backend ignores it for existing
   // accounts — see GoogleTokenRequest.gdpr_consent in auth.py). Defaults to false so

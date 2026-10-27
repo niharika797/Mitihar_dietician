@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import { Tabs, useRouter } from "expo-router";
-import { Home, UtensilsCrossed, BarChart2, User } from "lucide-react-native";
+import { Home, UtensilsCrossed, BarChart2, User } from "../../lib/icons";
 import { CopilotProvider, CopilotStep, walkthroughable, useCopilot } from "react-native-copilot";
 import { colors } from "../../constants/theme";
 import { useAuthStore } from "../../store/useAuthStore";

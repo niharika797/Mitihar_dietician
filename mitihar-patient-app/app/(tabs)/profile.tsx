@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { ChevronRight, Edit2, Bell, Info, LogOut, User, RefreshCw, Settings } from "lucide-react-native";
+import { ChevronRight, Edit2, Bell, Info, LogOut, User, RefreshCw, Settings } from "../../lib/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Animated, { FadeInDown, Easing } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";

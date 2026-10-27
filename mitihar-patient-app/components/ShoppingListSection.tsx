@@ -8,7 +8,7 @@
 // section at a glance.
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
-import { Check, ChevronDown, ChevronUp } from "lucide-react-native";
+import { Check, ChevronDown, ChevronUp } from "../lib/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../lib/queryKeys";
 import { getShoppingList, toggleShoppingItem } from "../services/meals";

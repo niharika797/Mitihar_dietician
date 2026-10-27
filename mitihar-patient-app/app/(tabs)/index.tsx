@@ -4,7 +4,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bell, CalendarClock, ChevronRight, Utensils, Coffee } from "lucide-react-native";
+import { Bell, CalendarClock, ChevronRight, Utensils, Coffee } from "../../lib/icons";
 import Animated, { FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, Easing } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { QUERY_KEYS } from "../../lib/queryKeys";

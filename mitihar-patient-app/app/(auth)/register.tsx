@@ -4,7 +4,7 @@ import {
   ScrollView, StyleSheet, ActivityIndicator, Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, Eye, EyeOff, Plus } from "lucide-react-native";
+import { ChevronLeft, Eye, EyeOff, Plus } from "../../lib/icons";
 import { useMutation } from "@tanstack/react-query";
 import { storage } from "../../lib/storage";
 import { useAuthStore } from "../../store/useAuthStore";

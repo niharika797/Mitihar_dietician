@@ -9,7 +9,7 @@
 // in app/routers/meal_plan.py), which would bury everything below it on home.
 import React, { useState, useEffect } from "react";
 import { View, Text, Pressable, TextInput, StyleSheet, ActivityIndicator } from "react-native";
-import { Check, Plus, Search, ChevronDown, ChevronUp } from "lucide-react-native";
+import { Check, Plus, Search, ChevronDown, ChevronUp } from "../lib/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../lib/queryKeys";
 import { getPantry, togglePantryItem, getPantrySuggestions } from "../services/meals";

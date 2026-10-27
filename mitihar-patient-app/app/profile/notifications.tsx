@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet, Switch, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft } from "../../lib/icons";
 import api from "../../lib/axios";
 
 type NotifSetting = { id: string; label: string; sub: string; value: boolean };

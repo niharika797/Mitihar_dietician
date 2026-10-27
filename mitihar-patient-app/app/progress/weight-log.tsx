@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronLeft, Plus } from "lucide-react-native";
+import { ChevronLeft, Plus } from "../../lib/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getWeightHistory, logWeight } from "../../services/progress";
 import { useProgressStore } from "../../store/useProgressStore";

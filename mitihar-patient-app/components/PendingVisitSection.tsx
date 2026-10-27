@@ -9,7 +9,7 @@
 // return-null convention rather than showing an empty state on the dashboard.
 import React from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
-import { Flag } from "lucide-react-native";
+import { Flag } from "../lib/icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../lib/queryKeys";
 import { getPendingVisits, respondToPendingVisit } from "../services/profile";

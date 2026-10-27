@@ -28,7 +28,7 @@ Working branch: `feature/api-remediation-v0.2` (d5dcf5e). `main` and the 3 workt
 9. [x] Profile update now saves `target_weight_kg` and `phone` (validated; phone also returned by GET /users/me). Verified by replaying the app request.
 
 ## 4. Testing gaps
-- [ ] Expo web app freezes on the first real click (cause unknown). The backend `/docs` page takes clicks fine.
+- [x] Expo web freeze fixed 2026-10-28: root causes were (1) useGoogleSignIn made a new nonce every render, so the login screen re-rendered in an endless loop on the first keystroke; (2) Reanimated crashed every frame because react-native-web was loaded in two builds and the CJS one has no `.default` for createReactDOMStyle; (3) `import { X } from "lucide-react-native"` bundled all ~3,100 icons (60 s bundles, 4 GB heap crash, EMFILE). Verified with headless real-input Playwright: login and all four tabs stay responsive, 0 page errors.
 - [x] Backend live tests fixed 2026-10-28: full_backend_test 103/103, security_verification_test 190/197 (was 75/158). Needed: TEST_ADMIN_* creds from .env, 127.0.0.1 + port 8001, 30 s timeouts, gdpr_consent, dev Redis running (docker start mityahar-redis; FLUSHDB between runs, register is limited to 3/hour). 7 left are test-vs-product drift (see commit message).
 - [ ] Run the new 409 toast on a device or emulator.
 

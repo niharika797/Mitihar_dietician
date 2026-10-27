@@ -4,7 +4,7 @@ import {
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react-native";
+import { Plus } from "../../lib/icons";
 import { LineChart } from "react-native-gifted-charts";
 import Animated, { FadeInDown, Easing } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";

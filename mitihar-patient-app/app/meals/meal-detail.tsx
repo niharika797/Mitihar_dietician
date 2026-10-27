@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Animated, LayoutAnimation, UIManager, Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { ChevronLeft, ThumbsUp, ThumbsDown, ChevronDown } from "lucide-react-native";
+import { ChevronLeft, ThumbsUp, ThumbsDown, ChevronDown } from "../../lib/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "../../lib/queryKeys";
 import { getWeeklyPlan } from "../../services/meals";
