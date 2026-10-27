@@ -365,14 +365,25 @@ export default function MealsScreen() {
     onError: () => showToast("Failed to confirm choice. Try again.", "error"),
   });
 
+  // Ask the server to generate only when this week has no stored plan. We already fetch the stored plan
+  // above, so wait for that answer: if it starts within the last 7 days (the server's own window) there is
+  // nothing to generate. A 404, an older plan, a v1 plan, or a plan still awaiting the doctor (no start
+  // date in the answer) all go through generate, which reuses a valid stored plan for free anyway.
   const autoAttempted = React.useRef(false);
   React.useEffect(() => {
-    if (!isSubscribed || autoAttempted.current) return;
+    if (!isSubscribed || autoAttempted.current || weekPlanQuery.status === "pending") return;
     autoAttempted.current = true;
+    if (v2Plan?.generation_version === 2 && v2Plan.week_start) {
+      const [y, m, d] = v2Plan.week_start.split("-").map(Number);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const daysSinceStart = Math.round((today.getTime() - new Date(y, m - 1, d).getTime()) / 86400000);
+      if (daysSinceStart >= 0 && daysSinceStart <= 6) return; // this week's plan is already stored
+    }
     generatePlan()
       .then(() => qc.invalidateQueries({ queryKey: QUERY_KEYS.WEEK_PLAN }))
       .catch((e) => Sentry.captureException(e));
-  }, [isSubscribed]);
+  }, [isSubscribed, weekPlanQuery.status]);
 
   if (!isSubscribed) {
     return <TeaserView onFindDoctor={() => router.push("/doctor/find-doctor")} />;

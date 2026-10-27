@@ -27,7 +27,7 @@ from app.main import app  # noqa: E402
 from app.routers import diet_plans  # noqa: E402
 
 EMAIL = "idem@idem-test.local"
-_ip = itertools.count(1)  # distinct client IP per call: /generate is limited to 10/hour per IP
+_ip = itertools.count(1)  # distinct client IP per call (the limit is per patient now; kept to prove that)
 
 
 async def sql(q, **p):
@@ -59,8 +59,8 @@ def client(tok):
                              headers={"Authorization": f"Bearer {tok}"})
 
 
-async def gen(c):
-    return await c.post("/api/v1/diet-plans/generate", headers={"X-Forwarded-For": f"10.9.9.{next(_ip)}"})
+async def gen(c, ip=None):
+    return await c.post("/api/v1/diet-plans/generate", headers={"X-Forwarded-For": ip or f"10.9.9.{next(_ip)}"})
 
 
 async def back(pid, days):
@@ -72,8 +72,8 @@ async def main():
     pid, tok = await make_patient()
     fails = []
 
-    def check(name, ok):
-        print(("PASS " if ok else "FAIL ") + name)
+    def check(name, ok, detail=""):
+        print(("PASS " if ok else "FAIL ") + name + ("" if ok or not detail else f"  [{detail}]"))
         if not ok:
             fails.append(name)
 
@@ -140,6 +140,30 @@ async def main():
             async with client(tok) as c:
                 r = await gen(c)
         check("generator fails: 503 and old plan still active", r.status_code == 503 and await plans(pid) == before)
+
+        # 9 reusing the stored plan is free: 12 calls from ONE IP never hit the limit (it used to be 10/hour per IP)
+        async with client(tok) as c:
+            r = await gen(c)  # real generation: puts a valid plan back (counts as one of the 10)
+            ok_first = r.status_code == 200
+            codes = [(await gen(c, ip="10.8.8.8")).status_code for _ in range(12)]
+        check("reuse is never counted: 12 calls from one IP all 200", ok_first and codes == [200] * 12)
+
+        # 10 real generations are limited per PATIENT (10/hour), whatever the IP, with the friendly 429
+        await back(pid, 8)  # expired again, so every call is a real generation attempt
+        statuses, last = [], None
+        with patch.object(diet_plans.diet_plan_service, "generate_diet_plan", boom):
+            async with client(tok) as c:
+                for _ in range(8):
+                    last = await gen(c, ip="10.7.7.7" if len(statuses) % 2 else None)
+                    statuses.append(last.status_code)
+                    if last.status_code == 429:
+                        break
+        body = last.json() if last is not None and last.status_code == 429 else {}
+        check("real generations: refused with 429 once the patient has used 10 in an hour (any IP)",
+              statuses[-1] == 429 and statuses[:-1] and all(s == 503 for s in statuses[:-1]), str(statuses))
+        check("429 answer is the friendly one with a wait time",
+              "take a break" in body.get("detail", "") and isinstance(body.get("retry_after_seconds"), int)
+              and last.headers.get("retry-after") == str(body.get("retry_after_seconds")), str(body))
     finally:
         await sql("DELETE FROM weekly_combos WHERE recommendation_id IN (SELECT id FROM recommendations WHERE patient_id=:p)", p=pid)
         await sql("DELETE FROM recommendations WHERE patient_id=:p", p=pid)

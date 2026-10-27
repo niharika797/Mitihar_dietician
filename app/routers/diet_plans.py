@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.database import get_db
 
 router = APIRouter()
-from ..core.limiter import limiter
+from ..core.limiter import hit_key_limit
 
 logger = logging.getLogger(__name__)
 diet_plan_service = DietPlanService()
@@ -155,14 +155,13 @@ async def get_today_meals(
 
 
 @router.post("/generate", response_model=DietPlan)
-@limiter.limit("10/hour")
 async def generate_diet_plan(
     request: Request,
     current_user: Patient = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Generate a new 7-day diet plan for the current user.
+    Generate a new 7-day diet plan for the current user (or return this week's stored plan).
 
     Implements a retry loop (max 3 attempts) to handle cases where the
     generator returns a structurally invalid plan. Returns HTTP 503 if
@@ -180,6 +179,10 @@ async def generate_diet_plan(
     if week_start is not None and 0 <= (date.today() - week_start).days <= 6:
         logger.info(f"Reused active plan for patient {current_user.id}")
         return await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
+
+    # Only a real generation is limited (10 per hour per patient). Reusing the stored plan, above, is free
+    # and never counted, so opening the Meals tab as often as you like can never trigger a 429.
+    hit_key_limit("generate", str(current_user.id), "10/hour")
 
     # Block if user already has an active plan
     existing_plan = await diet_plan_service.get_diet_plan(str(current_user.id), session=session)
