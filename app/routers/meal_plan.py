@@ -15,6 +15,7 @@ from ..models.db_models import (
 )
 from ..services.diet_plan_service import DietPlanService
 from ..services.meal_generator.meal_generator import is_staple
+from ..services.ingredient_habits import load_habits
 from ..core.database import get_db
 
 router = APIRouter()
@@ -209,6 +210,11 @@ async def get_week_plan(
     )
     pantry_names = {_norm_name(r[0]) for r in pantry_rows}
 
+    # "Your usual": options containing an ingredient the patient has kept choosing. Needs 3+ weeks of
+    # summaries; the pantry alone does not set it (it already drives `coverage`).
+    habits = await load_habits(session, current_user.id)
+    usual_names = habits.summary_names if habits.weeks >= 3 else frozenset()
+
     all_food_ids = {
         fid
         for combo in combos for d in (combo.dishes or [])
@@ -263,6 +269,7 @@ async def get_week_plan(
             "required_count": len(required),
             "missing_ingredients": missing[:5],
             "cookable": bool(required) and not missing,
+            "is_usual": bool(required & usual_names),
         })
 
     days = []

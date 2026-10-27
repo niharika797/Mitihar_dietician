@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from pydantic import BaseModel
 
-from sqlalchemy import select, case as sa_case, func as sa_func, or_, not_, false
+from sqlalchemy import select, case as sa_case, func as sa_func, or_, not_, false, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -230,6 +230,8 @@ class MealGenerator:
         # Acts as SOFT preference — dropped at Level 2 if pool is exhausted.
         preferred_food_ids: frozenset = frozenset(user_data.get("preferred_food_ids") or frozenset())
         avoided_food_ids: frozenset = frozenset(user_data.get("avoided_food_ids") or frozenset())
+        # Ingredients the patient keeps choosing or keeps in the pantry; boosts combo 1 of each slot only.
+        habit_ingredient_ids: frozenset = frozenset(user_data.get("habit_ingredient_ids") or frozenset())
 
         # ── Non-veg mix: 2 of every slot's 4 combos, every meal ────────────
         # Replaces the old weekly-budget pre-allocation, which designated 3-4
@@ -362,6 +364,7 @@ class MealGenerator:
                             pinned_food_ids=frozenset(pinned_food_ids),
                             preferred_food_ids=preferred_food_ids,
                             avoided_food_ids=avoided_food_ids,
+                            habit_ingredient_ids=habit_ingredient_ids if combo_idx == 1 else frozenset(),
                             combo0_lookup=combo0_lookup,
                             combo_idx=combo_idx,
                         )
@@ -504,6 +507,7 @@ class MealGenerator:
         pinned_food_ids: frozenset = frozenset(),
         preferred_food_ids: frozenset = frozenset(),
         avoided_food_ids: frozenset = frozenset(),
+        habit_ingredient_ids: frozenset = frozenset(),
     ) -> Optional[FoodItem]:
         """
         R-2 pool query for one combo's one slot. Pin is a PREFERENCE SIGNAL
@@ -526,7 +530,14 @@ class MealGenerator:
             *[FoodItem.prefer_tags.contains([tag]) for tag in patient_prefer_tags],
             FoodItem.id.in_(pinned_food_ids),
             FoodItem.id.in_(preferred_food_ids) if preferred_food_ids else false(),
+            exists().where(
+                RecipeIngredient.food_item_id == FoodItem.id,
+                RecipeIngredient.ingredient_id.in_(habit_ingredient_ids),
+            ) if habit_ingredient_ids else false(),
         ).desc()
+        # Dishes the patient was shown repeatedly and never picked sort last but stay selectable,
+        # so a small pool is never made smaller by learning.
+        avoid_sort = sa_case((FoodItem.id.in_(avoided_food_ids), 1), else_=0)
 
         def base_stmt(try_diet: str, include_weekly: bool):
             s = select(FoodItem).options(LOAD_RECIPE_INGREDIENTS).where(
@@ -545,11 +556,9 @@ class MealGenerator:
                 s = s.where(FoodItem.id.notin_(excluded))
             if blocked_food_ids:
                 s = s.where(FoodItem.id.notin_(blocked_food_ids))
-            if avoided_food_ids:
-                s = s.where(FoodItem.id.notin_(avoided_food_ids))
             if patient_avoid_tags:
                 s = s.where(not_(or_(*[FoodItem.avoid_tags.contains([tag]) for tag in patient_avoid_tags])))
-            return s.order_by(prefer_sort, region_sort, cal_sort).limit(10)
+            return s.order_by(prefer_sort, avoid_sort, region_sort, cal_sort).limit(10)
 
         def _is_allergenic(item: FoodItem) -> bool:
             # Stage 2: clinical-safety path — reads recipe_ingredients (authoritative,
@@ -625,6 +634,7 @@ class MealGenerator:
         pinned_food_ids: frozenset = frozenset(),
         preferred_food_ids: frozenset = frozenset(),
         avoided_food_ids: frozenset = frozenset(),
+        habit_ingredient_ids: frozenset = frozenset(),
         combo0_lookup: Optional[dict] = None,
         combo_idx: int = 0,
     ) -> tuple[list, bool]:
@@ -662,6 +672,7 @@ class MealGenerator:
                 pinned_food_ids=pinned_food_ids,
                 preferred_food_ids=preferred_food_ids,
                 avoided_food_ids=avoided_food_ids,
+                habit_ingredient_ids=habit_ingredient_ids,
             )
 
             if food_item is not None:

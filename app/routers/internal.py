@@ -5,12 +5,12 @@ import os
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Header, HTTPException
-from sqlalchemy import update, select
+from sqlalchemy import update, select, delete
 
 from ..core.config import settings
 from ..core.database import AsyncSessionLocal
-from ..models.db_models import Patient, Recommendation
-from ..services.weekly_summary_service import compute_weekly_summary
+from ..models.db_models import Patient, Recommendation, WeeklyCombo
+from ..services.weekly_summary_service import compute_weekly_summary, COMBO_RETENTION_DAYS
 
 _log = logging.getLogger(__name__)
 
@@ -168,4 +168,30 @@ async def complete_expired_plans_endpoint(x_cron_secret: str | None = Header(def
             return {"week": str(last_monday), "processed": ok, "failed": failed}
         except Exception as exc:
             _log.error("[cron] complete_expired_plans: outer failure: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Cron job failed")
+
+
+# dead-code-scan: external-trigger — invoked by Cloud Scheduler. Job definition: infra/cloud_scheduler_jobs.sh
+@router.post("/prune-old-combos")
+async def prune_old_combos(x_cron_secret: str | None = Header(default=None)):
+    """
+    Delete weekly_combos of inactive plans older than 8 weeks. The learned signal lives in
+    weekly_patient_summary, so the 84 option rows per patient-week are disposable after that.
+    Never touches an active plan. Idempotent.
+    """
+    _check_secret(x_cron_secret)
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=COMBO_RETENTION_DAYS)
+    async with AsyncSessionLocal() as session:
+        try:
+            old_recs = select(Recommendation.id).where(
+                Recommendation.week_start_date < cutoff,
+                Recommendation.is_active == False,  # noqa: E712
+            )
+            result = await session.execute(delete(WeeklyCombo).where(WeeklyCombo.recommendation_id.in_(old_recs)))
+            await session.commit()
+            _log.info("[cron] prune_old_combos: deleted %d rows older than %s", result.rowcount, cutoff)
+            return {"cutoff": str(cutoff), "deleted": result.rowcount}
+        except Exception as exc:
+            await session.rollback()
+            _log.error("[cron] prune_old_combos failed: %s", exc, exc_info=True)
             raise HTTPException(status_code=500, detail="Cron job failed")

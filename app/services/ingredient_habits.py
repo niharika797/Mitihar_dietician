@@ -15,7 +15,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.db_models import (
-    Ingredient, PatientMealChoice, PatientMealChoiceDish, PatientPantry,
+    Ingredient, PatientMealChoiceDish, PatientPantry,
     RecipeIngredient, WeeklyPatientSummary,
 )
 from app.services.meal_generator.meal_generator import is_staple
@@ -121,7 +121,7 @@ async def build_ingredient_intake(db: AsyncSession, choices: list) -> dict:
         meal_sets[key].add(choice_id)
         if per100[0] is None:
             missing.add(key)
-        for (k, _), v in zip(_NUTRIENTS, per100):
+        for (k, _), v in zip(_NUTRIENTS, per100, strict=True):
             if v is not None:
                 e[k] += grams / 100.0 * float(v)
     for key, e in intake.items():

@@ -87,6 +87,9 @@ create_cron_job \
     "0 1 * * 1" \
     "Mondays 01:00 UTC - snapshot weekly summaries for the week that just ended"
 
+# Meal-option rows older than 8 weeks are disposable once the summary has been stored (see ingredient-habit design).
+create_cron_job     "prune-old-combos"     "/internal/cron/prune-old-combos"     "0 3 * * 1"     "Mondays 03:00 UTC - delete weekly_combos of inactive plans older than 8 weeks"
+
 echo
 echo "Done. Verify with:"
 echo "  gcloud scheduler jobs list --project=$PROJECT --location=$REGION"

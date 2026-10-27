@@ -21,6 +21,8 @@ from app.models.db_models import (
 
 _log = logging.getLogger(__name__)
 
+COMBO_RETENTION_DAYS = 56   # 8 weeks of meal options; summaries are kept (routers/internal.py prunes combos)
+
 
 async def compute_weekly_summary(
     db: AsyncSession,
@@ -34,6 +36,16 @@ async def compute_weekly_summary(
     week_start is floored to Monday. Safe to call mid-week or post-week.
     Never raises — writes "error" key into summary_data on failure.
     """
+    if week_start is not None and week_start < date.today() - timedelta(days=COMBO_RETENTION_DAYS):
+        # The week's meal options may have been pruned; recomputing would overwrite a good summary.
+        stored = (await db.execute(
+            select(WeeklyPatientSummary.summary_data).where(
+                WeeklyPatientSummary.patient_id == patient_id,
+                WeeklyPatientSummary.week_start_date == week_start,
+            )
+        )).scalar_one_or_none()
+        if stored:
+            return stored
     try:
         return await _compute(db, patient_id, week_start)
     except Exception as exc:

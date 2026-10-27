@@ -5,11 +5,12 @@ Diet-plan service — PostgreSQL via AsyncSession + Recommendation ORM.
 from typing import Dict, Optional
 from datetime import datetime, date
 
-from sqlalchemy import select, insert as sa_insert
+from sqlalchemy import select, insert as sa_insert, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..schemas.diet_plan import DietPlanResponse as DietPlan
-from ..models.db_models import Recommendation, WeeklyCombo, WeeklyPatientSummary
+from ..models.db_models import Recommendation, WeeklyCombo, Ingredient
+from .ingredient_habits import load_habits
 from .meal_generator.meal_generator import meal_generator
 
 
@@ -25,35 +26,23 @@ class DietPlanService:
         # snowballed the exclusion set across regenerations until variety collapsed.
         # Within-week variety is handled by the generator's weekly_used_ids.
 
-        # R-7B: read prior week's summary for behavioral personalization signals
+        # Habit learning: last 6 weekly summaries + in-stock pantry (soft preferences only)
         patient_id = user_data.get("id")
-        if patient_id:
-            prev_row = await session.execute(
-                select(WeeklyPatientSummary)
-                .where(WeeklyPatientSummary.patient_id == int(patient_id))
-                .order_by(WeeklyPatientSummary.week_start_date.desc())
-                .limit(1)
-            )
-            prev_summary = prev_row.scalar_one_or_none()
+        habits = await load_habits(session, int(patient_id)) if patient_id else None
+        if habits:
+            user_data["preferred_food_ids"] = habits.preferred_food_ids
+            user_data["avoided_food_ids"] = habits.avoided_food_ids
+            user_data["habit_ingredient_ids"] = frozenset(
+                (await session.execute(
+                    select(Ingredient.id).where(
+                        sa_func.lower(sa_func.trim(Ingredient.name)).in_(habits.names)
+                    )
+                )).scalars()
+            ) if habits.names else frozenset()
         else:
-            prev_summary = None
-
-        if prev_summary and prev_summary.summary_data:
-            dish_freq = prev_summary.summary_data.get("dish_frequency", [])
-            preferred_food_ids = frozenset(
-                r["food_item_id"] for r in dish_freq
-                if r.get("times_selected", 0) >= 2
-            )
-            avoided_food_ids = frozenset(
-                r["food_item_id"] for r in dish_freq
-                if r.get("times_offered", 0) >= 3 and r.get("times_selected", 0) == 0
-            )
-        else:
-            preferred_food_ids = frozenset()
-            avoided_food_ids = frozenset()
-
-        user_data["preferred_food_ids"] = preferred_food_ids
-        user_data["avoided_food_ids"] = avoided_food_ids
+            user_data["preferred_food_ids"] = frozenset()
+            user_data["avoided_food_ids"] = frozenset()
+            user_data["habit_ingredient_ids"] = frozenset()
         meal_plan = await meal_generator.generate_meal_plan(user_data, session)
         return DietPlan(
             user_id=str(user_data["id"]),
