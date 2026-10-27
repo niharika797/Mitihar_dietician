@@ -1055,3 +1055,34 @@ class RecipeIngredient(Base):
         Index("idx_ri_ingredient", "ingredient_id"),
         CheckConstraint("quantity_g > 0", name="ck_ri_quantity_positive"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Refresh tokens (rotation + reuse detection)
+# ---------------------------------------------------------------------------
+
+class RefreshToken(Base):
+    """
+    One row per issued refresh token. A token is single-use: /auth/refresh marks it used and
+    issues a child in the same family. Presenting a used token again (after a short grace
+    window) means a copy exists somewhere else, so every token of that user is revoked.
+    role is 'patient' | 'doctor' | 'admin'; user_id is that role's own id (no foreign key,
+    one table serves all three). Expired rows are deleted by /internal/cron/prune-old-combos.
+    """
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    family_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("idx_refresh_tokens_family", "family_id"),
+        Index("idx_refresh_tokens_user", "role", "user_id"),
+        Index("idx_refresh_tokens_expires", "expires_at"),
+    )

@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15       # Short-lived — Axios interceptor handles silent refresh
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080   # 7 days — lives in HttpOnly cookie only
     RESET_TOKEN_EXPIRE_MINUTES: int = 30        # Password-reset link valid for 30 minutes only
+    # A refresh token presented a second time within this many seconds of its first use is treated
+    # as a concurrent call (two tabs, a retry), not theft: it gets a new access token and nothing is revoked.
+    REFRESH_REUSE_GRACE_SECONDS: int = 10
 
     # ── Deployment environment ────────────────────────────────────────────
     # Must be set explicitly in all environments. Cloud Run MUST set "production"

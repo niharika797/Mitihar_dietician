@@ -1328,11 +1328,106 @@ def test_security_audit_regression():
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SECTION 18 — RATE LIMITS: PER EMAIL + PER IP, FRIENDLY MESSAGE
+# SECTION 18 — REFRESH TOKENS: ROTATION, REUSE DETECTION, REVOKE ON LOGOUT/RESET
+# Takes about 15 s (waits out the reuse grace window). Run before section 19.
+# ══════════════════════════════════════════════════════════════════════════
+def _db_exec(sql: str, *args) -> None:
+    """Run one statement against the dev DB (the suite has no other way to plant a reset token)."""
+    import asyncio
+    import asyncpg
+
+    async def go():
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://"))
+        try:
+            await conn.execute(sql, *args)
+        finally:
+            await conn.close()
+
+    asyncio.run(go())
+
+
+def test_refresh_token_rotation():
+    section("18 · Refresh tokens: rotation, reuse detection, revoke on logout and reset")
+    grace = int(os.getenv("REFRESH_REUSE_GRACE_SECONDS", "10"))
+
+    def login() -> dict:
+        return post_form(f"{BASE}/auth/token", PATIENT_EMAIL, PATIENT_PASSWORD).json()
+
+    def refresh(tok: str) -> httpx.Response:
+        return httpx.post(f"{BASE}/auth/refresh", json={"refresh_token": tok})
+
+    first = login()
+    rt1, access1 = first.get("refresh_token", ""), first.get("access_token", "")
+    me = httpx.get(f"{BASE}/users/me", headers=hdr(access1)).json()
+    patient_id = me.get("id") or me.get("patient_id")
+
+    # A token from before rotation existed (no jti): accepted once, then tracked
+    from datetime import datetime, timedelta, timezone
+    from jose import jwt as jose_jwt
+    now = datetime.now(timezone.utc)
+    legacy = jose_jwt.encode(
+        {"sub": PATIENT_EMAIL, "role": "patient", "patient_id": patient_id, "token_type": "refresh",
+         "exp": now + timedelta(days=1), "iat": now, "nbf": now},
+        os.environ["SECRET_KEY"], algorithm="HS256")
+    r = refresh(legacy)
+    check("Legacy refresh token (no jti) is accepted once and replaced by a tracked one",
+          r.status_code == 200 and r.json().get("refresh_token"), r.text)
+
+    # Rotation
+    r = refresh(rt1)
+    body = r.json() if r.status_code == 200 else {}
+    rt2 = body.get("refresh_token", "")
+    check("Refresh rotates: a new refresh token, different from the old one",
+          r.status_code == 200 and bool(rt2) and rt2 != rt1, r.text)
+    check("New access token works",
+          httpx.get(f"{BASE}/users/me", headers=hdr(body.get("access_token", ""))).status_code == 200)
+
+    # Same token again straight away = concurrent call, not theft: access token only, nothing revoked
+    r = refresh(rt1)
+    check("Same token again inside the grace window: 200, access token only",
+          r.status_code == 200 and "access_token" in r.json() and "refresh_token" not in r.json(), r.text)
+    r = refresh(rt2)
+    rt3 = r.json().get("refresh_token", "") if r.status_code == 200 else ""
+    check("The newest token still works after a grace-window repeat", r.status_code == 200 and bool(rt3), r.text)
+
+    # Reuse after the grace window = a copy exists: everything is revoked
+    time.sleep(grace + 1.5)
+    r = refresh(rt1)
+    check("Used token replayed after the grace window is refused (401)", r.status_code == 401, r.text)
+    check("...and the user's newest token is now revoked too (401)", refresh(rt3).status_code == 401)
+    check("...and so is the legacy token's replacement chain (replayed legacy token: 401)",
+          refresh(legacy).status_code == 401)
+
+    # Logout cancels the presented token
+    rt4 = login().get("refresh_token", "")
+    r = httpx.post(f"{BASE}/auth/logout", json={"refresh_token": rt4})
+    check("POST /auth/logout with a patient refresh token returns 200", r.status_code == 200, r.text)
+    check("Refresh token is refused after logout (401)", refresh(rt4).status_code == 401)
+
+    # An access token is not a refresh token
+    check("Access token used as refresh token is refused (401)", refresh(access1).status_code == 401)
+
+    # Password reset cancels every session (and refresh checks the password-change time)
+    rt5 = login().get("refresh_token", "")
+    reset_token = f"rt-test-{int(time.time())}"
+    _db_exec("DELETE FROM password_reset_tokens WHERE patient_id = $1", patient_id)
+    _db_exec("INSERT INTO password_reset_tokens (patient_id, token, expires_at) VALUES ($1, $2, now() + interval '10 minutes')",
+             patient_id, reset_token)
+    r = httpx.post(f"{BASE}/auth/reset-password", json={"token": reset_token, "new_password": PATIENT_PASSWORD})
+    check("Password reset with a valid token returns 200", r.status_code == 200, r.text)
+    check("Refresh token issued before the reset is refused (401)", refresh(rt5).status_code == 401)
+    time.sleep(1.5)  # token iat is whole seconds; wait so the new login is clearly after the reset
+    again = post_form(f"{BASE}/auth/token", PATIENT_EMAIL, PATIENT_PASSWORD)
+    check("Login after the reset works and its refresh token works",
+          again.status_code == 200 and refresh(again.json().get("refresh_token", "")).status_code == 200, again.text)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# SECTION 19 — RATE LIMITS: PER EMAIL + PER IP, FRIENDLY MESSAGE
 # Run last: it deliberately uses up this machine's per-IP login allowance.
 # ══════════════════════════════════════════════════════════════════════════
 def test_rate_limits_friendly_message():
-    section("18 · Rate limits: per email, per IP, friendly 429 message")
+    section("19 · Rate limits: per email, per IP, friendly 429 message")
     stamp = int(time.time())
 
     # Per email: 10 tries per 15 min, the 11th is refused (unknown account, so no bcrypt cost)
@@ -1401,6 +1496,7 @@ def main():
         test_admin_food_management,
         test_logout,
         test_security_audit_regression,
+        test_refresh_token_rotation,
         test_rate_limits_friendly_message,
     ]
 

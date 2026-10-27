@@ -13,7 +13,7 @@ code path as before — no change to the token structure they receive.
 """
 
 import logging
-from datetime import timedelta
+from datetime import timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -29,11 +29,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.database import get_db
 from ..core.limiter import hit_key_limit, limiter
-from ..core.security import create_access_token, create_refresh_token, get_current_patient, get_current_doctor, get_current_admin, verify_password, get_password_hash
+from ..core.security import create_access_token, get_current_patient, get_current_doctor, get_current_admin, verify_password, get_password_hash
 from ..models.db_models import Doctor, Patient, Admin
 from ..schemas.user import UserCreate
 from ..services.audit_service import log_action
 from ..services.mfa_service import generate_mfa_secret, get_totp_uri, verify_totp
+from ..services.refresh_token_service import (
+    RefreshRejected, claim as claim_refresh, issue_tokens, revoke_family_of, revoke_user,
+)
 from ..services.user_service import create_patient, get_patient_by_email
 
 router = APIRouter()
@@ -72,31 +75,15 @@ def _admin_token_data(admin) -> dict:
     }
 
 
-def _issue_tokens(data: dict) -> dict:
+async def _issue_tokens(data: dict, session: Optional[AsyncSession] = None, family_id: Optional[str] = None) -> dict:
     """
-    Issue access + refresh token pair.
+    Issue access + refresh token pair and record the refresh token (see refresh_token_service).
     Access token: short-lived (15 min), token_type='access'.
-    Refresh token: long-lived (7 days), token_type='refresh', minimal claims only.
+    Refresh token: long-lived (7 days), token_type='refresh', single-use (rotated by /auth/refresh).
     The two token types are structurally distinct — a refresh token is rejected
     by _decode_jwt() so it cannot be used to access protected endpoints.
     """
-    access = create_access_token(
-        data=data,
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
-    # Refresh token carries only the minimum needed to re-issue: sub + role + ids
-    refresh_data = {
-        "sub":  data["sub"],
-        "role": data["role"],
-    }
-    for key in ("patient_id", "doctor_id", "admin_id"):
-        if key in data:
-            refresh_data[key] = data[key]
-    refresh = create_refresh_token(
-        data=refresh_data,
-        expires_delta=timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
-    )
-    return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
+    return await issue_tokens(data, session=session, family_id=family_id)
 
 
 def _issue_partial_token(role_pending: str, user_id: int, email: str) -> str:
@@ -331,7 +318,7 @@ async def login(
         raw_patient.email,
         request.client.host if request.client else "unknown",
     )
-    tokens = _issue_tokens(_patient_token_data(raw_patient))
+    tokens = await _issue_tokens(_patient_token_data(raw_patient))
     return {"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"], "token_type": "bearer"}
 
 
@@ -418,7 +405,7 @@ async def admin_login(
         admin.email,
         request.client.host if request.client else "unknown",
     )
-    tokens = _issue_tokens(_admin_token_data(admin))
+    tokens = await _issue_tokens(_admin_token_data(admin), session=session)
     # SameSite=None required for cross-origin dashboard (Firebase Hosting
     # + Cloud Run). No CSRF token exists on /refresh or /logout — this is
     # safe ONLY because all business endpoints authenticate via Bearer
@@ -472,7 +459,7 @@ async def admin_mfa_login(
     if not verify_totp(admin.mfa_secret, body.totp_code):
         raise HTTPException(status_code=401, detail="Invalid or expired TOTP code")
 
-    return _issue_tokens(_admin_token_data(admin))
+    return await _issue_tokens(_admin_token_data(admin), session=session)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -558,9 +545,10 @@ async def refresh_token(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Refresh access token.
+    Refresh access token. Refresh tokens are single-use: every call returns a new one.
     Doctor / Admin: reads refresh_token from HttpOnly cookie (web browser clients).
     Patient:        reads refresh_token from request body (React Native / SecureStore).
+    Reusing a token after the grace window revokes every session of that user.
     """
     # 1. Try HttpOnly cookie first (doctor / admin — web browser clients)
     refresh_tok: Optional[str] = request.cookies.get("refresh_token")
@@ -589,31 +577,51 @@ async def refresh_token(
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    # Issue new tokens based on role
+    # Use up the token first (single use). A token that was already used is caught here, before
+    # anything else is looked at: see refresh_token_service.claim().
+    client_ip = request.client.host if request.client else "unknown"
+    try:
+        outcome, family = await claim_refresh(session, refresh_tok, payload)
+    except RefreshRejected as exc:
+        logger.warning("refresh_rejected role=%s reason=%s ip=%s", role, exc.reason, client_ip)
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    # Who is this? Also re-checks that the account may still sign in.
     if role == "doctor":
         result = await session.execute(select(Doctor).where(Doctor.email == email))
         doctor = result.scalars().first()
         if not doctor or not doctor.is_active:
             raise HTTPException(status_code=401, detail="Doctor account not found")
-        tokens = _issue_tokens(_doctor_token_data(doctor))
-        response.set_cookie(
-            key="refresh_token",
-            value=tokens["refresh_token"],
-            httponly=True,
-            secure=settings.COOKIE_SECURE,
-            samesite="none",
-            max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
-            path="/api/v1/auth",
-        )
-        return {"access_token": tokens["access_token"], "token_type": "bearer"}
-
+        data = _doctor_token_data(doctor)
     elif role == "admin":
         from ..models.db_models import Admin as AdminModel
         result = await session.execute(select(AdminModel).where(AdminModel.email == email))
         admin = result.scalars().first()
         if not admin or not admin.is_active:
             raise HTTPException(status_code=401, detail="Admin account not found")
-        tokens = _issue_tokens(_admin_token_data(admin))
+        data = _admin_token_data(admin)
+    else:
+        patient = await get_patient_by_email(session, email)
+        if not patient or not patient.is_active:
+            raise HTTPException(status_code=401, detail="Patient not found")
+        changed = patient.password_changed_at
+        if changed is not None:
+            if changed.tzinfo is None:
+                changed = changed.replace(tzinfo=timezone.utc)
+            if payload.get("iat", 0) < changed.timestamp():
+                raise HTTPException(status_code=401, detail="Session expired after a password change. Please log in again.")
+        data = _patient_token_data(patient)
+
+    if outcome == "grace":
+        # Repeat of a token used a moment ago (two tabs, a retry): hand out an access token only.
+        # Nothing is rotated or revoked; the caller keeps the refresh token from the first call.
+        access = create_access_token(
+            data=data, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        return {"access_token": access, "token_type": "bearer"}
+
+    tokens = await _issue_tokens(data, session=session, family_id=family)
+    if role in ("doctor", "admin"):
         response.set_cookie(
             key="refresh_token",
             value=tokens["refresh_token"],
@@ -625,14 +633,8 @@ async def refresh_token(
         )
         return {"access_token": tokens["access_token"], "token_type": "bearer"}
 
-    else:
-        # Patient path — React Native mobile app uses SecureStore (equivalent to HttpOnly cookie).
-        # Return refresh_token in body so the app can persist it in SecureStore.
-        patient = await get_patient_by_email(session, email)
-        if not patient:
-            raise HTTPException(status_code=401, detail="Patient not found")
-        tokens = _issue_tokens(_patient_token_data(patient))
-        return {"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"], "token_type": "bearer"}
+    # Patient: the mobile app keeps the refresh token in SecureStore, so it comes back in the body.
+    return {"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"], "token_type": "bearer"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -740,7 +742,7 @@ async def google_verify(
         patient.profile_picture_url = picture
         await session.flush()
 
-    tokens = _issue_tokens(_patient_token_data(patient))
+    tokens = await _issue_tokens(_patient_token_data(patient), session=session)
     tokens["is_new_user"] = patient.height_cm == 0
     return tokens
 
@@ -837,7 +839,7 @@ async def doctor_login(
         doctor.email,
         request.client.host if request.client else "unknown",
     )
-    tokens = _issue_tokens(_doctor_token_data(doctor))
+    tokens = await _issue_tokens(_doctor_token_data(doctor))
     response.set_cookie(
         key="refresh_token",
         value=tokens["refresh_token"],
@@ -879,7 +881,7 @@ async def doctor_mfa_login(
     if not verify_totp(doctor.mfa_secret, body.totp_code):
         raise HTTPException(status_code=401, detail="Invalid or expired TOTP code")
 
-    return _issue_tokens(_doctor_token_data(doctor))
+    return await _issue_tokens(_doctor_token_data(doctor), session=session)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -962,7 +964,7 @@ async def logout(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Server-side logout for doctor and admin.
+    Server-side logout (doctor, admin and patient).
 
     What this does:
       1. Reads the actor identity from the Authorization Bearer token (access token).
@@ -1018,6 +1020,27 @@ async def logout(
                     actor_role = "admin"
             except JWTError:
                 pass
+
+    # ── 1b. Cancel the refresh token that was presented ──────────────────────
+    # Cookie for doctor/admin, JSON body for patients (mobile app). Revokes its whole family,
+    # so a copy of it stops working too.
+    presented = request.cookies.get("refresh_token")
+    if not presented:
+        try:
+            presented = (await request.json()).get("refresh_token")
+        except Exception:
+            presented = None
+    if presented:
+        try:
+            rp = jwt.decode(
+                presented, settings.SECRET_KEY, algorithms=["HS256"],
+                options={"verify_exp": False},
+            )
+            if rp.get("token_type") == "refresh" and rp.get("jti"):
+                await revoke_family_of(session, rp["jti"])
+                await session.commit()
+        except JWTError:
+            pass
 
     # ── 2. Delete the HttpOnly cookie server-side ────────────────────────────
     # Path MUST match the path used in set_cookie() exactly — otherwise
@@ -1293,6 +1316,8 @@ async def reset_password(
     await session.execute(
         delete(PasswordResetToken).where(PasswordResetToken.id == prt.id)
     )
+    # Every refresh token issued before the reset stops working (sign out everywhere).
+    await revoke_user(session, "patient", prt.patient_id)
     await session.flush()
 
     return {"message": "Password reset successfully. You can now log in with your new password."}

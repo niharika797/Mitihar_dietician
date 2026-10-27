@@ -77,6 +77,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (e) {
       Sentry.captureException(e);
     }
+    // Cancel the refresh token on the server so a copy of it stops working. Best effort:
+    // the app signs out locally either way (offline, server down).
+    try {
+      const refreshToken = await storage.getItemAsync(SECURE_KEYS.REFRESH_TOKEN);
+      if (refreshToken) await axiosInstance.post('/auth/logout', { refresh_token: refreshToken });
+    } catch (e) {
+      Sentry.captureException(e);
+    }
     await storage.deleteItemAsync(SECURE_KEYS.ACCESS_TOKEN);
     await storage.deleteItemAsync(SECURE_KEYS.REFRESH_TOKEN);
     // Clear biometric preference from BOTH SecureStore (persisted) AND the

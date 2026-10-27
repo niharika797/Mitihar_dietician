@@ -301,7 +301,7 @@ async def activate_subscription(
 
     from ..routers.auth import _patient_token_data, _issue_tokens
     token_data = _patient_token_data(updated)
-    tokens = _issue_tokens(token_data)
+    tokens = await _issue_tokens(token_data, session=session)
 
     return ActivationResponse(
         patient=PatientProfileResponse.model_validate(updated),

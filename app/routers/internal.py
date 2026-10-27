@@ -10,6 +10,7 @@ from sqlalchemy import update, select, delete
 from ..core.config import settings
 from ..core.database import AsyncSessionLocal
 from ..models.db_models import Patient, Recommendation, WeeklyCombo
+from ..services.refresh_token_service import delete_expired as delete_expired_refresh_tokens
 from ..services.weekly_summary_service import compute_weekly_summary, COMBO_RETENTION_DAYS
 
 _log = logging.getLogger(__name__)
@@ -177,7 +178,8 @@ async def prune_old_combos(x_cron_secret: str | None = Header(default=None)):
     """
     Delete weekly_combos of inactive plans older than 8 weeks. The learned signal lives in
     weekly_patient_summary, so the 84 option rows per patient-week are disposable after that.
-    Never touches an active plan. Idempotent.
+    Never touches an active plan. Also deletes refresh-token records that expired over a day ago.
+    Idempotent.
     """
     _check_secret(x_cron_secret)
     cutoff = datetime.now(timezone.utc).date() - timedelta(days=COMBO_RETENTION_DAYS)
@@ -188,9 +190,13 @@ async def prune_old_combos(x_cron_secret: str | None = Header(default=None)):
                 Recommendation.is_active == False,  # noqa: E712
             )
             result = await session.execute(delete(WeeklyCombo).where(WeeklyCombo.recommendation_id.in_(old_recs)))
+            tokens_deleted = await delete_expired_refresh_tokens(session)
             await session.commit()
-            _log.info("[cron] prune_old_combos: deleted %d rows older than %s", result.rowcount, cutoff)
-            return {"cutoff": str(cutoff), "deleted": result.rowcount}
+            _log.info(
+                "[cron] prune_old_combos: deleted %d rows older than %s, %d expired refresh tokens",
+                result.rowcount, cutoff, tokens_deleted,
+            )
+            return {"cutoff": str(cutoff), "deleted": result.rowcount, "refresh_tokens_deleted": tokens_deleted}
         except Exception as exc:
             await session.rollback()
             _log.error("[cron] prune_old_combos failed: %s", exc, exc_info=True)
