@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 
+from app.services.ingredient_habits import build_ingredient_intake
 from app.models.db_models import (
     WeeklyPatientSummary, PatientMealChoice, PatientMealChoiceDish,
     WeeklyCombo, Recommendation, FoodItem,
@@ -304,6 +305,9 @@ async def _compute(db: AsyncSession, patient_id: int, week_start: "date | None")
             "avg_bowl_size":      avg_bowl_size,
         },
     }
+
+    # 8b. Ingredient intake (grams, nutrients) for habit learning and reports
+    summary_data.update(await build_ingredient_intake(db, choices))
 
     # 9. Upsert into weekly_patient_summary
     if recommendation_id:
