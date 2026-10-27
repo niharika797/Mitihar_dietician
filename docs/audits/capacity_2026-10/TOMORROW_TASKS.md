@@ -29,7 +29,7 @@ Working branch: `feature/api-remediation-v0.2` (d5dcf5e). `main` and the 3 workt
 
 ## 4. Testing gaps
 - [ ] Expo web app freezes on the first real click (cause unknown). The backend `/docs` page takes clicks fine.
-- [ ] `full_backend_test.py` and `security_verification_test.py` fail on admin/doctor credential mismatch (74/158 before, 75/158 after). Fix the test credentials, then compare again.
+- [x] Backend live tests fixed 2026-10-28: full_backend_test 103/103, security_verification_test 190/197 (was 75/158). Needed: TEST_ADMIN_* creds from .env, 127.0.0.1 + port 8001, 30 s timeouts, gdpr_consent, dev Redis running (docker start mityahar-redis; FLUSHDB between runs, register is limited to 3/hour). 7 left are test-vs-product drift (see commit message).
 - [ ] Run the new 409 toast on a device or emulator.
 
 ## 5. Known results to compare against

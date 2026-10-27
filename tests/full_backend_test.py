@@ -5,8 +5,14 @@ import sys
 from dotenv import load_dotenv
 load_dotenv()
 
-BASE = "http://localhost:8001/api/v1"
-ADMIN_PASSWORD = os.getenv("ADMIN_SEED_PASSWORD", "admin1234")
+# 127.0.0.1, not localhost: on Windows "localhost" tries IPv6 first and adds ~2 s per request.
+# 30 s default timeout (httpx's 5 s crashed the run on a loaded dev machine).
+import functools
+for _m in ("get", "post", "put", "patch", "delete", "options"):
+    setattr(httpx, _m, functools.partial(getattr(httpx, _m), timeout=30.0))   # call sites that pass their own timeout still win
+BASE = os.getenv("TEST_BASE_URL", "http://127.0.0.1:8001") + "/api/v1"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@mityahar.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD") or os.getenv("ADMIN_SEED_PASSWORD", "admin1234")
 DOCTOR_EMAIL = os.getenv("TEST_DOCTOR_EMAIL", "dr.ashok.mehta@mitihar.test")
 DOCTOR_PASSWORD = os.getenv("TEST_DOCTOR_PASSWORD", "DoctorTest@2026")
 PASS = "✅ PASS"
@@ -53,7 +59,7 @@ print("\n── SECTION 2: Admin Auth ──")
 
 # Admin must already exist in DB. If not, seed one manually first.
 r = httpx.post(f"{BASE}/auth/admin/login", data={
-    "username": "admin@mityahar.com",
+    "username": ADMIN_EMAIL,
     "password": ADMIN_PASSWORD
 })
 check("POST /auth/admin/login returns 200", r.status_code == 200, r.text)
@@ -451,7 +457,7 @@ if r.status_code == 200:
     check("Plan has version field >= 1", version >= 1)
 
     # Trigger plan regeneration to test version increment
-    r2 = httpx.post(f"{BASE}/meal-plan/adjust", headers=hdr(patient_token), json={"reduction_amount": 100})
+    r2 = httpx.post(f"{BASE}/meal-plan/adjust", headers=hdr(patient_token), json={"reduction_amount": 100}, timeout=60)  # full plan generation: 6-13 s on a dev machine
     check("POST /meal-plan/adjust returns 200", r2.status_code == 200, r2.text)
 
     r3 = httpx.get(f"{BASE}/diet-plans/my-plan", headers=hdr(patient_token))

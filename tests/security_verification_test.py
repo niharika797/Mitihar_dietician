@@ -11,20 +11,30 @@ or:
     (venv) python tests/security_verification_test.py
 
 Requirements: pip install httpx
-Server must be running on http://localhost:8000
+Server must be running on http://127.0.0.1:8001 (override with TEST_BASE_URL)
 """
 
 import httpx
+import os
 import time
 import sys
 from datetime import date
+from dotenv import load_dotenv
 
-BASE = "http://localhost:8000/api/v1"
-ROOT = "http://localhost:8000"
+load_dotenv()
+
+# 127.0.0.1, not localhost: on Windows "localhost" tries IPv6 first and adds ~2 s per request.
+# 30 s default timeout (httpx's 5 s crashed the run on a loaded dev machine).
+import functools
+for _m in ("get", "post", "put", "patch", "delete", "options"):
+    setattr(httpx, _m, functools.partial(getattr(httpx, _m), timeout=30.0))   # call sites that pass their own timeout still win
+TARGET = os.getenv("TEST_BASE_URL", "http://127.0.0.1:8001")   # the dev backend runs on 8001
+BASE = f"{TARGET}/api/v1"
+ROOT = TARGET
 
 # ── Credentials (must match .env) ─────────────────────────────────────────
-ADMIN_EMAIL    = "admin@mityahar.com"
-ADMIN_PASSWORD = "Mityahar@2026"   # must match ADMIN_SEED_PASSWORD in .env; re-run seed_admin.py if login fails
+ADMIN_EMAIL    = os.getenv("TEST_ADMIN_EMAIL", "admin@mityahar.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD") or os.getenv("ADMIN_SEED_PASSWORD", "Mityahar@2026")   # python -m scripts.seed_test_accounts syncs the DB to this
 
 DOCTOR_EMAIL    = "security.test.doctor@mityahar.com"
 DOCTOR_PASSWORD = "DocTest1@2026"
@@ -397,7 +407,8 @@ def test_patient_auth():
         "email": PATIENT_EMAIL, "password": PATIENT_PASSWORD,
         "name": "Security Test Patient", "gender": "female",
         "height": 163.0, "weight": 58.0, "activity_level": "MA",
-        "diet": "Vegetarian", "health_condition": "Healthy", "region": "North"
+        "diet": "Vegetarian", "health_condition": "Healthy", "region": "North",
+        "gdpr_consent": True
     })
     check("POST /auth/register returns 200 or 409",
           r.status_code in (200, 409), r.text)
@@ -1109,7 +1120,8 @@ def test_admin_patient_management():
         "email": throwaway_email, "password": "Throwaway1@2026",
         "name": "Throwaway Erase Test", "gender": "male",
         "height": 170.0, "weight": 65.0, "activity_level": "LA",
-        "diet": "Vegetarian", "health_condition": "Healthy", "region": "North"
+        "diet": "Vegetarian", "health_condition": "Healthy", "region": "North",
+        "gdpr_consent": True
     })
     r = httpx.get(f"{BASE}/admin/patients", headers=hdr(tok),
                   params={"search": throwaway_email})
