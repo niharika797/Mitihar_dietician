@@ -32,5 +32,11 @@ Working branch: `feature/api-remediation-v0.2` (d5dcf5e). `main` and the 3 workt
 - [x] Backend live tests fixed 2026-10-28: full_backend_test 103/103, security_verification_test 190/197 (was 75/158). Needed: TEST_ADMIN_* creds from .env, 127.0.0.1 + port 8001, 30 s timeouts, gdpr_consent, dev Redis running (docker start mityahar-redis; FLUSHDB between runs, register is limited to 3/hour). 7 left are test-vs-product drift (see commit message).
 - [ ] Run the new 409 toast on a device or emulator.
 
+## 4b. Must do before the project is complete (needs GCP / Google Cloud console, not available now)
+- [ ] Google sign-in on a real Android build. `lib/useGoogleSignIn.ts` uses one web-type client ID (`EXPO_PUBLIC_GOOGLE_CLIENT_ID`) with a `mitihar://` redirect. Google usually rejects custom-scheme redirects for web clients, so it will probably fail in a Play Store build. Fix: create an Android OAuth client (package `com.mitihar.patient` + SHA-1 of the Play signing key) or switch to Google's native sign-in library; keep the server's `/auth/google/verify` audience in step. Not tested; code-read only (2026-10-28).
+- [ ] Refresh tokens are not revoked after use: `/auth/refresh` issues new tokens but the old one stays valid until it expires (7 days). Needs a token store (Redis or DB) if we want single-use rotation.
+- [ ] Create the Monday `prune-old-combos` Cloud Scheduler job (script is updated, job not created).
+- [ ] Find the real staging DB pool values (item 3.6).
+
 ## 5. Known results to compare against
 Report: `docs/audits/capacity_2026-10/REPORT_1vCPU_API_2vCPU_DB.md`. Median 5.4 ms, login ~210 ms, plan generation 1.0-1.6 CPU-s, ceiling ~80-100 requests/s on 1 vCPU.
