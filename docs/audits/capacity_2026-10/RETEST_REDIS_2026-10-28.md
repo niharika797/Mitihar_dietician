@@ -36,8 +36,17 @@ The same setup varies from 96 to 150 ms typical and 420 to 690 ms slowest 5% bet
 ## Single requests (one at a time)
 Patient, doctor and admin login: 205 to 211 ms before, 211 to 213 ms now. All other endpoints unchanged within noise.
 
-## What this showed about plan generation
-The patient app calls `POST /diet-plans/generate` once each time the Meals screen opens, even when this week's plan is already stored. The server returns the stored plan in about 27 ms, but the 10-per-hour limit still counts the call, per IP. Shared IPs (clinic Wi-Fi, mobile carriers) would hit it. Proposed fix, not built yet: the app reads the stored plan first and only calls `generate` when this week has none, and the server counts the limit only for real generations, per patient.
+## Plan generation: fixed and re-tested
+The patient app called `POST /diet-plans/generate` once each time the Meals screen opened, even when this week's plan was already stored. The server returned the stored plan in about 27 ms, but the 10-per-hour per-IP limit still counted the call, so shared IPs would hit it and the ramp test showed 402 refusals.
+
+Fix (commit `6ecb380`): the app reads the stored plan first and calls `generate` only when it is not this week's; the server counts the limit (10 per hour, per patient) only for real generations, never for reuse.
+
+| Ramp 1 to 100 req/s, 10 min | Typical / slowest 5% / slowest 1% (ms) | Failed | API CPU avg / p95 |
+|---|---|---|---|
+| Before (per IP, every call counted) | 9 / 30 / 140 | 402 of 30,765 | 35% / 64% |
+| After the fix | 11 / 100 / 290 | **0 of 30,877** | 39% / 74% |
+
+The slower tail is the work the refused calls used to skip: the 1,210 `generate` calls now return the stored plan (23 ms on average, 499 ms at worst) instead of being turned away.
 
 ## What this does not tell us
 - Docker's CPU limit is not Cloud Run's real CPU: treat times as about plus or minus 30%.
