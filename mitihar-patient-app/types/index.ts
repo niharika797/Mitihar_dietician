@@ -344,6 +344,7 @@ export interface WeeklyComboV2 {
   required_count?: number;
   missing_ingredients?: string[];
   cookable?: boolean;            // true only when nothing is missing (rare)
+  is_usual?: boolean;            // contains an ingredient the patient keeps choosing (needs ~3 weeks of data)
 }
 
 // ── Pantry (pantry-first meal planning) ──────────────────────────────────

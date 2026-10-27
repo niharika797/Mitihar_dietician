@@ -162,6 +162,11 @@ function V2ComboCard({ combo, onSelect, onCardPress, isPending, isConfirmedThisC
           <Text style={s.pinBadgeText}>🩺 Doctor's pick</Text>
         </View>
       )}
+      {combo.is_usual && (
+        <View style={[s.pinBadge, { marginBottom: 6 }]}>
+          <Text style={s.pinBadgeText}>⭐ Your usual</Text>
+        </View>
+      )}
       <Text style={s.suggName} numberOfLines={3}>{dishNames}</Text>
       <Text style={s.suggCal}>~{Math.round(combo.total_calories)} kcal</Text>
       {(combo.required_count ?? 0) > 0 && (
