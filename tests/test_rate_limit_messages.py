@@ -70,3 +70,10 @@ def test_key_limit_is_per_email_and_per_scope(memory_limiter):
         lim.hit_key_limit("login", "a@example.com", "3/minute")
     lim.hit_key_limit("login", "b@example.com", "3/minute")        # other email: fine
     lim.hit_key_limit("register", "a@example.com", "3/minute")     # other scope: fine
+
+
+def test_redact_url_hides_the_redis_password():
+    assert lim.redact_url("redis://:s3cr3t@10.0.0.5:6379/0") == "redis://***@10.0.0.5:6379/0"
+    assert "s3cr3t" not in lim.redact_url("redis://user:s3cr3t@host:6379/0")
+    assert lim.redact_url("redis://localhost:6379/0") == "redis://localhost:6379/0"
+    assert lim.redact_url("") == ""

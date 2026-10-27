@@ -581,7 +581,7 @@ async def refresh_token(
     # anything else is looked at: see refresh_token_service.claim().
     client_ip = request.client.host if request.client else "unknown"
     try:
-        outcome, family = await claim_refresh(session, refresh_tok, payload)
+        outcome, family = await claim_refresh(session, payload)
     except RefreshRejected as exc:
         logger.warning("refresh_rejected role=%s reason=%s ip=%s", role, exc.reason, client_ip)
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")

@@ -6,7 +6,7 @@ Every refresh token carries a unique `jti` and a `fam` (family) claim and has on
 issues a child in the same family. Using the same token again after REFRESH_REUSE_GRACE_SECONDS
 means someone else holds a copy, so every token of that user is revoked ("sign out everywhere").
 Tokens issued before this existed have no jti; they are tracked from their first use by a hash
-of the token (LEGACY_PREFIX) and can be used once, then replaced.
+of their signed claims (LEGACY_PREFIX) and can be used once, then replaced.
 """
 import hashlib
 import logging
@@ -102,9 +102,9 @@ async def delete_expired(session: AsyncSession) -> int:
     return result.rowcount or 0
 
 
-async def claim(session: AsyncSession, token: str, payload: dict) -> tuple[str, str]:
+async def claim(session: AsyncSession, payload: dict) -> tuple[str, str]:
     """
-    Use up a refresh token. `payload` is the already-verified JWT payload.
+    Use up a refresh token. `payload` is the already-verified JWT payload (the claims are signed, so safe to trust).
     Returns ("new", family) on first use: caller issues a child token in that family.
     Returns ("grace", family) on a repeat within the grace window: caller issues an access token only.
     Raises RefreshRejected otherwise. On reuse it revokes every token of the user and commits first.
@@ -114,7 +114,10 @@ async def claim(session: AsyncSession, token: str, payload: dict) -> tuple[str, 
     jti = payload.get("jti")
     legacy = jti is None
     if legacy:
-        jti = LEGACY_PREFIX + hashlib.sha256(token.encode("utf-8")).hexdigest()[:48]
+        # Key on the signed claims, not on the raw token string: a JWT can be re-encoded (padding,
+        # trailing bits of the signature) into a different string that still verifies.
+        canonical = "|".join(str(payload.get(k)) for k in ("role", f"{role}_id", "sub", "iat", "exp"))
+        jti = LEGACY_PREFIX + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:48]
 
     # Row lock: two simultaneous calls with one token are handled one after the other.
     row = (
@@ -138,7 +141,7 @@ async def claim(session: AsyncSession, token: str, payload: dict) -> tuple[str, 
             await session.flush()
         except IntegrityError:
             await session.rollback()  # another request recorded this legacy token first: re-evaluate
-            return await claim(session, token, payload)
+            return await claim(session, payload)
         return "new", row.family_id
 
     if row.revoked_at is not None:

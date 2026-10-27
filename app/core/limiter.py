@@ -4,6 +4,7 @@ import inspect
 import ipaddress
 import logging
 import math
+import re
 import threading
 import time
 from typing import List
@@ -17,6 +18,12 @@ from slowapi.errors import RateLimitExceeded
 from .config import settings
 
 _log = logging.getLogger(__name__)
+
+
+def redact_url(url: str) -> str:
+    """redis://:secret@host:6379/0 -> redis://***@host:6379/0 (log lines must never carry the AUTH password)."""
+    return re.sub(r"://[^@/]*@", "://***@", url or "")
+
 
 # Fail-open counter — incremented every time the rate limiter bypasses a request
 # due to Redis/storage unavailability. Visible in GCP Cloud Logging as structured
@@ -151,7 +158,7 @@ if settings.REDIS_URL:
     # FailOpenLimiter: if Redis goes down at runtime, requests are allowed through
     # (logged as errors) rather than returning 500/502 to clients.
     limiter = FailOpenLimiter(key_func=gcp_aware_key, storage_uri=settings.REDIS_URL)
-    _log.info("Rate limiter using Redis storage (fail-open on disconnect): %s", settings.REDIS_URL)
+    _log.info("Rate limiter using Redis storage (fail-open on disconnect): %s", redact_url(settings.REDIS_URL))
 else:
     # Development fallback: in-memory counter. ONLY safe for single-worker dev servers.
     # Set REDIS_URL in .env before running with --workers > 1 in production.

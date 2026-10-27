@@ -1372,6 +1372,14 @@ def test_refresh_token_rotation():
     r = refresh(legacy)
     check("Legacy refresh token (no jti) is accepted once and replaced by a tracked one",
           r.status_code == 200 and r.json().get("refresh_token"), r.text)
+    # Same token, re-encoded: the last character of the signature has 2 unused bits, so a flipped low bit
+    # is a different string with identical signature bytes. It must be recognised as the SAME token
+    # (repeat inside the grace window: access token only), never as a fresh legacy token.
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    variant = legacy[:-1] + alphabet[alphabet.index(legacy[-1]) ^ 1]
+    r = refresh(variant)
+    check("Re-encoded copy of a used legacy token is not treated as a new token",
+          r.status_code == 401 or (r.status_code == 200 and "refresh_token" not in r.json()), r.text)
 
     # Rotation
     r = refresh(rt1)

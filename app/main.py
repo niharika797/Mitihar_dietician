@@ -7,6 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from .core.limiter import (
     RateLimitedError,
     limiter,
+    redact_url,
     rate_limit_exceeded_handler,
     rate_limited_error_handler,
 )
@@ -80,7 +81,7 @@ async def lifespan(app: FastAPI):
         try:
             r = redis_lib.from_url(settings.REDIS_URL)
             r.ping()
-            _log.info("Rate limiter: connected to Redis at %s", settings.REDIS_URL)
+            _log.info("Rate limiter: connected to Redis at %s", redact_url(settings.REDIS_URL))
         except Exception as e:
             _log.error("ERROR: REDIS_URL set but Redis unreachable: %s", e)
             _log.error("Rate limiter will fail at runtime. Check Docker container is running.")
