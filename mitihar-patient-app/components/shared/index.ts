@@ -9,4 +9,5 @@ export { Button }          from "./Button";
 export { Card }            from "./Card";
 export { ScreenHeader }    from "./ScreenHeader";
 export { ErrorState }      from "./ErrorState";
+export { RateLimitModal }  from "./RateLimitModal";
 export { AnimatedPressable } from "./AnimatedPressable";

@@ -1,11 +1,16 @@
 import functools
+import hashlib
 import inspect
 import ipaddress
 import logging
+import math
 import threading
+import time
 from typing import List
 
 from fastapi import Request
+from fastapi.responses import JSONResponse
+from limits import parse as _parse_limit
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 
@@ -156,3 +161,74 @@ else:
         "Set REDIS_URL in .env to enable shared Redis storage."
     )
     limiter = FailOpenLimiter(key_func=gcp_aware_key)
+
+
+# ── Friendly 429 answers + per-identifier (e.g. per-email) limits ─────────────────────
+
+def friendly_wait(seconds: int) -> str:
+    """'about 3 minutes' / 'about 1 hour' -- rounded up so the patient never retries too early."""
+    minutes = max(1, math.ceil(seconds / 60))
+    if minutes < 60:
+        return f"about {minutes} minute{'s' if minutes != 1 else ''}"
+    hours = math.ceil(minutes / 60)
+    return f"about {hours} hour{'s' if hours != 1 else ''}"
+
+
+def rate_limit_message(seconds: int) -> str:
+    return (
+        "Too many attempts. For your security, we have paused this action for a short while. "
+        f"Please take a break and try again in {friendly_wait(seconds)}."
+    )
+
+
+def rate_limited_response(seconds: int) -> JSONResponse:
+    seconds = max(1, int(seconds))
+    return JSONResponse(
+        status_code=429,
+        content={"detail": rate_limit_message(seconds), "retry_after_seconds": seconds},
+        headers={"Retry-After": str(seconds)},
+    )
+
+
+class RateLimitedError(Exception):
+    """Raised by hit_key_limit(); main.py answers it with the same friendly 429 as a slowapi limit."""
+
+    def __init__(self, retry_after: int):
+        self.retry_after = max(1, int(retry_after))
+
+
+def hit_key_limit(scope: str, identifier: str, limit: str) -> None:
+    """
+    Count one attempt against `limit` (e.g. "10/15 minutes") for this identifier (an email).
+    Same storage as the per-IP limits (Redis when REDIS_URL is set, memory otherwise), so the
+    count is shared across servers when Redis is on. The email is hashed before it is used as a
+    key, so no address is stored in Redis. Fails open on storage errors, like the per-IP limits.
+    Raises RateLimitedError when the limit is exceeded.
+    """
+    item = _parse_limit(limit)
+    key = hashlib.sha256(identifier.strip().lower().encode("utf-8")).hexdigest()[:24]
+    try:
+        if limiter.limiter.hit(item, scope, key):
+            return
+        reset_at = limiter.limiter.get_window_stats(item, scope, key)[0]
+    except Exception as exc:
+        if _is_storage_error(exc):
+            _increment_fail_open(exc)
+            return
+        raise
+    raise RateLimitedError(math.ceil(reset_at - time.time()))
+
+
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Replaces slowapi's bare '{"error": "Rate limit exceeded: ..."}' with the friendly answer."""
+    try:
+        current = request.state.view_rate_limit
+        reset_at = request.app.state.limiter.limiter.get_window_stats(current[0], *current[1])[0]
+        seconds = math.ceil(reset_at - time.time())
+    except Exception:
+        seconds = exc.limit.limit.get_expiry()  # fall back to the whole window
+    return rate_limited_response(seconds)
+
+
+async def rate_limited_error_handler(request: Request, exc: RateLimitedError) -> JSONResponse:
+    return rate_limited_response(exc.retry_after)

@@ -1,5 +1,6 @@
 import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
 import { storage } from "./storage";
+import { useRateLimitStore } from "../store/useRateLimitStore";
 
 // ─── Keys used for SecureStore ─────────────────────────────────────────────
 export const SECURE_KEYS = {
@@ -44,6 +45,14 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest: AxiosRequestConfig & { _retry?: boolean } =
       error.config ?? {};
+
+    // Server-side rate limit: the answer carries a ready-made message with the wait time.
+    // Show the "take a break" pop-up once; screens skip their own error toast for a 429.
+    if (error.response?.status === 429) {
+      const detail = error.response.data?.detail;
+      useRateLimitStore.getState().show(typeof detail === "string" ? detail : undefined);
+      return Promise.reject(error);
+    }
 
     if (error.response?.status !== 401 || originalRequest._retry) {
       return Promise.reject(error);

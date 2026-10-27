@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.database import get_db
-from ..core.limiter import limiter
+from ..core.limiter import hit_key_limit, limiter
 from ..core.security import create_access_token, create_refresh_token, get_current_patient, get_current_doctor, get_current_admin, verify_password, get_password_hash
 from ..models.db_models import Doctor, Patient, Admin
 from ..schemas.user import UserCreate
@@ -133,7 +133,7 @@ def _decode_partial_token(token: str, expected_role: str) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=dict)
-@limiter.limit("3/hour")
+@limiter.limit("20/hour")
 async def register(
     request: Request,
     user_data: UserCreate,
@@ -141,12 +141,15 @@ async def register(
 ):
     """
     Register a new patient.
-    Rate-limited to 3/hour per IP — prevents account-creation floods.
+    Rate-limited to 20/hour per IP (shared mobile and clinic IPs) and 3/hour per email --
+    prevents account-creation floods.
     If doctor_code is provided: validates, consumes it, links patient to doctor immediately.
     If no doctor_code: standalone patient with inactive subscription.
     """
     from ..models.db_models import SubscriptionCode, Patient as PatientModel
     from datetime import datetime, timezone as _tz, date as _date
+
+    hit_key_limit("register", user_data.email, "3/hour")
 
     # ── Compliance checks ────────────────────────────────────────────────────
     if not user_data.gdpr_consent:
@@ -251,17 +254,22 @@ async def register(
 
 
 @router.post("/token")
-@limiter.limit("5/15minutes")
+@limiter.limit("30/15minutes")
 async def login(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
 ):
-    """Patient login — returns JWT tokens. Refresh token is returned in body for mobile SecureStore."""
+    """
+    Patient login — returns JWT tokens. Refresh token is returned in body for mobile SecureStore.
+    Limits: 30 per 15 min per IP (shared mobile / clinic IPs) and 10 per 15 min per email.
+    """
     import asyncio
     from datetime import datetime, timezone, timedelta
     from sqlalchemy import update as _sa_update
     from ..core.database import AsyncSessionLocal
+
+    hit_key_limit("login", form_data.username, "10/15 minutes")
 
     # Phase 1: Read — single fetch; connection released before bcrypt runs
     async with AsyncSessionLocal() as rs:
@@ -347,6 +355,8 @@ async def admin_login(
     from ..models.db_models import Admin as AdminModel
     from datetime import datetime, timezone, timedelta
     from sqlalchemy import update as _sa_update
+
+    hit_key_limit("admin-login", form_data.username, "10/15 minutes")
 
     result = await session.execute(
         select(AdminModel).where(AdminModel.email == form_data.username)
@@ -755,6 +765,8 @@ async def doctor_login(
     from datetime import datetime, timezone, timedelta
     from sqlalchemy import update as _sa_update
     from ..core.database import AsyncSessionLocal
+
+    hit_key_limit("doctor-login", form_data.username, "10/15 minutes")
 
     # Phase 1: Read — fetch doctor; connection released before bcrypt runs
     async with AsyncSessionLocal() as rs:

@@ -64,8 +64,8 @@ export default function LoginScreen() {
       }
       // cancelled: user closed the consent screen — no toast, matches a
       // no-op back-navigation on the email/password form.
-    } catch (err) {
-      showToast(getApiError(err, "Google sign-in failed"), "error");
+    } catch (err: any) {
+      if (err?.response?.status !== 429) showToast(getApiError(err, "Google sign-in failed"), "error");
     } finally {
       setGooglePending(false);
     }
@@ -86,7 +86,10 @@ export default function LoginScreen() {
       // Do NOT call router.replace here; AuthGate owns all post-auth navigation.
       loginSuccess(tokens.access_token, tokens.refresh_token, profile);
     },
-    onError: () => showToast("Invalid email or password", "error"),
+    onError: (err: any) => {
+      if (err?.response?.status === 429) return; // the "take a break" pop-up already explains it
+      showToast("Invalid email or password", "error");
+    },
   });
 
   const canSubmit = email.trim().length > 0 && password.length >= 6;

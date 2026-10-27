@@ -40,7 +40,7 @@ import {
   Inter_800ExtraBold,
 } from "@expo-google-fonts/inter";
 import * as SplashScreen from "expo-splash-screen";
-import { ToastProvider } from "../components/shared";
+import { RateLimitModal, ToastProvider } from "../components/shared";
 import SplashAnimation from "../components/SplashAnimation";
 import BiometricGate from "../components/BiometricGate";
 
@@ -218,6 +218,7 @@ function RootLayout() {
             <StatusBar style="dark" />
           </AuthGate>
         </BiometricGate>
+        <RateLimitModal />
       </ToastProvider>
     </QueryClientProvider>
     </Sentry.ErrorBoundary>

@@ -3,9 +3,13 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from .core.limiter import limiter
+from .core.limiter import (
+    RateLimitedError,
+    limiter,
+    rate_limit_exceeded_handler,
+    rate_limited_error_handler,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
@@ -85,7 +89,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_exception_handler(RateLimitedError, rate_limited_error_handler)  # type: ignore[arg-type]
 # slowapi's handler is typed for RateLimitExceeded; Starlette's stub wants a
 # generic Exception handler. No runtime effect -- Starlette dispatches by the
 # exception's actual type via MRO, not by the handler's declared parameter type.

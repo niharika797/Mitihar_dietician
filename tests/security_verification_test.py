@@ -1328,6 +1328,53 @@ def test_security_audit_regression():
 
 
 # ══════════════════════════════════════════════════════════════════════════
+# SECTION 18 — RATE LIMITS: PER EMAIL + PER IP, FRIENDLY MESSAGE
+# Run last: it deliberately uses up this machine's per-IP login allowance.
+# ══════════════════════════════════════════════════════════════════════════
+def test_rate_limits_friendly_message():
+    section("18 · Rate limits: per email, per IP, friendly 429 message")
+    stamp = int(time.time())
+
+    # Per email: 10 tries per 15 min, the 11th is refused (unknown account, so no bcrypt cost)
+    email = f"ratelimit.one.{stamp}@example.com"
+    resp = [post_form(f"{BASE}/auth/token", email, "WrongPass1!") for _ in range(11)]
+    codes = [r.status_code for r in resp]
+    check("Per-email login limit: first 10 tries answered 401", codes[:10].count(401) == 10, str(codes))
+    check("Per-email login limit: 11th try refused with 429", codes[10] == 429, str(codes))
+    body = resp[10].json() if codes[10] == 429 else {}
+    secs = body.get("retry_after_seconds")
+    check("429 body has a friendly message with a wait time",
+          "take a break" in body.get("detail", "") and "try again in about" in body.get("detail", ""), str(body))
+    check("429 body has retry_after_seconds and a matching Retry-After header",
+          isinstance(secs, int) and 1 <= secs <= 900 and resp[10].headers.get("retry-after") == str(secs), str(body))
+    other = post_form(f"{BASE}/auth/token", f"ratelimit.two.{stamp}@example.com", "WrongPass1!")
+    check("A different email from the same IP is not blocked by it", other.status_code == 401, other.text)
+
+    # Per email on signup: 3 per hour (consent left off, so nothing is written)
+    reg_email = f"ratelimit.reg.{stamp}@example.com"
+    payload = {"email": reg_email, "password": "Passw0rd!x", "name": "Rate Limit",
+               "gender": "female", "height": 160.0, "weight": 55.0, "activity_level": "S",
+               "diet": "Vegetarian", "gdpr_consent": False}
+    rc = [httpx.post(f"{BASE}/auth/register", json=payload).status_code for _ in range(4)]
+    check("Per-email signup limit: 3 tries pass the limiter, the 4th is refused (429)",
+          rc[:3] == [400, 400, 400] and rc[3] == 429, str(rc))
+
+    # Per IP: 30 per 15 min. Distinct emails until the IP itself is refused.
+    first_429, attempts = None, 0
+    for i in range(45):
+        r = post_form(f"{BASE}/auth/token", f"ratelimit.ip.{stamp}.{i}@example.com", "WrongPass1!")
+        attempts += 1
+        if r.status_code == 429:
+            first_429 = r
+            break
+    check("Per-IP login limit is looser than before (>= 10 more tries allowed after this section's others)",
+          first_429 is not None and attempts > 10, f"attempts before 429: {attempts}")
+    check("Per-IP login limit still stops a flood with the friendly message",
+          first_429 is not None and "take a break" in first_429.json().get("detail", ""),
+          first_429.text if first_429 is not None else "never refused in 45 tries")
+
+
+# ══════════════════════════════════════════════════════════════════════════
 # MAIN RUNNER
 # ══════════════════════════════════════════════════════════════════════════
 def main():
@@ -1354,6 +1401,7 @@ def main():
         test_admin_food_management,
         test_logout,
         test_security_audit_regression,
+        test_rate_limits_friendly_message,
     ]
 
     for fn in sections:

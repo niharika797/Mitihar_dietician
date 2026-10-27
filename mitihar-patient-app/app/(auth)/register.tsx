@@ -45,8 +45,8 @@ export default function RegisterScreen() {
       if (!result.ok && !result.cancelled) {
         showToast(result.error, "error");
       }
-    } catch (err) {
-      showToast(getApiError(err, "Google sign-in failed"), "error");
+    } catch (err: any) {
+      if (err?.response?.status !== 429) showToast(getApiError(err, "Google sign-in failed"), "error");
     } finally {
       setGooglePending(false);
     }
@@ -87,6 +87,7 @@ export default function RegisterScreen() {
       showToast("Account created! Let's set up your profile 🎉", "success");
     },
     onError: (err: any) => {
+      if (err?.response?.status === 429) return; // the "take a break" pop-up already explains it
       showToast(getApiError(err, "Registration failed. Try again."), "error");
     },
   });
