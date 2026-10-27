@@ -1,0 +1,1142 @@
+[
+ {
+  "name": "GET /diet-plans/today",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 10.2,
+  "p95_ms": 30.9,
+  "max_ms": 30.9,
+  "cpu_ms_per_req": 5.64
+ },
+ {
+  "name": "GET /diet-plans/ingredient-checklist",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.0,
+  "p95_ms": 5.9,
+  "max_ms": 5.9,
+  "cpu_ms_per_req": 4.76
+ },
+ {
+  "name": "GET /diet-plans/weekly-ingredients",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.0,
+  "p95_ms": 7.3,
+  "max_ms": 7.3,
+  "cpu_ms_per_req": 3.97
+ },
+ {
+  "name": "GET /progress/weekly",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 6.6,
+  "p95_ms": 8.2,
+  "max_ms": 8.2,
+  "cpu_ms_per_req": 5.91
+ },
+ {
+  "name": "GET /progress/weight",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 3.4,
+  "p95_ms": 4.1,
+  "max_ms": 4.1,
+  "cpu_ms_per_req": 3.15
+ },
+ {
+  "name": "GET /progress/adherence/weekly",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.8,
+  "p95_ms": 6.1,
+  "max_ms": 6.1,
+  "cpu_ms_per_req": 4.28
+ },
+ {
+  "name": "GET /patients/doctors",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.8,
+  "p95_ms": 5.8,
+  "max_ms": 5.8,
+  "cpu_ms_per_req": 4.25
+ },
+ {
+  "name": "GET /users/me/notification-preferences",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 3.7,
+  "p95_ms": 4.9,
+  "max_ms": 4.9,
+  "cpu_ms_per_req": 3.31
+ },
+ {
+  "name": "GET /calculations/bmi",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 3.5,
+  "p95_ms": 5.4,
+  "max_ms": 5.4,
+  "cpu_ms_per_req": 3.34
+ },
+ {
+  "name": "GET /calculations/bmr",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 3.2,
+  "p95_ms": 4.0,
+  "max_ms": 4.0,
+  "cpu_ms_per_req": 3.18
+ },
+ {
+  "name": "GET /calculations/tdee",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.8,
+  "p95_ms": 7.3,
+  "max_ms": 7.3,
+  "cpu_ms_per_req": 4.52
+ },
+ {
+  "name": "GET /",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 1.6,
+  "p95_ms": 3.0,
+  "max_ms": 3.0,
+  "cpu_ms_per_req": 1.46
+ },
+ {
+  "name": "GET /health",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 1.6,
+  "p95_ms": 2.2,
+  "max_ms": 2.2,
+  "cpu_ms_per_req": 1.5
+ },
+ {
+  "name": "POST /progress/log/weight",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "409": 15
+  },
+  "p50_ms": 4.8,
+  "p95_ms": 6.4,
+  "max_ms": 6.4,
+  "cpu_ms_per_req": 4.36
+ },
+ {
+  "name": "PUT /progress/log/weight",
+  "who": "p",
+  "n": 5,
+  "codes": {
+   "409": 5
+  },
+  "p50_ms": 4.9,
+  "p95_ms": 6.7,
+  "max_ms": 6.7,
+  "cpu_ms_per_req": 4.43
+ },
+ {
+  "name": "POST /progress/log/steps",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 7.3,
+  "p95_ms": 8.6,
+  "max_ms": 8.6,
+  "cpu_ms_per_req": 6.44
+ },
+ {
+  "name": "DELETE /progress/log/steps",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.4,
+  "p95_ms": 5.8,
+  "max_ms": 5.8,
+  "cpu_ms_per_req": 4.08
+ },
+ {
+  "name": "POST /progress/log/water",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.4,
+  "p95_ms": 6.9,
+  "max_ms": 6.9,
+  "cpu_ms_per_req": 4.77
+ },
+ {
+  "name": "DELETE /progress/log/water",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.7,
+  "p95_ms": 5.6,
+  "max_ms": 5.6,
+  "cpu_ms_per_req": 4.18
+ },
+ {
+  "name": "POST /progress/log/activity",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.5,
+  "p95_ms": 6.7,
+  "max_ms": 6.7,
+  "cpu_ms_per_req": 4.9
+ },
+ {
+  "name": "POST /progress/meal/rate",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "201": 15
+  },
+  "p50_ms": 5.4,
+  "p95_ms": 6.5,
+  "max_ms": 6.5,
+  "cpu_ms_per_req": 4.83
+ },
+ {
+  "name": "PUT /users/me",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.9,
+  "p95_ms": 7.2,
+  "max_ms": 7.2,
+  "cpu_ms_per_req": 5.24
+ },
+ {
+  "name": "POST /users/me/notification-preferences",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.0,
+  "p95_ms": 6.4,
+  "max_ms": 6.4,
+  "cpu_ms_per_req": 4.53
+ },
+ {
+  "name": "POST /meal-plan/pantry/toggle",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.7,
+  "p95_ms": 5.3,
+  "max_ms": 5.3,
+  "cpu_ms_per_req": 4.13
+ },
+ {
+  "name": "POST /meal-plan/shopping-list/toggle",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.4,
+  "p95_ms": 6.8,
+  "max_ms": 6.8,
+  "cpu_ms_per_req": 4.42
+ },
+ {
+  "name": "POST /patients/disclaimer",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.0,
+  "p95_ms": 5.0,
+  "max_ms": 5.0,
+  "cpu_ms_per_req": 3.5
+ },
+ {
+  "name": "PATCH /patients/tour-complete",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 3.9,
+  "p95_ms": 5.6,
+  "max_ms": 5.6,
+  "cpu_ms_per_req": 3.61
+ },
+ {
+  "name": "POST /patients/request-doctor",
+  "who": "p",
+  "n": 5,
+  "codes": {
+   "201": 5
+  },
+  "p50_ms": 5.9,
+  "p95_ms": 8.9,
+  "max_ms": 8.9,
+  "cpu_ms_per_req": 5.54
+ },
+ {
+  "name": "POST /patients/request-renewal",
+  "who": "p",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 4.8,
+  "p95_ms": 5.6,
+  "max_ms": 5.6,
+  "cpu_ms_per_req": 4.21
+ },
+ {
+  "name": "POST /patients/pending-visits/{approval_id}/respond",
+  "who": "p",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 5.2,
+  "p95_ms": 6.4,
+  "max_ms": 6.4,
+  "cpu_ms_per_req": 4.61
+ },
+ {
+  "name": "POST /patients/activate",
+  "who": "p",
+  "n": 5,
+  "codes": {
+   "400": 5
+  },
+  "p50_ms": 4.2,
+  "p95_ms": 5.1,
+  "max_ms": 5.1,
+  "cpu_ms_per_req": 3.61
+ },
+ {
+  "name": "POST /meal-plan/adjust",
+  "who": "p",
+  "n": 3,
+  "codes": {
+   "200": 3
+  },
+  "p50_ms": 1523.1,
+  "p95_ms": 1863.8,
+  "max_ms": 1863.8,
+  "cpu_ms_per_req": 1236.94
+ },
+ {
+  "name": "POST /diet-plans/generate",
+  "who": "p",
+  "n": 3,
+  "codes": {
+   "200": 3
+  },
+  "p50_ms": 5.5,
+  "p95_ms": 7.4,
+  "max_ms": 7.4,
+  "cpu_ms_per_req": 5.26
+ },
+ {
+  "name": "POST /auth/refresh",
+  "who": "p",
+  "n": 5,
+  "codes": {
+   "401": 5
+  },
+  "p50_ms": 2.7,
+  "p95_ms": 19.6,
+  "max_ms": 19.6,
+  "cpu_ms_per_req": 2.33
+ },
+ {
+  "name": "POST /auth/logout",
+  "who": "p",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 3.7,
+  "p95_ms": 4.0,
+  "max_ms": 4.0,
+  "cpu_ms_per_req": 3.91
+ },
+ {
+  "name": "POST /auth/forgot-password",
+  "who": "p",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 4.1,
+  "p95_ms": 5.2,
+  "max_ms": 5.2,
+  "cpu_ms_per_req": 3.66
+ },
+ {
+  "name": "GET /doctor/subscription-codes",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 6.5,
+  "p95_ms": 31.6,
+  "max_ms": 31.6,
+  "cpu_ms_per_req": 4.09
+ },
+ {
+  "name": "GET /doctor/recipes/{fid}/tags",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 3.9,
+  "p95_ms": 5.5,
+  "max_ms": 5.5,
+  "cpu_ms_per_req": 3.77
+ },
+ {
+  "name": "GET /doctor/patients/{id}/plan/overrides",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.7,
+  "p95_ms": 7.1,
+  "max_ms": 7.1,
+  "cpu_ms_per_req": 4.44
+ },
+ {
+  "name": "POST /doctor/patients/{id}/notes",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "201": 15
+  },
+  "p50_ms": 5.9,
+  "p95_ms": 7.2,
+  "max_ms": 7.2,
+  "cpu_ms_per_req": 5.18
+ },
+ {
+  "name": "POST /doctor/patients/{id}/plan/notes",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 5.8,
+  "p95_ms": 7.3,
+  "max_ms": 7.3,
+  "cpu_ms_per_req": 5.09
+ },
+ {
+  "name": "POST /doctor/patients/{id}/flag-visit",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "201": 15
+  },
+  "p50_ms": 6.5,
+  "p95_ms": 8.4,
+  "max_ms": 8.4,
+  "cpu_ms_per_req": 5.65
+ },
+ {
+  "name": "POST /doctor/patients/{id}/record-visit",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "400": 5
+  },
+  "p50_ms": 5.5,
+  "p95_ms": 6.7,
+  "max_ms": 6.7,
+  "cpu_ms_per_req": 4.83
+ },
+ {
+  "name": "POST /doctor/patients/{id}/approve-renewal",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 7.0,
+  "p95_ms": 9.0,
+  "max_ms": 9.0,
+  "cpu_ms_per_req": 6.43
+ },
+ {
+  "name": "POST /doctor/patients/{id}/request-renewal",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 5.5,
+  "p95_ms": 6.3,
+  "max_ms": 6.3,
+  "cpu_ms_per_req": 4.62
+ },
+ {
+  "name": "POST /doctor/patients/approve-all-renewals",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 8.0,
+  "p95_ms": 9.2,
+  "max_ms": 9.2,
+  "cpu_ms_per_req": 6.63
+ },
+ {
+  "name": "PATCH /doctor/patients/{id}/meal-config",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 6.8,
+  "p95_ms": 7.9,
+  "max_ms": 7.9,
+  "cpu_ms_per_req": 19.78
+ },
+ {
+  "name": "POST /doctor/patients/{id}/meal-config/block",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 7.1,
+  "p95_ms": 8.5,
+  "max_ms": 8.5,
+  "cpu_ms_per_req": 6.18
+ },
+ {
+  "name": "DELETE /doctor/patients/{id}/meal-config/block/{food_id}",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.6,
+  "p95_ms": 7.3,
+  "max_ms": 7.3,
+  "cpu_ms_per_req": 5.34
+ },
+ {
+  "name": "POST /doctor/patients/{id}/meal-config/pin",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 7.1,
+  "p95_ms": 8.3,
+  "max_ms": 8.3,
+  "cpu_ms_per_req": 6.22
+ },
+ {
+  "name": "DELETE /doctor/patients/{id}/meal-config/pin/{food_id}",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 7.1,
+  "p95_ms": 8.5,
+  "max_ms": 8.5,
+  "cpu_ms_per_req": 6.92
+ },
+ {
+  "name": "POST /doctor/patients/{id}/weekly-plan/approve",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 8.3,
+  "p95_ms": 9.4,
+  "max_ms": 9.4,
+  "cpu_ms_per_req": 7.28
+ },
+ {
+  "name": "POST /doctor/patients/{id}/weekly-plan/combos/{combo_id}/swap",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "422": 5
+  },
+  "p50_ms": 28.8,
+  "p95_ms": 31.8,
+  "max_ms": 31.8,
+  "cpu_ms_per_req": 4.53
+ },
+ {
+  "name": "PATCH /doctor/patients/{id}/weekly-plan/combos/{combo_id}/dishes/{idx}",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 8.9,
+  "p95_ms": 9.3,
+  "max_ms": 9.3,
+  "cpu_ms_per_req": 7.61
+ },
+ {
+  "name": "PUT /doctor/patients/{id}/plan",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 7.8,
+  "p95_ms": 8.3,
+  "max_ms": 8.3,
+  "cpu_ms_per_req": 6.29
+ },
+ {
+  "name": "POST /doctor/patients/{id}/plan/meals/{date}/{meal}/add",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 6.7,
+  "p95_ms": 8.1,
+  "max_ms": 8.1,
+  "cpu_ms_per_req": 6.21
+ },
+ {
+  "name": "PATCH /doctor/patients/{id}/plan/meals/{date}/{meal}/dishes/{idx}",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "404": 5
+  },
+  "p50_ms": 6.3,
+  "p95_ms": 7.4,
+  "max_ms": 7.4,
+  "cpu_ms_per_req": 5.7
+ },
+ {
+  "name": "POST /doctor/recipes",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "422": 5
+  },
+  "p50_ms": 4.1,
+  "p95_ms": 5.0,
+  "max_ms": 5.0,
+  "cpu_ms_per_req": 4.1
+ },
+ {
+  "name": "POST /doctor/recipes/estimate",
+  "who": "d",
+  "n": 3,
+  "codes": {
+   "200": 3
+  },
+  "p50_ms": 4.5,
+  "p95_ms": 7.6,
+  "max_ms": 7.6,
+  "cpu_ms_per_req": 5.07
+ },
+ {
+  "name": "POST /doctor/recipes/lookup",
+  "who": "d",
+  "n": 3,
+  "codes": {
+   "503": 3
+  },
+  "p50_ms": 5.1,
+  "p95_ms": 5.4,
+  "max_ms": 5.4,
+  "cpu_ms_per_req": 4.35
+ },
+ {
+  "name": "PATCH /doctor/recipes/{id}/tags",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "403": 5
+  },
+  "p50_ms": 4.7,
+  "p95_ms": 5.9,
+  "max_ms": 5.9,
+  "cpu_ms_per_req": 4.31
+ },
+ {
+  "name": "POST /doctor/recipes/{id}/assign",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 6.8,
+  "p95_ms": 8.2,
+  "max_ms": 8.2,
+  "cpu_ms_per_req": 6.1
+ },
+ {
+  "name": "POST /doctor/requests/{id}/accept",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 4.3,
+  "p95_ms": 31.5,
+  "max_ms": 31.5,
+  "cpu_ms_per_req": 3.87
+ },
+ {
+  "name": "POST /doctor/requests/{id}/reject",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 4.3,
+  "p95_ms": 6.7,
+  "max_ms": 6.7,
+  "cpu_ms_per_req": 3.9
+ },
+ {
+  "name": "POST /doctor/subscription-codes",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "201": 5
+  },
+  "p50_ms": 6.1,
+  "p95_ms": 6.4,
+  "max_ms": 6.4,
+  "cpu_ms_per_req": 5.16
+ },
+ {
+  "name": "POST /doctor/data-review/flag",
+  "who": "d",
+  "n": 5,
+  "codes": {
+   "201": 5
+  },
+  "p50_ms": 9.2,
+  "p95_ms": 10.9,
+  "max_ms": 10.9,
+  "cpu_ms_per_req": 6.37
+ },
+ {
+  "name": "PATCH /doctor/tour-complete",
+  "who": "d",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.2,
+  "p95_ms": 6.4,
+  "max_ms": 6.4,
+  "cpu_ms_per_req": 3.85
+ },
+ {
+  "name": "DELETE /doctor/patients/{id}",
+  "who": "d",
+  "n": 3,
+  "codes": {
+   "404": 3
+  },
+  "p50_ms": 4.0,
+  "p95_ms": 5.8,
+  "max_ms": 5.8,
+  "cpu_ms_per_req": 3.52
+ },
+ {
+  "name": "GET /admin/stats",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 9.6,
+  "p95_ms": 10.9,
+  "max_ms": 10.9,
+  "cpu_ms_per_req": 6.88
+ },
+ {
+  "name": "GET /admin/doctors",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.1,
+  "p95_ms": 7.5,
+  "max_ms": 7.5,
+  "cpu_ms_per_req": 4.58
+ },
+ {
+  "name": "GET /admin/patients",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 7.8,
+  "p95_ms": 10.0,
+  "max_ms": 10.0,
+  "cpu_ms_per_req": 6.72
+ },
+ {
+  "name": "GET /admin/audit-logs",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 6.1,
+  "p95_ms": 7.6,
+  "max_ms": 7.6,
+  "cpu_ms_per_req": 5.5
+ },
+ {
+  "name": "GET /admin/billing",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 6.8,
+  "p95_ms": 7.6,
+  "max_ms": 7.6,
+  "cpu_ms_per_req": 5.87
+ },
+ {
+  "name": "GET /admin/codes",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 4.9,
+  "p95_ms": 6.7,
+  "max_ms": 6.7,
+  "cpu_ms_per_req": 4.62
+ },
+ {
+  "name": "GET /admin/consultations",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 14.9,
+  "p95_ms": 16.3,
+  "max_ms": 16.3,
+  "cpu_ms_per_req": 12.48
+ },
+ {
+  "name": "GET /admin/consultations/annual",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 10.9,
+  "p95_ms": 12.6,
+  "max_ms": 12.6,
+  "cpu_ms_per_req": 9.28
+ },
+ {
+  "name": "GET /admin/data-requests",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 6.1,
+  "p95_ms": 7.7,
+  "max_ms": 7.7,
+  "cpu_ms_per_req": 5.78
+ },
+ {
+  "name": "GET /admin/food",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 8.9,
+  "p95_ms": 96.9,
+  "max_ms": 96.9,
+  "cpu_ms_per_req": 12.29
+ },
+ {
+  "name": "GET /admin/renewals",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 5.1,
+  "p95_ms": 7.0,
+  "max_ms": 7.0,
+  "cpu_ms_per_req": 4.76
+ },
+ {
+  "name": "GET /admin/doctors/1",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "200": 15
+  },
+  "p50_ms": 6.2,
+  "p95_ms": 7.2,
+  "max_ms": 7.2,
+  "cpu_ms_per_req": 5.3
+ },
+ {
+  "name": "POST /admin/codes/generate",
+  "who": "a",
+  "n": 5,
+  "codes": {
+   "201": 5
+  },
+  "p50_ms": 12.4,
+  "p95_ms": 14.0,
+  "max_ms": 14.0,
+  "cpu_ms_per_req": 11.28
+ },
+ {
+  "name": "POST /admin/billing/{doctor_id}/mark-paid",
+  "who": "a",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 8.4,
+  "p95_ms": 10.2,
+  "max_ms": 10.2,
+  "cpu_ms_per_req": 6.93
+ },
+ {
+  "name": "PATCH /admin/doctors/{id}",
+  "who": "a",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 8.6,
+  "p95_ms": 9.3,
+  "max_ms": 9.3,
+  "cpu_ms_per_req": 7.46
+ },
+ {
+  "name": "POST /admin/doctors",
+  "who": "a",
+  "n": 3,
+  "codes": {
+   "201": 3
+  },
+  "p50_ms": 205.7,
+  "p95_ms": 205.8,
+  "max_ms": 205.8,
+  "cpu_ms_per_req": 203.84
+ },
+ {
+  "name": "PATCH /admin/data-requests/{id}",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 5.6,
+  "p95_ms": 7.0,
+  "max_ms": 7.0,
+  "cpu_ms_per_req": 4.84
+ },
+ {
+  "name": "PATCH /admin/food/{id}/approve",
+  "who": "a",
+  "n": 5,
+  "codes": {
+   "400": 5
+  },
+  "p50_ms": 5.4,
+  "p95_ms": 6.8,
+  "max_ms": 6.8,
+  "cpu_ms_per_req": 4.87
+ },
+ {
+  "name": "PATCH /admin/food/{id}/reject",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 5.0,
+  "p95_ms": 9.4,
+  "max_ms": 9.4,
+  "cpu_ms_per_req": 4.65
+ },
+ {
+  "name": "DELETE /admin/food/{id}",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 6.2,
+  "p95_ms": 7.8,
+  "max_ms": 7.8,
+  "cpu_ms_per_req": 5.48
+ },
+ {
+  "name": "PATCH /admin/doctors/{id}/deactivate",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 4.5,
+  "p95_ms": 6.6,
+  "max_ms": 6.6,
+  "cpu_ms_per_req": 4.18
+ },
+ {
+  "name": "DELETE /admin/doctors/{id}",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 5.4,
+  "p95_ms": 6.7,
+  "max_ms": 6.7,
+  "cpu_ms_per_req": 4.55
+ },
+ {
+  "name": "PATCH /admin/patients/{id}/subscription/override",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 4.6,
+  "p95_ms": 6.2,
+  "max_ms": 6.2,
+  "cpu_ms_per_req": 4.14
+ },
+ {
+  "name": "POST /admin/renewals/{id}/override-approve",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 5.0,
+  "p95_ms": 6.0,
+  "max_ms": 6.0,
+  "cpu_ms_per_req": 4.36
+ },
+ {
+  "name": "DELETE /admin/patients/{id}",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "404": 15
+  },
+  "p50_ms": 5.2,
+  "p95_ms": 7.0,
+  "max_ms": 7.0,
+  "cpu_ms_per_req": 4.58
+ },
+ {
+  "name": "DELETE /admin/patients/{id}/hard-delete",
+  "who": "a",
+  "n": 15,
+  "codes": {
+   "403": 15
+  },
+  "p50_ms": 4.6,
+  "p95_ms": 6.0,
+  "max_ms": 6.0,
+  "cpu_ms_per_req": 4.01
+ },
+ {
+  "name": "POST /auth/admin/login",
+  "who": "x",
+  "n": 5,
+  "codes": {
+   "200": 5
+  },
+  "p50_ms": 210.8,
+  "p95_ms": 211.7,
+  "max_ms": 211.7,
+  "cpu_ms_per_req": 203.54
+ }
+]

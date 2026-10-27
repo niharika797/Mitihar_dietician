@@ -48,9 +48,12 @@ api.interceptors.response.use(
 
     // Server-side rate limit: the answer carries a ready-made message with the wait time.
     // Show the "take a break" pop-up once; screens skip their own error toast for a 429.
+    // Background calls the patient did not start pass { silent429: true } and get no pop-up.
     if (error.response?.status === 429) {
-      const detail = error.response.data?.detail;
-      useRateLimitStore.getState().show(typeof detail === "string" ? detail : undefined);
+      if (!(error.config as { silent429?: boolean } | undefined)?.silent429) {
+        const detail = error.response.data?.detail;
+        useRateLimitStore.getState().show(typeof detail === "string" ? detail : undefined);
+      }
       return Promise.reject(error);
     }
 

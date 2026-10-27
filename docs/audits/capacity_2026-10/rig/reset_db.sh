@@ -6,6 +6,11 @@ export MSYS_NO_PATHCONV=1
 ENVF="$1"; DUMP="$2"; RIG="$(cd "$(dirname "$0")" && pwd -W)"
 DC="docker compose -p mitihar-perf --env-file $ENVF -f $RIG/docker-compose.perf.yml"
 $DC stop api >/dev/null 2>&1
+# Fresh rate-limit counters when the rig runs with Redis (the API is stopped, nothing writes meanwhile)
+if [ -n "$(docker ps -q -f name=mitihar-perf-redis)" ]; then
+RPW="$(grep '^PERF_REDIS_PASSWORD=' "$ENVF" | cut -d= -f2-)"
+docker exec -e REDISCLI_AUTH="$RPW" mitihar-perf-redis redis-cli FLUSHALL >/dev/null
+fi
 docker exec mitihar-perf-pg psql -q -U admin -d postgres -c "DROP DATABASE IF EXISTS mityahar_db WITH (FORCE)" -c "CREATE DATABASE mityahar_db"
 docker exec -i mitihar-perf-pg pg_restore -U admin -d mityahar_db --no-owner < "$DUMP"
 docker exec mitihar-perf-pg psql -q -U admin -d mityahar_db -c "UPDATE recommendations SET created_at = week_start_date::timestamptz + interval '1 hour' WHERE NOT is_active" >/dev/null
@@ -20,4 +25,6 @@ fi
 docker exec mitihar-perf-pg psql -q -U admin -d mityahar_db -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements" -c "ANALYZE" >/dev/null
 $DC up -d --no-deps --force-recreate api >/dev/null 2>&1
 C:/Users/Lenovo/perf-venv/Scripts/python.exe "$RIG/wait_ready.py" >/dev/null
+# The dump predates newer tables (refresh_tokens): bring the schema to the code's head (no-op when current)
+docker exec mitihar-perf-api alembic upgrade head >/dev/null 2>&1
 echo "reset ok (db=${PERF_DB_NAME:-mityahar_db}, host=${PERF_DB_HOST:-pg})"

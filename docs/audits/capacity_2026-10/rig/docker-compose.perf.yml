@@ -1,0 +1,56 @@
+# Local capacity rig mirroring the assumed "Standard" shape (staging settings UNKNOWN: assumed Standard).
+# Run:  docker compose -p mitihar-perf --env-file <perf.env> -f docker-compose.perf.yml up -d
+# Secrets come from the env file (outside the repo). No Redis, one uvicorn worker (Dockerfile CMD).
+name: mitihar-perf
+services:
+  pg:
+    image: postgres:15
+    container_name: mitihar-perf-pg
+    cpus: ${PERF_PG_CPUS:-1.0}
+    mem_limit: 3840m            # ~3.75 GB
+    shm_size: 256m
+    environment:
+      POSTGRES_DB: mityahar_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${PERF_PG_PASSWORD:?set in env file}
+    # ASSUMED Cloud SQL-like values (real flags UNKNOWN): max_connections=100, shared_buffers=25% RAM
+    command: >
+      postgres -c max_connections=100 -c shared_buffers=960MB -c effective_cache_size=2800MB
+      -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
+    ports: ["15432:5432"]
+    volumes: ["perf_pgdata:/var/lib/postgresql/data"]
+  api:
+    build: { context: ../../../.., dockerfile: Dockerfile }
+    image: ${PERF_IMAGE:-mitihar-perf-api}
+    container_name: mitihar-perf-api
+    cpus: 1.0
+    mem_limit: 1g
+    cap_add: [SYS_PTRACE]       # py-spy only
+    depends_on: [pg]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://admin:${PERF_PG_PASSWORD}@${PERF_DB_HOST:-pg}:5432/${PERF_DB_NAME:-mityahar_db}
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+      SECRET_KEY: ${PERF_SECRET_KEY}
+      CRON_SECRET: ${PERF_CRON_SECRET}
+      ENVIRONMENT: staging
+      COOKIE_SECURE: "true"
+      ALLOW_HARD_DELETE: "false"
+      REQUIRE_EMAIL_VERIFICATION: "false"
+      CORS_ORIGINS: http://localhost:13000,http://127.0.0.1:13000,http://localhost:18081,http://127.0.0.1:18081
+      PORT: "8001"
+      TRUSTED_PROXY_CIDR: 172.16.0.0/12,127.0.0.1   # rig: trust XFF from the docker gateway so each virtual user has its own limiter key
+      PYTHONUNBUFFERED: "1"        # so PERFTRACE lines reach docker logs immediately
+      PERF_TRACE: ${PERF_TRACE:-0}   # needs the perf/measure-instrumentation image (PERF_IMAGE)
+      # No Redis unless PERF_REDIS_URL is set in the env file (then also `up -d redis`): rate-limit counters move to Redis.
+      REDIS_URL: ${PERF_REDIS_URL:-}
+    ports: ["18001:8001"]
+  redis:
+    # Stand-in for Memorystore Basic 1 GB with AUTH (no TLS), same as staging. Only started on request.
+    image: redis:7-alpine
+    container_name: mitihar-perf-redis
+    cpus: 1.0
+    mem_limit: 1g
+    command: ["redis-server", "--requirepass", "${PERF_REDIS_PASSWORD:-unused}", "--maxmemory", "900mb", "--maxmemory-policy", "allkeys-lru"]
+volumes:
+  perf_pgdata:

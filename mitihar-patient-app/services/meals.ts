@@ -13,7 +13,9 @@ export async function getWeeklyPlan(): Promise<WeeklyPlan | WeekResponseV2> {
 
 // ── POST /diet-plans/generate ──────────────────────────────────────────────
 export async function generatePlan(): Promise<void> {
-  await api.post("/diet-plans/generate");
+  // Background call the Meals screen makes by itself on open: no "take a break" pop-up if the server
+  // refuses it (silent429, see lib/axios.ts); the patient did nothing to deserve one.
+  await api.post("/diet-plans/generate", undefined, { silent429: true } as object);
 }
 
 // ── GET /meal-plan/history ─────────────────────────────────────────────────
